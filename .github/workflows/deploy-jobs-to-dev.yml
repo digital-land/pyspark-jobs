@@ -1,4 +1,4 @@
- name: Deploy Task To Development
+name: Deploy Task To Development
 
 on:
   push:
