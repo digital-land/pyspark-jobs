@@ -111,10 +111,8 @@ def read_data(spark, input_path):
 
 # -------------------- Data Transformer --------------------
 def transform_data(df):      
-    
-    # Load YAML file
-    with open("/mnt/c/Users/399182/MHCLG-Repo/digital-land-python/pyspark/config/transformed-source.yaml", "r") as file:
-        yaml_data = yaml.safe_load(file)
+    from utils.path_utils import load_yaml_from_repo
+    yaml_data = load_yaml_from_repo("~/pyspark-jobs/config/transformed-source.yaml")
 
     # Extract the list of fields
     fields = yaml_data.get("transport-access-node", [])
@@ -136,9 +134,8 @@ def transform_data(df):
     return df
 
 def populate_tables(df, table_name):   
-    
-    with open("/mnt/c/Users/399182/MHCLG-Repo/digital-land-python/pyspark/config/transformed-target.yaml", "r") as file:
-        yaml_data = yaml.safe_load(file)
+    from utils.path_utils import load_yaml_from_repo
+    yaml_data = load_yaml_from_repo("~/pyspark-jobs/config/transformed-target.yaml")
 
     # Extract the list of fields
     fields = yaml_data.get(table_name, [])
@@ -177,9 +174,13 @@ def generate_sqlite(df):
     # Step 4: Write to SQLite
     # Write to SQLite using JDBC
     try:
+        # Output SQLite DB to Desktop
+        from utils.path_utils import resolve_desktop_path
+        sqlite_path = resolve_desktop_path("../MHCLG/tgt-data/sqlite-output/transport_access_node.db")
+
         df.write \
             .format("jdbc") \
-            .option("url", "jdbc:sqlite:/home/lakshmi/spark-output/output-sqlite/transport_access_node.db") \
+            .option("url", f"jdbc:sqlite:{sqlite_path}") \
             .option("dbtable", "fact_resource") \
             .option("driver", "org.sqlite.JDBC") \
             .mode("overwrite") \
