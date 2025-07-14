@@ -211,8 +211,11 @@ def main():
         config = load_config()
         spark = create_spark_session()     
 
+        from src.utils.path_utils import resolve_desktop_path
+        csv_path = resolve_desktop_path("../MHCLG/src-data/*.csv")
         # Read CSV using the dynamic schema
-        df = spark.read.option("header", "true").csv('/mnt/c/Users/399182/MHCLG-Repo/SourceFiles/AWS-S3/transform-access-node/*.csv')
+        df = spark.read.option("header", "true").csv(csv_path)
+
         #df = read_data(spark,  config['S3_INPUT_PATH'])
         df.printSchema() 
         df.show()
