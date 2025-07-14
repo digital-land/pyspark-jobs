@@ -65,8 +65,12 @@ def load_config():
 def create_spark_session(app_name="EMRToAurora"):
     try:
         logger.info(f"Creating Spark session with app name: {app_name}")
+
+        from utils.path_utils import resolve_desktop_path
+        jar_path = resolve_desktop_path("../MHCLG/sqlite-jar/sqlite-jdbc-3.36.0.3.jar")
+
         return SparkSession.builder.appName(app_name) \
-            .config("spark.jars", "/home/MHCLG-Repo/sqlite-jdbc-3.36.0.3.jar") \
+            .config("spark.jars", jar_path) \
             .getOrCreate()
     
     except Exception as e:
