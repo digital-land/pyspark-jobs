@@ -237,10 +237,10 @@ def main():
         s3_input_path = config['AWS']['S3_INPUT_PATH']
         logger.info(f"S3 Input Path: {s3_input_path}")
 
-        for dataset in config_dataset.get("DATASETS", []):
+        for dataset,path in config_dataset.get("DATASETS", []).items():
             #name = dataset["name"]
-            logger.info(f"Processing dataset: {dataset}")
-            s3_input_path=s3_input_path+dataset+'/*.csv'
+            logger.info(f"Processing dataset: {path}")
+            s3_input_path=s3_input_path+path+'*.csv'
             logger.info(f"Loaded configuration: {config}")
             logger.info(f"Dataset input path: {s3_input_path}")
             spark = create_spark_session(config)
