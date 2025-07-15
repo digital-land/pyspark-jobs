@@ -14,4 +14,5 @@ AWS:
   S3_PARQUET_OUTPUT_PATH: "s3://development-collection-data/emr-data-processing/assemble-parquet/"
   S3_SQLITE_OUTPUT_PATH: "s3://development-collection-data/emr-data-processing/assemble-sqlite/"
   S3_SQLITE_JDBC_JAR: "s3://development-collection-data/emr-data-processing/libs/sqlite-jdbc-3.36.0.3.jar"
+  S3_ENVS_FILE: "s3://development-collection-data/emr-data-processing/envs/emr_venv.tar.gz"
  
