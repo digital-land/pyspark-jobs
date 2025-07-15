@@ -223,34 +223,49 @@ def main():
         
         base_dir = os.path.dirname(os.path.abspath(__file__))
         yaml_path = os.path.join(base_dir, "..", "..", "config", "configuration.yaml")
+        dataset_path = os.path.join(base_dir, "..", "..", "config", "datasets.yaml")
+        logger.info(f"Processing dataset: {dataset_path}")           
+            
 
+        # Load AWS configuration
+
+        #s3_input_path=base_dir/dataset_path
         config = load_metadata(yaml_path)
-        logger.info(f"Loaded configuration: {config}")
-        spark = create_spark_session(config)
-        #Below 2 lines code is for local testing
-        #from src.utils.path_utils import resolve_desktop_path
-        #csv_path = resolve_desktop_path("../MHCLG/src-data/*.csv")
-         #This is for local testing
-        
-        # Access values
+        config_dataset = load_metadata(dataset_path)
+
+          # Access values
         s3_input_path = config['AWS']['S3_INPUT_PATH']
         logger.info(f"S3 Input Path: {s3_input_path}")
 
-        # Read CSV using the dynamic schema
-        df = spark.read.option("header", "true").csv(s3_input_path)
+        for dataset in config_dataset.get("DATASETS", []):
+            #name = dataset["name"]
+            logger.info(f"Processing dataset: {dataset}")
+            s3_input_path=s3_input_path+dataset+'/*.csv'
+            logger.info(f"Loaded configuration: {config}")
+            logger.info(f"Dataset input path: {s3_input_path}")
+            spark = create_spark_session(config)
+            #Below 2 lines code is for local testing
+            #from src.utils.path_utils import resolve_desktop_path
+            #csv_path = resolve_desktop_path("../MHCLG/src-data/*.csv")
+            #This is for local testing
+            
+          
 
-        #df = read_data(spark,  config['S3_INPUT_PATH'])
-        df.printSchema() 
-        df.show()
-        processed_df = transform_data(df)
-        populate_tables(processed_df, 'transport-access-node-fact-res')
-        # Show schema and sample data    
-        #write_to_postgres(processed_df, config)
-        logger.info("Writing to output path")
-        generate_sqlite(processed_df)
-        write_to_s3(processed_df, '/home/lakshmi/spark-output/output-parquet-fact-res')
-        populate_tables(processed_df, 'transport-access-node-fact')
-        write_to_s3(processed_df, '/home/lakshmi/spark-output/output-parquet-fact')
+            # Read CSV using the dynamic schema
+            df = spark.read.option("header", "true").csv(s3_input_path)
+
+            #df = read_data(spark,  config['S3_INPUT_PATH'])
+            df.printSchema() 
+            df.show()
+            processed_df = transform_data(df)
+            populate_tables(processed_df, 'transport-access-node-fact-res')
+            # Show schema and sample data    
+            #write_to_postgres(processed_df, config)
+            logger.info("Writing to output path")
+            generate_sqlite(processed_df)
+            write_to_s3(processed_df, '/home/lakshmi/spark-output/output-parquet-fact-res')
+            populate_tables(processed_df, 'transport-access-node-fact')
+            write_to_s3(processed_df, '/home/lakshmi/spark-output/output-parquet-fact')
     
     except Exception as e:
         logger.exception("An error occurred during the ETL process: %s", str(e))
