@@ -29,4 +29,4 @@ jobs:
           aws-secret-access-key: ${{ secrets.DEVELOPMENT_AWS_ACCESS_SECRET }}
           aws-region: eu-west-2
 
-      - run: aws s3 sync src/jobs/ s3://development-collection-data/emr-data-processing/src --delete
+      - run: aws s3 sync src/ s3://development-collection-data/emr-data-processing/src
