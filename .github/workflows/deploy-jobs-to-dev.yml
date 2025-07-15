@@ -2,7 +2,8 @@ name: Deploy Pyspark Jobs To Development
 
 on:
   push:
-    branches: ["**"]
+    branches:
+      - main
 
 jobs:
   deploy:
