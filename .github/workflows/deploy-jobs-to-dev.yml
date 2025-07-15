@@ -29,4 +29,9 @@ jobs:
           aws-secret-access-key: ${{ secrets.DEVELOPMENT_AWS_ACCESS_SECRET }}
           aws-region: eu-west-2
 
-      - run: aws s3 sync src/ s3://development-collection-data/emr-data-processing/src
+      - run: |
+          # Copy the *entire* repo into the S3 src/ directory
+          aws s3 sync . \
+            s3://development-collection-data/emr-data-processing/src/ \
+            --exclude ".git/*" \
+            --exclude ".github/*" \
