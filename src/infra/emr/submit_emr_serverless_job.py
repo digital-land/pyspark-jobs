@@ -1,8 +1,11 @@
 import boto3
 import json
 
+# Define your AWS region
+region = 'eu-west-2'  # Replace with your actual region
+
 # Initialize Secrets Manager client
-secrets_client = boto3.client('secretsmanager')
+secrets_client = boto3.client('secretsmanager', region_name=region)
 
 # Name of the secret
 secret_name = 'airflow/emr_serverless'
@@ -20,7 +23,7 @@ entry_point = secret['entry_point']
 log_uri = secret['log_uri']
 
 # Initialize EMR Serverless client
-emr_client = boto3.client('emr-serverless')
+emr_client = boto3.client('emr-serverless', region_name=region)
 
 # Submit the job
 response = emr_client.start_job_run(
