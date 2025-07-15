@@ -1,0 +1,17 @@
+# WARNING: Do NOT include sensitive information such as passwords, usernames, IDs or access keys in this file.
+# Use AWS Secrets Manager or a secure credential store to manage sensitive properties.
+ 
+DEFAULT: {}
+ 
+LOCAL:
+  S3_INPUT_PATH: "=~/Desktop/MHCLG/src-data/*.csv"
+  S3_OUTPUT_PATH: "=~/Desktop/MHCLG/tgt-data/*.csv"
+ 
+AWS:
+  S3_SCRIPT_LOCATION: "s3://development-collection-data/emr-data-processing/src/"
+  S3_LOGURI: "s3://development-collection-data/emr-data-processing/logs/"
+  S3_INPUT_PATH: "s3://development-collection-data/"
+  S3_PARQUET_OUTPUT_PATH: "s3://development-collection-data/emr-data-processing/assemble-parquet/"
+  S3_SQLITE_OUTPUT_PATH: "s3://development-collection-data/emr-data-processing/assemble-sqlite/"
+  S3_SQLITE_JDBC_JAR: "s3://development-collection-data/emr-data-processing/libs/sqlite-jdbc-3.36.0.3.jar"
+ 

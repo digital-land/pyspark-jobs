@@ -48,26 +48,34 @@ def load_config():
         current_dir = os.path.dirname(os.path.abspath(__file__))
         config_path = os.path.normpath(os.path.join(current_dir, '..', '..', 'pyspark/config', 'aws.properties'))
 
-        print(config_path)
+        logger.info(f"Configuration file path: {config_path}")
 
         config = configparser.ConfigParser()
         config.read(config_path)
 
-        logger.info(f"Loaded configuration from {config_path}")
-        return config['DEFAULT']
-    
+ 
+        # Accessing values
+        #local_input_path = config['LOCAL']['S3_INPUT_PATH']
+        #aws_output_path = config['AWS']['S3_OUTPUT_PATH']
+
+        logger.info(f"Loaded configuration path from {config_path}")
+        logger.info(f"Loaded configuration from {config}")
+        return config  # Return the AWS section
+
     except Exception as e:
         logger.exception("Failed to load AWS configuration.")
         raise e
 
 
 # -------------------- Spark Session --------------------
-def create_spark_session(app_name="EMRToAurora"):
+def create_spark_session(config,app_name="EMRToAurora"):
     try:
         logger.info(f"Creating Spark session with app name: {app_name}")
 
-        from utils.path_utils import resolve_desktop_path
-        jar_path = resolve_desktop_path("../MHCLG/sqlite-jar/sqlite-jdbc-3.36.0.3.jar")
+        #from utils.path_utils import resolve_desktop_path
+        #jar_path = resolve_desktop_path("../MHCLG/sqlite-jar/sqlite-jdbc-3.36.0.3.jar")
+        jar_path = config['AWS']['S3_SQLITE_JDBC_JAR']
+        logger.info(f"Using JAR path: {jar_path}")
 
         return SparkSession.builder.appName(app_name) \
             .config("spark.jars", jar_path) \
@@ -212,13 +220,24 @@ def write_to_postgres(df, config):
 def main():
     try:
         logger.info("Starting main ETL process")
-        config = load_config()
-        spark = create_spark_session()     
+        
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        yaml_path = os.path.join(base_dir, "..", "..", "config", "configuration.yaml")
 
-        from src.utils.path_utils import resolve_desktop_path
-        csv_path = resolve_desktop_path("../MHCLG/src-data/*.csv")
+        config = load_metadata(yaml_path)
+        logger.info(f"Loaded configuration: {config}")
+        spark = create_spark_session(config)
+        #Below 2 lines code is for local testing
+        #from src.utils.path_utils import resolve_desktop_path
+        #csv_path = resolve_desktop_path("../MHCLG/src-data/*.csv")
+         #This is for local testing
+        
+        # Access values
+        s3_input_path = config['AWS']['S3_INPUT_PATH']
+        logger.info(f"S3 Input Path: {s3_input_path}")
+
         # Read CSV using the dynamic schema
-        df = spark.read.option("header", "true").csv(csv_path)
+        df = spark.read.option("header", "true").csv(s3_input_path)
 
         #df = read_data(spark,  config['S3_INPUT_PATH'])
         df.printSchema() 
