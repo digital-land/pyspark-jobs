@@ -41,39 +41,39 @@ logger = logging.getLogger(__name__)
 # -------------------- Configuration Loader --------------------
 
 #laod this for aws.properties 
-def load_config():
-    """
-    Loads AWS configuration from pyspark/config/aws.properties
-    relative to this script's location.
-    """
-    try:
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        config_path = os.path.normpath(os.path.join(current_dir, '..', '..', 'pyspark/config', 'configuration.json'))
+# def load_config():
+#     """
+#     Loads AWS configuration from pyspark/config/aws.properties
+#     relative to this script's location.
+#     """
+#     try:
+#         current_dir = os.path.dirname(os.path.abspath(__file__))
+#         config_path = os.path.normpath(os.path.join(current_dir, '..', '..', 'pyspark/config', 'configuration.json'))
 
-        logger.info(f"Configuration file path: {config_path}")
+#         logger.info(f"Configuration file path: {config_path}")
 
-        with open(config_path, 'r') as file:
-            config = json.load(file)
+#         with open(config_path, 'r') as file:
+#             config = json.load(file)
 
-        logger.info(f"Loaded configuration from {config_path}")
-        return config
+#         logger.info(f"Loaded configuration from {config_path}")
+#         return config
 
-    except Exception as e:
-        logger.exception("Failed to load AWS configuration.")
-        raise e
+#     except Exception as e:
+#         logger.exception("Failed to load AWS configuration.")
+#         raise e
 
  
-        # Accessing values
-        #local_input_path = config['LOCAL']['S3_INPUT_PATH']
-        #aws_output_path = config['AWS']['S3_OUTPUT_PATH']
+#         # Accessing values
+#         #local_input_path = config['LOCAL']['S3_INPUT_PATH']
+#         #aws_output_path = config['AWS']['S3_OUTPUT_PATH']
 
-        logger.info(f"Loaded configuration path from {config_path}")
-        logger.info(f"Loaded configuration from {config}")
-        return config  # Return the AWS section
+#         logger.info(f"Loaded configuration path from {config_path}")
+#         logger.info(f"Loaded configuration from {config}")
+#         return config  # Return the AWS section
 
-    except Exception as e:
-        logger.exception("Failed to load AWS configuration.")
-        raise e
+#     except Exception as e:
+#         logger.exception("Failed to load AWS configuration.")
+#         raise e
 
 
 # -------------------- Spark Session --------------------
