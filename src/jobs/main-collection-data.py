@@ -251,20 +251,16 @@ def write_to_postgres(df, config):
 # -------------------- Main --------------------
 def main():
     try:
-        logger.info("Starting main ETL process")
-        
+        logger.info("Starting main ETL process")        
         # Define paths to JSON configuration files
-        base_dir = os.path.dirname(__file__)
+        #base_dir = os.path.dirname(__file__)
         #json_path = os.path.join(base_dir, "..", "..", "config", "configuration.json")
         #dataset_path = os.path.join(base_dir, "..", "..", "config", "datasets.json")
         json_path="s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/config/configuration.json"
         dataset_path="s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/config/datasets.json"
 
-        logger.info(f"Processing dataset: {dataset_path}")           
-                    
-
-        # Load AWS configuration
-
+        logger.info(f"Processing dataset: {dataset_path}")              
+         # Load AWS configuration
         #s3_input_path=base_dir/dataset_path
         config = load_metadata(json_path)
         config_dataset = load_metadata(dataset_path)
@@ -273,17 +269,28 @@ def main():
         logger.info(f"Loaded dataset configuration #872 : {config_dataset}")
 
          # Access values
-        s3_input_path = config['AWS']['S3_INPUT_PATH']
+        # Access values
+        s3_input_path = config['AWS']['S3_INPUT_PATH'].rstrip('/')
         logger.info(f"S3 Input Path: {s3_input_path}")
+ 
+        for dataset, path_info in config_dataset.items():
+            if not path_info.get("enabled", False):
+                logger.info(f"Skipping disabled dataset: {dataset}")
+                continue
+            logger.info(f"Processing dataset 111: {dataset}")
+            logger.info(f"Processing dataset path_info 222: {path_info}")
+            path = path_info["path"].lstrip('/')
+            logger.info(f"Processing dataset path 333: {path}")
+            filename = path_info.get("filename")
+            logger.info(f"Processing dataset filename 444: {filename}")
+            if not filename:
+                logger.warning(f"No filename specified for dataset: {dataset}, skipping.")
+                continue
+            
+            full_path = f"{s3_input_path}/{path}{filename}"
 
-        
-        for dataset, path_info in config_dataset.get("DATASETS", {}).items():
-            path = path_info["path"]  # Extract the actual path string
-            logger.info(f"Processing dataset: {path}")
-            logger.info(f"Processing dataset path_info: {path_info}")
-            full_path = s3_input_path + path + '032bb316540d75247b22ebcd9f88046f6eb3e6737ec1789c4e3b227e193f5a27.csv'
-            logger.info(f"Loaded configuration: {config}")
-            logger.info(f"Dataset input path: {full_path}")
+            logger.info(f"Processing dataset 555: {dataset}")
+            logger.info(f"Dataset input path 666: {full_path}")
 
             spark = create_spark_session(config)
             #Below 2 lines code is for local testing
