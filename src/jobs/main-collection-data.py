@@ -118,26 +118,6 @@ def load_metadata(s3_uri):
         logger.exception(f"Unexpected error while loading metadata from {s3_uri}")
         raise
 ## this is moved to here from utils to fix testing issues
-def load_json_from_repo(relative_path):
-    """
-    Loads a JSON file from a path relative to the 'pyspark-jobs' repo.
-
-    Args:
-        relative_path (str): The path relative to the user's repo directory.
-
-    Returns:
-        dict: Parsed JSON content.
-    """
-    full_path = resolve_repo_path(relative_path)
-    with open(full_path, "r") as file:
-        return json.load(file)
-
-def resolve_repo_path(relative_path):
-    """
-    Resolves a path relative to the 'pyspark-jobs' repo, assuming it's in ~/github_repo/.
-    """
-    repo_base = os.path.join(os.path.expanduser("~"), "github_repo", "pyspark-jobs")
-    return os.path.join(repo_base, relative_path)
 
 #def load_metadata(json_path):
     #try:
