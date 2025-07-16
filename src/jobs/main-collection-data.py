@@ -39,28 +39,25 @@ dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger(__name__)
 
 # -------------------- Json File Reader --------------------
-def read_json_file(file_path):
-    """
-    Reads a JSON file and returns its content.
-    
-    Args:
-        file_path (str): Path to the JSON file.
-    
-    Returns:
-        dict: Parsed JSON content.
-    """
-    try:
-        with open(file_path, 'r') as file:
-            return json.load(file)
-    except FileNotFoundError:
-        logger.error(f"File not found: {file_path}")
-        raise
-    except json.JSONDecodeError as e:
-        logger.error(f"Error parsing JSON file: {file_path} — {e}")
-        raise
-    except Exception as e:
-        logger.exception(f"Unexpected error while reading JSON file: {file_path}")
-        raise
+def read_json_file(file_path):    
+    if file_path.startswith("s3://"):
+        try:
+            s3 = boto3.client("s3")
+            bucket, key = file_path.replace("s3://", "").split("/", 1)
+            response = s3.get_object(Bucket=bucket, Key=key)
+            content = response["Body"].read().decode("utf-8")
+            return json.loads(content)
+        except Exception as e:
+            logger.error(f"Failed to read JSON from S3: {e}")
+            raise
+        else:
+            try:
+                with open(file_path, "r") as file:
+                    return json.load(file)
+            except Exception as e:
+                logger.error(f"Failed to read JSON from local path: {e}")
+                raise
+
  
 # -------------------- Configuration Loader --------------------
 
@@ -185,9 +182,11 @@ def transform_data(df):
     #json_data = load_json_from_repo("~/pyspark-jobs/config/transformed-source.json")
     #TODO: Update this to be dynamic and remove hardcoded path
     json_data = read_json_file("s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/config/transformed-source.json")
+    logger.info(f"Transforming data with schema: {json_data}")
 
     # Extract the list of fields
     fields = json_data.get("transport-access-node", [])
+    logger.info(f"Fields to select: {fields}")
     
     # Replace hyphens with underscores in column names
     for col in df.columns:
