@@ -227,23 +227,24 @@ def main():
     try:
         logger.info("Starting main ETL process")        
         # Define paths to JSON configuration files
-        confg_json_path="s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/config/configuration.json"
+        #confg_json_path="s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/config/configuration.json"
         dataset_json_path="s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/config/datasets.json"
 
         logger.info(f"Processing dataset: {dataset_json_path}")              
          # Load AWS configuration
         #s3_input_path=base_dir/dataset_path
-        config = load_metadata(confg_json_path)
-        config_dataset = load_metadata(dataset_json_path)
+        config_json_datasets = load_metadata(dataset_json_path)
+        #config_dataset = load_metadata(dataset_json_path)
 
-        logger.info(f"Loaded configuration #872 : {config}")
-        logger.info(f"Loaded dataset configuration #872 : {config_dataset}")
+        logger.info(f"Loaded configuration #872 : {config_json_datasets}")
+        #logger.info(f"Loaded dataset configuration #872 : {config_dataset}")
 
         # Access values
-        s3_input_path = config['AWS']['S3_INPUT_PATH'].rstrip('/')
-        logger.info(f"S3 Input Path: {s3_input_path}")
+        #s3_input_path = config['transport-access-node']['path']#.rstrip('/')
+        #logger.info(f"S3 Input Path: {s3_input_path}")
+
  
-        for dataset, path_info in config_dataset.items():
+        for dataset, path_info in config_json_datasets.items():
             if not path_info.get("enabled", False):
                 logger.info(f"Skipping disabled dataset: {dataset}")
                 continue
@@ -254,12 +255,12 @@ def main():
             #filename = path_info.get("filename")
             #file_name = "032bb316540d75247b22ebcd9f88046f6eb3e6737ec1789c4e3b227e193f5a27.csv"
             #full_path = f"{s3_input_path}/{path}{file_name}"
-            full_path = f"{s3_input_path}*.csv"
+            full_path = f"{path_info['path']}*.csv"
 
             logger.info(f"Processing dataset 555: {dataset}")
             logger.info(f"Dataset input path 666: {full_path}")
 
-            spark = create_spark_session(config)
+            spark = create_spark_session(config_json_datasets)
             #Below 2 lines code is for local testing
             #from src.utils.path_utils import resolve_desktop_path
             #csv_path = resolve_desktop_path("../MHCLG/src-data/*.csv")
