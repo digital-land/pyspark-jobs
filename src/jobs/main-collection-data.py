@@ -281,13 +281,9 @@ def main():
             logger.info(f"Processing dataset path_info 222: {path_info}")
             path = path_info["path"].lstrip('/')
             logger.info(f"Processing dataset path 333: {path}")
-            filename = path_info.get("filename")
-            logger.info(f"Processing dataset filename 444: {filename}")
-            if not filename:
-                logger.warning(f"No filename specified for dataset: {dataset}, skipping.")
-                continue
-            
-            full_path = f"{s3_input_path}/{path}{filename}"
+            #filename = path_info.get("filename")
+            file_name = "032bb316540d75247b22ebcd9f88046f6eb3e6737ec1789c4e3b227e193f5a27.csv"
+            full_path = f"{s3_input_path}/{path}{file_name}"
 
             logger.info(f"Processing dataset 555: {dataset}")
             logger.info(f"Dataset input path 666: {full_path}")
@@ -299,7 +295,7 @@ def main():
             #This is for local testing   
           
             # Read CSV using the dynamic schema
-            df = spark.read.option("header", "true").csv(s3_input_path)
+            df = spark.read.option("header", "true").csv(full_path)
 
             #df = read_data(spark,  config['S3_INPUT_PATH'])
             df.printSchema() 
@@ -310,10 +306,12 @@ def main():
             #write_to_postgres(processed_df, config)
             logger.info("Writing to output path")
             ##generate_sqlite(processed_df)
-            write_to_s3(processed_df, '/home/lakshmi/spark-output/output-parquet-fact-res')
+            output_path = "s3://development-collection-data/emr-data-processing/assemble-parquet/"
+
+            write_to_s3(processed_df, f"{output_path}output-parquet-fact-res")
             ##populate_tables(processed_df, 'transport-access-node-fact')
-            write_to_s3(processed_df, '/home/lakshmi/spark-output/output-parquet-fact')
-    
+            write_to_s3(processed_df, f"{output_path}output-parquet-fact")
+
     except Exception as e:
         logger.exception("An error occurred during the ETL process: %s", str(e))
     finally:
