@@ -269,6 +269,9 @@ def main():
         config = load_metadata(json_path)
         config_dataset = load_metadata(dataset_path)
 
+        logger.info(f"Loaded configuration #872 : {config}")
+        logger.info(f"Loaded dataset configuration #872 : {config_dataset}")
+
          # Access values
         s3_input_path = config['AWS']['S3_INPUT_PATH']
         logger.info(f"S3 Input Path: {s3_input_path}")
