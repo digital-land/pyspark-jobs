@@ -68,19 +68,21 @@ def load_config():
 
 
 # -------------------- Spark Session --------------------
-def create_spark_session(config,app_name="EMRToAurora"):
+def create_spark_session(config,app_name="EMR Transform Job"):
     try:
         logger.info(f"Creating Spark session with app name: {app_name}")
 
         #from utils.path_utils import resolve_desktop_path
-        #jar_path = resolve_desktop_path("../MHCLG/sqlite-jar/sqlite-jdbc-3.36.0.3.jar")
-        jar_path = config['AWS']['S3_SQLITE_JDBC_JAR']
-        logger.info(f"Using JAR path: {jar_path}")
+        ##jar_path = resolve_desktop_path("../MHCLG/sqlite-jar/sqlite-jdbc-3.36.0.3.jar")
+        ##jar_path = config['AWS']['S3_SQLITE_JDBC_JAR']
+        ##logger.info(f"Using JAR path: {jar_path}")
 
-        return SparkSession.builder.appName(app_name) \
-            .config("spark.jars", jar_path) \
-            .getOrCreate()
-    
+        ##spark_session= SparkSession.builder.appName(app_name) \
+        ##   .config("spark.jars", jar_path) \
+        ##   .getOrCreate()
+        spark_session = SparkSession.builder.appName(app_name).getOrCreate()
+        return spark_session
+
     except Exception as e:
         logger.error(f"Failed to create Spark session: {e}", exc_info=True)
         return None
@@ -244,7 +246,8 @@ def main():
         for dataset, path_info in config_dataset.get("DATASETS", {}).items():
             path = path_info["path"]  # Extract the actual path string
             logger.info(f"Processing dataset: {path}")
-            full_path = s3_input_path + path + '*ab*.csv'
+            logger.info(f"Processing dataset path_info: {path_info}")
+            full_path = s3_input_path + path + '032bb316540d75247b22ebcd9f88046f6eb3e6737ec1789c4e3b227e193f5a27.csv'
             logger.info(f"Loaded configuration: {config}")
             logger.info(f"Dataset input path: {full_path}")
 
