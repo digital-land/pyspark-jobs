@@ -2,6 +2,7 @@
 import configparser
 import logging
 import os
+import boto3
 #import sqlite3
 import sys
 from dataclasses import fields
@@ -46,12 +47,19 @@ def load_config():
     """
     try:
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        config_path = os.path.normpath(os.path.join(current_dir, '..', '..', 'pyspark/config', 'aws.properties'))
+        config_path = os.path.normpath(os.path.join(current_dir, '..', '..', 'pyspark/config', 'configuration.json'))
 
         logger.info(f"Configuration file path: {config_path}")
 
-        config = configparser.ConfigParser()
-        config.read(config_path)
+        with open(config_path, 'r') as file:
+            config = json.load(file)
+
+        logger.info(f"Loaded configuration from {config_path}")
+        return config
+
+    except Exception as e:
+        logger.exception("Failed to load AWS configuration.")
+        raise e
 
  
         # Accessing values
@@ -89,23 +97,44 @@ def create_spark_session(config,app_name="EMR Transform Job"):
 
 
 # -------------------- Metadata Loader --------------------
-def load_metadata(json_path):
+def load_metadata(s3_uri):
+    """
+    Load a JSON configuration file from an S3 URI.
+    Example URI: S3://development-collection-data/emr-data-processing/src0/pyspark-jobs/config/configuration.json
+    """
+    if not s3_uri.startswith("s3://"):
+        raise ValueError("Invalid S3 URI")
     try:
-        logger.info(f"Loading metadata from {json_path}")
-        with open(json_path, 'r') as file:
-            return json.load(file)
+        s3 = boto3.client('s3')
+        parts = s3_uri.replace("s3://", "").split("/", 1)
+        bucket = parts[0]
+        key = parts[1]
     
-    except FileNotFoundError:
-        logger.error(f"File not found: {json_path}")
-        raise
-    
-    except json.JSONDecodeError as e:
-            logger.error(f"Error parsing JSON file: {json_path} — {e}")
-            raise
-
+        response = s3.get_object(Bucket=bucket, Key=key)
+        return json.load(response['Body'])
+  
     except Exception as e:
-        logger.exception(f"Unexpected error while loading metadata from {json_path}")
+        logger.exception(f"Unexpected error while loading metadata from {s3_uri}")
         raise
+
+
+#def load_metadata(json_path):
+    #try:
+        #logger.info(f"Loading metadata from {json_path}")
+        #with open(json_path, 'r') as file:
+            #return json.load(file)
+    
+    #except FileNotFoundError:
+        #logger.error(f"File not found: {json_path}")
+        #raise
+    
+    #except json.JSONDecodeError as e:
+            #logger.error(f"Error parsing JSON file: {json_path} — {e}")
+           # raise
+
+    #except Exception as e:
+        #logger.exception(f"Unexpected error while loading metadata from {json_path}")
+        #raise
 
 
 
@@ -226,8 +255,10 @@ def main():
         
         # Define paths to JSON configuration files
         base_dir = os.path.dirname(__file__)
-        json_path = os.path.join(base_dir, "..", "..", "config", "configuration.json")
-        dataset_path = os.path.join(base_dir, "..", "..", "config", "datasets.json")
+        #json_path = os.path.join(base_dir, "..", "..", "config", "configuration.json")
+        #dataset_path = os.path.join(base_dir, "..", "..", "config", "datasets.json")
+        json_path="s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/config/configuration.json"
+        dataset_path="s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/config/datasets.json"
 
         logger.info(f"Processing dataset: {dataset_path}")           
                     
