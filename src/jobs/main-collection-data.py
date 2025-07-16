@@ -182,11 +182,11 @@ def write_to_s3(df, output_path):
     .mode("overwrite") \
     .option("header", "true") \
     .parquet(output_path)
-    df.write \
-    .partitionBy("year", "month", "day") \
-    .mode("append") \
-    .option("header", "true") \
-    .csv(output_path)
+    # df.write \
+    # .partitionBy("year", "month", "day") \
+    # .mode("append") \
+    # .option("header", "true") \
+    # .csv(output_path)
 
 def generate_sqlite(df):
     # Step 4: Write to SQLite
@@ -249,11 +249,12 @@ def main():
                 continue
             logger.info(f"Processing dataset 111: {dataset}")
             logger.info(f"Processing dataset path_info 222: {path_info}")
-            path = path_info["path"].lstrip('/')
-            logger.info(f"Processing dataset path 333: {path}")
+            #path = path_info["path"].lstrip('/')
+            #logger.info(f"Processing dataset path 333: {path}")
             #filename = path_info.get("filename")
-            file_name = "032bb316540d75247b22ebcd9f88046f6eb3e6737ec1789c4e3b227e193f5a27.csv"
-            full_path = f"{s3_input_path}/{path}{file_name}"
+            #file_name = "032bb316540d75247b22ebcd9f88046f6eb3e6737ec1789c4e3b227e193f5a27.csv"
+            #full_path = f"{s3_input_path}/{path}{file_name}"
+            full_path = f"{s3_input_path}*.csv"
 
             logger.info(f"Processing dataset 555: {dataset}")
             logger.info(f"Dataset input path 666: {full_path}")
