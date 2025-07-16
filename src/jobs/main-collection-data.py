@@ -278,7 +278,7 @@ def main():
             #write_to_postgres(processed_df, config)
             logger.info("Writing to output path")
             ##generate_sqlite(processed_df)
-            output_path = "s3://development-collection-data/emr-data-processing/assemble-parquet/"
+            output_path = f"s3://development-collection-data/emr-data-processing/assemble-parquet/{dataset}/"
 
             write_to_s3(processed_df, f"{output_path}output-parquet-fact-res")
             ##populate_tables(processed_df, 'transport-access-node-fact')

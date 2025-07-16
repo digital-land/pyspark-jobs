@@ -5,7 +5,7 @@
   },
   "title-boundaries": {
     "path": "s3://development-collection-data/transport-access-node-collection/transformed/title-boundaries/",
-    "enabled": false
+    "enabled": true
   }
 }
 
