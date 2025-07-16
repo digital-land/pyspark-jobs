@@ -4,7 +4,7 @@
     "enabled": true
   },
   "title-boundaries": {
-    "path": "s3://development-collection-data/transport-access-node-collection/transformed/title-boundaries/",
+    "path": "s3://development-collection-data/title-boundary-collection/transformed/title-boundary/",
     "enabled": true
   }
 }
