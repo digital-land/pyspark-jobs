@@ -1,4 +1,3 @@
-
 import configparser
 import logging
 import os
@@ -40,6 +39,15 @@ logger = logging.getLogger(__name__)
 
 # -------------------- Json File Reader --------------------
 def read_json_file(file_path):    
+    """
+    Reads a JSON file from either a local path or an S3 URI.
+    
+    Args:
+        file_path (str): Path to the JSON file. Can be local or S3 URI.
+    
+    Returns:
+        dict: Parsed JSON content.
+    """    
     if file_path.startswith("s3://"):
         try:
             s3 = boto3.client("s3")
@@ -57,45 +65,6 @@ def read_json_file(file_path):
             except Exception as e:
                 logger.error(f"Failed to read JSON from local path: {e}")
                 raise
-
- 
-# -------------------- Configuration Loader --------------------
-
-#laod this for aws.properties 
-# def load_config():
-#     """
-#     Loads AWS configuration from pyspark/config/aws.properties
-#     relative to this script's location.
-#     """
-#     try:
-#         current_dir = os.path.dirname(os.path.abspath(__file__))
-#         config_path = os.path.normpath(os.path.join(current_dir, '..', '..', 'pyspark/config', 'configuration.json'))
-
-#         logger.info(f"Configuration file path: {config_path}")
-
-#         with open(config_path, 'r') as file:
-#             config = json.load(file)
-
-#         logger.info(f"Loaded configuration from {config_path}")
-#         return config
-
-#     except Exception as e:
-#         logger.exception("Failed to load AWS configuration.")
-#         raise e
-
- 
-#         # Accessing values
-#         #local_input_path = config['LOCAL']['S3_INPUT_PATH']
-#         #aws_output_path = config['AWS']['S3_OUTPUT_PATH']
-
-#         logger.info(f"Loaded configuration path from {config_path}")
-#         logger.info(f"Loaded configuration from {config}")
-#         return config  # Return the AWS section
-
-#     except Exception as e:
-#         logger.exception("Failed to load AWS configuration.")
-#         raise e
-
 
 # -------------------- Spark Session --------------------
 def create_spark_session(config,app_name="EMR Transform Job"):
@@ -138,27 +107,6 @@ def load_metadata(s3_uri):
     except Exception as e:
         logger.exception(f"Unexpected error while loading metadata from {s3_uri}")
         raise
-## this is moved to here from utils to fix testing issues
-
-#def load_metadata(json_path):
-    #try:
-        #logger.info(f"Loading metadata from {json_path}")
-        #with open(json_path, 'r') as file:
-            #return json.load(file)
-    
-    #except FileNotFoundError:
-        #logger.error(f"File not found: {json_path}")
-        #raise
-    
-    #except json.JSONDecodeError as e:
-            #logger.error(f"Error parsing JSON file: {json_path} — {e}")
-           # raise
-
-    #except Exception as e:
-        #logger.exception(f"Unexpected error while loading metadata from {json_path}")
-        #raise
-
-
 
 # -------------------- Data Reader --------------------
 def read_data(spark, input_path):
@@ -279,22 +227,18 @@ def main():
     try:
         logger.info("Starting main ETL process")        
         # Define paths to JSON configuration files
-        #base_dir = os.path.dirname(__file__)
-        #json_path = os.path.join(base_dir, "..", "..", "config", "configuration.json")
-        #dataset_path = os.path.join(base_dir, "..", "..", "config", "datasets.json")
-        json_path="s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/config/configuration.json"
-        dataset_path="s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/config/datasets.json"
+        confg_json_path="s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/config/configuration.json"
+        dataset_json_path="s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/config/datasets.json"
 
-        logger.info(f"Processing dataset: {dataset_path}")              
+        logger.info(f"Processing dataset: {dataset_json_path}")              
          # Load AWS configuration
         #s3_input_path=base_dir/dataset_path
-        config = load_metadata(json_path)
-        config_dataset = load_metadata(dataset_path)
+        config = load_metadata(confg_json_path)
+        config_dataset = load_metadata(dataset_json_path)
 
         logger.info(f"Loaded configuration #872 : {config}")
         logger.info(f"Loaded dataset configuration #872 : {config_dataset}")
 
-         # Access values
         # Access values
         s3_input_path = config['AWS']['S3_INPUT_PATH'].rstrip('/')
         logger.info(f"S3 Input Path: {s3_input_path}")
