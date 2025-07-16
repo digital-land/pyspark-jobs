@@ -240,7 +240,7 @@ def main():
         for dataset,path in config_dataset.get("DATASETS", []).items():
             #name = dataset["name"]
             logger.info(f"Processing dataset: {path}")
-            s3_input_path=s3_input_path+path+'*.csv'
+            s3_input_path=s3_input_path+path+'*ab*.csv'
             logger.info(f"Loaded configuration: {config}")
             logger.info(f"Dataset input path: {s3_input_path}")
             spark = create_spark_session(config)
