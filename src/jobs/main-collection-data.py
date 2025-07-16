@@ -184,7 +184,7 @@ def transform_data(df):
     
     #json_data = load_json_from_repo("~/pyspark-jobs/config/transformed-source.json")
     #TODO: Update this to be dynamic and remove hardcoded path
-    json_data - read_json_file("s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/config/transformed-source.json")
+    json_data = read_json_file("s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/config/transformed-source.json")
 
     # Extract the list of fields
     fields = json_data.get("transport-access-node", [])
