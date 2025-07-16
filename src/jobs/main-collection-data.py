@@ -7,7 +7,7 @@ import sys
 from dataclasses import fields
 from logging import config
 from logging.config import dictConfig
-import yaml
+import json
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (coalesce,collect_list,concat_ws,dayofmonth,expr,first,month,to_date,year)
 from pyspark.sql.types import (StringType,StructField,StructType,TimestampType)
@@ -87,20 +87,20 @@ def create_spark_session(config,app_name="EMRToAurora"):
 
 
 # -------------------- Metadata Loader --------------------
-def load_metadata(yaml_path):
+def load_metadata(json_path):
     try:
-        logger.info(f"Loading metadata from {yaml_path}")
-        with open(yaml_path, "r") as file:
-            return yaml.safe_load(file)
+        logger.info(f"Loading metadata from {json_path}")
+        with open(json_path, 'r') as file:
+            return json.load(file)
     
     except FileNotFoundError:
-        logger.error(f"File not found: {yaml_path}")
+        logger.error(f"File not found: {json_path}")
         raise
     except yaml.YAMLError as e:
-        logger.error(f"Error parsing YAML file: {yaml_path} — {e}")
+        logger.error(f"Error parsing YAML file: {json_path} — {e}")
         raise
     except Exception as e:
-        logger.exception(f"Unexpected error while loading metadata from {yaml_path}")
+        logger.exception(f"Unexpected error while loading metadata from {json_path}")
         raise
 
 
@@ -221,36 +221,38 @@ def main():
     try:
         logger.info("Starting main ETL process")
         
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        yaml_path = os.path.join(base_dir, "..", "..", "config", "configuration.yaml")
-        dataset_path = os.path.join(base_dir, "..", "..", "config", "datasets.yaml")
+        # Define paths to JSON configuration files
+        base_dir = os.path.dirname(__file__)
+        json_path = os.path.join(base_dir, "..", "..", "config", "configuration.json")
+        dataset_path = os.path.join(base_dir, "..", "..", "config", "datasets.json")
+
         logger.info(f"Processing dataset: {dataset_path}")           
-            
+                    
 
         # Load AWS configuration
 
         #s3_input_path=base_dir/dataset_path
-        config = load_metadata(yaml_path)
+        config = load_metadata(json_path)
         config_dataset = load_metadata(dataset_path)
 
-          # Access values
+         # Access values
         s3_input_path = config['AWS']['S3_INPUT_PATH']
         logger.info(f"S3 Input Path: {s3_input_path}")
 
-        for dataset,path in config_dataset.get("DATASETS", []).items():
-            #name = dataset["name"]
+        
+        for dataset, path_info in config_dataset.get("DATASETS", {}).items():
+            path = path_info["path"]  # Extract the actual path string
             logger.info(f"Processing dataset: {path}")
-            s3_input_path=s3_input_path+path+'*ab*.csv'
+            full_path = s3_input_path + path + '*ab*.csv'
             logger.info(f"Loaded configuration: {config}")
-            logger.info(f"Dataset input path: {s3_input_path}")
+            logger.info(f"Dataset input path: {full_path}")
+
             spark = create_spark_session(config)
             #Below 2 lines code is for local testing
             #from src.utils.path_utils import resolve_desktop_path
             #csv_path = resolve_desktop_path("../MHCLG/src-data/*.csv")
-            #This is for local testing
-            
+            #This is for local testing   
           
-
             # Read CSV using the dynamic schema
             df = spark.read.option("header", "true").csv(s3_input_path)
 
