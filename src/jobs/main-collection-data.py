@@ -2,7 +2,7 @@
 import configparser
 import logging
 import os
-import sqlite3
+#import sqlite3
 import sys
 from dataclasses import fields
 from logging import config
@@ -96,9 +96,11 @@ def load_metadata(json_path):
     except FileNotFoundError:
         logger.error(f"File not found: {json_path}")
         raise
-    except yaml.YAMLError as e:
-        logger.error(f"Error parsing YAML file: {json_path} — {e}")
-        raise
+    
+    except json.JSONDecodeError as e:
+            logger.error(f"Error parsing JSON file: {json_path} — {e}")
+            raise
+
     except Exception as e:
         logger.exception(f"Unexpected error while loading metadata from {json_path}")
         raise
@@ -123,11 +125,11 @@ def read_data(spark, input_path):
 
 # -------------------- Data Transformer --------------------
 def transform_data(df):      
-    from utils.path_utils import load_yaml_from_repo
-    yaml_data = load_yaml_from_repo("~/pyspark-jobs/config/transformed-source.yaml")
+    from utils.path_utils import load_json_from_repo
+    json_data = load_json_from_repo("~/pyspark-jobs/config/transformed-source.json")
 
     # Extract the list of fields
-    fields = yaml_data.get("transport-access-node", [])
+    fields = json_data.get("transport-access-node", [])
     
     # Replace hyphens with underscores in column names
     for col in df.columns:
@@ -137,7 +139,7 @@ def transform_data(df):
     # Get actual DataFrame columns
     df_columns = df.columns
 
-    # Find fields that are present in both DataFrame and YAML    
+    # Find fields that are present in both DataFrame and json    
     if set(fields) == set(df.columns):
         logger.info("All fields are present in the DataFrame")
     else:
@@ -146,15 +148,14 @@ def transform_data(df):
     return df
 
 def populate_tables(df, table_name):   
-    from utils.path_utils import load_yaml_from_repo
-    yaml_data = load_yaml_from_repo("~/pyspark-jobs/config/transformed-target.yaml")
+    from utils.path_utils import load_json_from_repo
+    json_data = load_json_from_repo("~/pyspark-jobs/config/transformed-target.json")
 
     # Extract the list of fields
-    fields = yaml_data.get(table_name, [])
+    fields = json_data.get(table_name, [])
     
     # Select only those columns from the DataFrame that are for fact_resource table
     df_selected = df[fields]
-    df_selected.show(5)
     return df_selected
 
 
@@ -260,13 +261,13 @@ def main():
             df.printSchema() 
             df.show()
             processed_df = transform_data(df)
-            populate_tables(processed_df, 'transport-access-node-fact-res')
+            ##populate_tables(processed_df, 'transport-access-node-fact-res')
             # Show schema and sample data    
             #write_to_postgres(processed_df, config)
             logger.info("Writing to output path")
-            generate_sqlite(processed_df)
+            ##generate_sqlite(processed_df)
             write_to_s3(processed_df, '/home/lakshmi/spark-output/output-parquet-fact-res')
-            populate_tables(processed_df, 'transport-access-node-fact')
+            ##populate_tables(processed_df, 'transport-access-node-fact')
             write_to_s3(processed_df, '/home/lakshmi/spark-output/output-parquet-fact')
     
     except Exception as e:
