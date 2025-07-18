@@ -263,9 +263,9 @@ def main():
             logger.info("Writing to output path")
             ##generate_sqlite(processed_df)
             output_path = f"s3://development-collection-data/emr-data-processing/assemble-parquet/{dataset}/"
-            populate_tables(processed_df, 'transport-access-node-fact-resource')
+            processed_df=populate_tables(processed_df, 'transport-access-node-fact-res')
             write_to_s3(processed_df, f"{output_path}output-parquet-fact-res")
-            populate_tables(processed_df, 'transport-access-node-fact')
+            processed_df=populate_tables(processed_df, 'transport-access-node-fact')
             write_to_s3(processed_df, f"{output_path}output-parquet-fact")
 
     except Exception as e:
