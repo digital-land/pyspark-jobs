@@ -182,11 +182,7 @@ def write_to_s3(df, output_path):
     .mode("overwrite") \
     .option("header", "true") \
     .parquet(output_path)
-    # df.write \
-    # .partitionBy("year", "month", "day") \
-    # .mode("append") \
-    # .option("header", "true") \
-    # .csv(output_path)
+    
 
 def generate_sqlite(df):
     # Step 4: Write to SQLite
@@ -227,22 +223,15 @@ def main():
     try:
         logger.info("Starting main ETL process")        
         # Define paths to JSON configuration files
-        #confg_json_path="s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/config/configuration.json"
         dataset_json_path="s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/config/datasets.json"
+        dataset_json_path="/home/MHCLG-Repo/pyspark-jobs/config/datasets.json"
 
         logger.info(f"Processing dataset: {dataset_json_path}")              
          # Load AWS configuration
-        #s3_input_path=base_dir/dataset_path
         config_json_datasets = load_metadata(dataset_json_path)
-        #config_dataset = load_metadata(dataset_json_path)
 
         logger.info(f"Loaded configuration #872 : {config_json_datasets}")
         #logger.info(f"Loaded dataset configuration #872 : {config_dataset}")
-
-        # Access values
-        #s3_input_path = config['transport-access-node']['path']#.rstrip('/')
-        #logger.info(f"S3 Input Path: {s3_input_path}")
-
  
         for dataset, path_info in config_json_datasets.items():
             if not path_info.get("enabled", False):
@@ -250,11 +239,7 @@ def main():
                 continue
             logger.info(f"Processing dataset 111: {dataset}")
             logger.info(f"Processing dataset path_info 222: {path_info}")
-            #path = path_info["path"].lstrip('/')
-            #logger.info(f"Processing dataset path 333: {path}")
-            #filename = path_info.get("filename")
-            #file_name = "032bb316540d75247b22ebcd9f88046f6eb3e6737ec1789c4e3b227e193f5a27.csv"
-            #full_path = f"{s3_input_path}/{path}{file_name}"
+            
             full_path = f"{path_info['path']}*.csv"
 
             logger.info(f"Processing dataset 555: {dataset}")
@@ -273,15 +258,14 @@ def main():
             df.printSchema() 
             df.show()
             processed_df = transform_data(df)
-            ##populate_tables(processed_df, 'transport-access-node-fact-res')
             # Show schema and sample data    
             #write_to_postgres(processed_df, config)
             logger.info("Writing to output path")
             ##generate_sqlite(processed_df)
             output_path = f"s3://development-collection-data/emr-data-processing/assemble-parquet/{dataset}/"
-
+            populate_tables(processed_df, 'transport-access-node-fact-resource')
             write_to_s3(processed_df, f"{output_path}output-parquet-fact-res")
-            ##populate_tables(processed_df, 'transport-access-node-fact')
+            populate_tables(processed_df, 'transport-access-node-fact')
             write_to_s3(processed_df, f"{output_path}output-parquet-fact")
 
     except Exception as e:
