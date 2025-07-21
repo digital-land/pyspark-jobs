@@ -8,6 +8,7 @@ from dataclasses import fields
 from logging import config
 from logging.config import dictConfig
 import json
+import transform_collection_data
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (coalesce,collect_list,concat_ws,dayofmonth,expr,first,month,to_date,year)
 from pyspark.sql.types import (StringType,StructField,StructType,TimestampType)
@@ -125,7 +126,7 @@ def read_data(spark, input_path):
         raise
 
 # -------------------- Data Transformer --------------------
-def transform_data(df):      
+def transform_data(df, table_name):      
     
     #json_data = load_json_from_repo("~/pyspark-jobs/config/transformed-source.json")
     #TODO: Update this to be dynamic and remove hardcoded path
@@ -149,7 +150,15 @@ def transform_data(df):
         logger.info("All fields are present in the DataFrame")
     else:
         logger.warning("Some fields are missing from the DataFrame")
-    
+    if table_name == 'fact-res':
+       return df
+    elif table_name == 'fact':
+       transform_collection_data.transform_data_fact(df)
+    elif table_name == 'entity':
+       transform_collection_data.transform_data_entity(df)
+    elif table_name == 'issues':
+       transform_collection_data.transform_data_issues(df)
+
     return df
 
 def populate_tables(df, table_name):   
@@ -170,7 +179,8 @@ def write_to_s3(df, output_path):
 # Convert entry-date to date type and extract year, month, day
     #df.show()
     #spark.stop()clear
-    df = df.withColumn("start_date_parsed", to_date(coalesce("start_date", "entry_date"), "yyyy-MM-dd")) \
+    #df = df.withColumn("start_date_parsed", to_date(coalesce("start_date", "entry_date"), "yyyy-MM-dd")) \
+    df = df.withColumn("start_date_parsed", to_date("start_date", "yyyy-MM-dd")) \
     .withColumn("year", year("start_date_parsed")) \
     .withColumn("month", month("start_date_parsed")) \
     .withColumn("day", dayofmonth("start_date_parsed"))
@@ -221,7 +231,10 @@ def write_to_postgres(df, config):
 # -------------------- Main --------------------
 def main():
     try:
-        logger.info("Starting main ETL process")        
+        logger.info("Starting main ETL process")          
+        start_time = datetime.now()
+        print(f"Spark session started at: {start_time}")
+        
         # Define paths to JSON configuration files
         dataset_json_path="s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/config/datasets.json"
         dataset_json_path="/home/MHCLG-Repo/pyspark-jobs/config/datasets.json"
@@ -257,22 +270,36 @@ def main():
             #df = read_data(spark,  config['S3_INPUT_PATH'])
             df.printSchema() 
             df.show()
-            processed_df = transform_data(df)
+            processed_df = transform_data(df,'fact-res')
+            processed_df = transform_data(df,'fact')
+            processed_df = transform_data(df,'issues')
+            processed_df = transform_data(df,'entity')
+
             # Show schema and sample data    
             #write_to_postgres(processed_df, config)
             logger.info("Writing to output path")
             ##generate_sqlite(processed_df)
             output_path = f"s3://development-collection-data/emr-data-processing/assemble-parquet/{dataset}/"
-            processed_df=populate_tables(processed_df, 'transport-access-node-fact-res')
+            processed_df=populate_tables(processed_df, 'fact-res')
             write_to_s3(processed_df, f"{output_path}output-parquet-fact-res")
-            processed_df=populate_tables(processed_df, 'transport-access-node-fact')
+            processed_df=populate_tables(processed_df, 'fact')
+            write_to_s3(processed_df, f"{output_path}output-parquet-fact")
+            processed_df=populate_tables(processed_df, 'issues')
+            write_to_s3(processed_df, f"{output_path}output-parquet-issues")
+            processed_df=populate_tables(processed_df, 'entity')
             write_to_s3(processed_df, f"{output_path}output-parquet-fact")
 
     except Exception as e:
         logger.exception("An error occurred during the ETL process: %s", str(e))
     finally:
         try:
-            spark.stop()
+            spark.stop()            
+            end_time = datetime.now()
+            print(f"Spark session ended at: {end_time}")
+            # Duration
+            duration = end_time - start_time
+            print(f"Total duration: {duration}")
+
         except Exception as e:
             logger.info("Spark session stopped.")
         except Exception as stop_err:
