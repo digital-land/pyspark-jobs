@@ -3,17 +3,19 @@ import logging
 import os
 import boto3
 import pkgutil
-from datetime import datetime
-#import sqlite3
+import json
 import sys
+#import sqlite3
+
+from datetime import datetime
 from dataclasses import fields
 from logging import config
 from logging.config import dictConfig
-import json
 from jobs import transform_collection_data
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (coalesce,collect_list,concat_ws,dayofmonth,expr,first,month,to_date,year)
 from pyspark.sql.types import (StringType,StructField,StructType,TimestampType)
+from pyspark.sql.exceptions import AnalysisException
 #from utils.path_utils import load_json_from_repo
 
 # -------------------- Logging Configuration --------------------
@@ -61,13 +63,13 @@ def read_json_file(file_path):
         except Exception as e:
             logger.error(f"Failed to read JSON from S3: {e}")
             raise
-        else:
-            try:
-                with open(file_path, "r") as file:
-                    return json.load(file)
-            except Exception as e:
-                logger.error(f"Failed to read JSON from local path: {e}")
-                raise
+    else:
+        try:
+            with open(file_path, "r") as file:
+                return json.load(file)
+        except Exception as e:
+            logger.error(f"Failed to read JSON from local path: {e}")
+            raise
 
 # -------------------- Spark Session --------------------
 def create_spark_session(config,app_name="EMR Transform Job"):
@@ -166,15 +168,7 @@ def read_data(spark, input_path):
 # -------------------- Data Transformer --------------------
 def transform_data(df, table_name):      
     try:
-        #json_data = load_json_from_repo("~/pyspark-jobs/src/config/transformed-source.json")
-        #TODO: Update this to be dynamic and remove hardcoded path
-
-        json_data = "src/config/transformed-source.json" 
-
-        # base_path = os.path.dirname(__file__)
-        # json_data = os.path.join(base_path, "../config/transformed-source.json")    
-
-        # json_data = read_json_file("s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/src/config/transformed-source.json")
+        json_data = read_json_file("src/config/transformed-source.json")
         logger.info(f"Transforming data with schema: {json_data}")
 
         # Extract the list of fields
@@ -184,7 +178,8 @@ def transform_data(df, table_name):
         # Replace hyphens with underscores in column names
         for col in df.columns:
             if "-" in col:
-                df = df.withColumnRenamed(col, col.replace("-", "_"))
+                new_col = col.replace("-", "_")
+                df = df.withColumnRenamed(col, new_col)
 
         # Get actual DataFrame columns
         df_columns = df.columns
@@ -193,42 +188,31 @@ def transform_data(df, table_name):
         if set(fields) == set(df.columns):
             logger.info("All fields are present in the DataFrame")
         else:
-            logger.warning("Some fields are missing from the DataFrame")
+            logger.warning("Some fields are missing")
+            
         if table_name == 'fact-res':
-        transformed_df = transform_collection_data.transform_data_fact_res(df)
+            return transform_collection_data.transform_data_fact_res(df)
         elif table_name == 'fact':
-        transformed_df = transform_collection_data.transform_data_fact(df)
+            return transform_collection_data.transform_data_fact(df)
         elif table_name == 'entity':
-        transformed_df = transform_collection_data.transform_data_entity(df)
+            return transform_collection_data.transform_data_entity(df)
         elif table_name == 'issues':
-        transformed_df = transform_collection_data.transform_data_issues(df)
+            return transform_collection_data.transform_data_issues(df)
+        else:
+            raise ValueError(f"Unknown table name: {table_name}")
 
-        return transformed_df
     except Exception as e:
-        logger.error(f"Error transforming data for table {table_name}: {e}", exc_info=True)
+        logger.error(f"Error transforming data: {e}")
         raise
 
 def populate_tables(df, table_name): 
-    try:  
-        from utils.path_utils import load_json_from_repo
-        
-        # base_path = os.path.dirname(__file__)
-        # json_data = os.path.join(base_path, "../config/transformed-target.json")
-
-        json_data = "src/config/transformed-target.json" 
-
-        # json_data = load_json_from_repo("~/pyspark-jobs/src/config/transformed-target.json")
-
-        # Extract the list of fields
-        fields = json_data.get(table_name, [])
-        
-        # Select only those columns from the DataFrame that are for fact_resource table
-        df_selected = df[fields]
-        return df_selected
+    try:
+        transformed_df = transform_data(df, table_name)
+        logger.info(f"Successfully transformed data for table: {table_name}")
+        return transformed_df
     except Exception as e:
-        logger.error(f"Error populating tables for {table_name}: {e}", exc_info=True)
+        logger.error(f"Error populating tables: {e}")
         raise
-
 
 # -------------------- S3 Writer --------------------
 def write_to_s3(df, output_path):
