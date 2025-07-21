@@ -93,7 +93,7 @@ def create_spark_session(config,app_name="EMR Transform Job"):
 def load_metadata(s3_uri):
     """
     Load a JSON configuration file from an S3 URI.
-    Example URI: S3://development-collection-data/emr-data-processing/src0/pyspark-jobs/config/configuration.json
+    Example URI: S3://development-collection-data/emr-data-processing/src0/pyspark-jobs/src/config/configuration.json
     """
     if not s3_uri.startswith("s3://"):
         raise ValueError("Invalid S3 URI")
@@ -129,9 +129,14 @@ def read_data(spark, input_path):
 # -------------------- Data Transformer --------------------
 def transform_data(df, table_name):      
     
-    #json_data = load_json_from_repo("~/pyspark-jobs/config/transformed-source.json")
+    #json_data = load_json_from_repo("~/pyspark-jobs/src/config/transformed-source.json")
     #TODO: Update this to be dynamic and remove hardcoded path
-    json_data = read_json_file("s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/config/transformed-source.json")
+
+
+    base_path = os.path.dirname(__file__)
+    json_data = os.path.join(base_path, "../config/transformed-source.json")
+
+    # json_data = read_json_file("s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/src/config/transformed-source.json")
     logger.info(f"Transforming data with schema: {json_data}")
 
     # Extract the list of fields
@@ -164,7 +169,12 @@ def transform_data(df, table_name):
 
 def populate_tables(df, table_name):   
     from utils.path_utils import load_json_from_repo
-    json_data = load_json_from_repo("~/pyspark-jobs/config/transformed-target.json")
+    
+
+    base_path = os.path.dirname(__file__)
+    json_data = os.path.join(base_path, "../config/transformed-target.json")
+
+    # json_data = load_json_from_repo("~/pyspark-jobs/src/config/transformed-target.json")
 
     # Extract the list of fields
     fields = json_data.get(table_name, [])
@@ -237,8 +247,12 @@ def main():
         logger.info(f"Spark session started at: {start_time}")
         
         # Define paths to JSON configuration files
-        dataset_json_path="s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/config/datasets.json"
-        dataset_json_path="/home/MHCLG-Repo/pyspark-jobs/config/datasets.json"
+
+        base_path = os.path.dirname(__file__)
+        dataset_json_path = os.path.join(base_path, "../config/datasets.json")
+
+        # dataset_json_path="s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/src/config/datasets.json"
+        # dataset_json_path="/home/MHCLG-Repo/pyspark-jobs/src/config/datasets.json"
 
         logger.info(f"Processing dataset: {dataset_json_path}")              
          # Load AWS configuration
