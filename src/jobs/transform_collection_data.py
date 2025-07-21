@@ -14,8 +14,15 @@ def transform_data_fact(df):
     # Filter to keep only the top row per partition
     final_df = df_with_rownum.filter(df_with_rownum["row_num"] == 1).drop("row_num")
     logger.info(f"Final DataFrame after filtering: {final_df.columns}")
+    final_df_show = final_df.select("fact","end_date","entity","field", "priority", "entry_date", "reference_entity","start_date", "value")
+    return final_df_show
 
-    return final_df
+def transform_data_fact_res(df):      
+    logger.info("Transforming data for fact table")
+    #
+    logger.info(f"Final DataFrame after filtering: {final_df.columns}")
+    final_df_show = final_df.select("fact","end_date","source","entry_number", "priority", "entry_date", "start_date")
+    return final_df_show
 
 
 def transform_data_issues(df):      

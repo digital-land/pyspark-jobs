@@ -2,6 +2,7 @@ import configparser
 import logging
 import os
 import boto3
+from datetime import datetime
 #import sqlite3
 import sys
 from dataclasses import fields
@@ -151,15 +152,15 @@ def transform_data(df, table_name):
     else:
         logger.warning("Some fields are missing from the DataFrame")
     if table_name == 'fact-res':
-       return df
+       transformed_df = transform_collection_data.transform_data_fact_res(df)
     elif table_name == 'fact':
-       transform_collection_data.transform_data_fact(df)
+       transformed_df = transform_collection_data.transform_data_fact(df)
     elif table_name == 'entity':
-       transform_collection_data.transform_data_entity(df)
+       transformed_df = transform_collection_data.transform_data_entity(df)
     elif table_name == 'issues':
-       transform_collection_data.transform_data_issues(df)
+       transformed_df = transform_collection_data.transform_data_issues(df)
 
-    return df
+    return transformed_df
 
 def populate_tables(df, table_name):   
     from utils.path_utils import load_json_from_repo
@@ -177,9 +178,9 @@ def populate_tables(df, table_name):
 def write_to_s3(df, output_path):   
     logger.info(f"Writing data to S3 at {output_path}") 
 # Convert entry-date to date type and extract year, month, day
-    #df.show()
-    #spark.stop()clear
+    
     #df = df.withColumn("start_date_parsed", to_date(coalesce("start_date", "entry_date"), "yyyy-MM-dd")) \
+    # entry date is when added to the platform and start date is when it became legally applicable.
     df = df.withColumn("start_date_parsed", to_date("start_date", "yyyy-MM-dd")) \
     .withColumn("year", year("start_date_parsed")) \
     .withColumn("month", month("start_date_parsed")) \
@@ -233,7 +234,7 @@ def main():
     try:
         logger.info("Starting main ETL process")          
         start_time = datetime.now()
-        print(f"Spark session started at: {start_time}")
+        logger.info(f"Spark session started at: {start_time}")
         
         # Define paths to JSON configuration files
         dataset_json_path="s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/config/datasets.json"
@@ -266,6 +267,7 @@ def main():
           
             # Read CSV using the dynamic schema
             df = spark.read.option("header", "true").csv(full_path)
+            df.cache()  # Cache the DataFrame for performance
 
             #df = read_data(spark,  config['S3_INPUT_PATH'])
             df.printSchema() 
@@ -277,10 +279,10 @@ def main():
             ##generate_sqlite(processed_df)
             output_path = f"s3://development-collection-data/emr-data-processing/assemble-parquet/{dataset}/"
             processed_df = transform_data(df,'fact-res')
-            processed_df=populate_tables(processed_df, 'fact-res')
+            #processed_df=populate_tables(processed_df, 'fact-res')
             write_to_s3(processed_df, f"{output_path}output-parquet-fact-res")
             processed_df = transform_data(df,'fact')
-            processed_df=populate_tables(processed_df, 'fact')
+            #processed_df=populate_tables(processed_df, 'fact')
             write_to_s3(processed_df, f"{output_path}output-parquet-fact")
             #processed_df = transform_data(df,'issues')
             #processed_df=populate_tables(processed_df, 'issues')
@@ -295,10 +297,10 @@ def main():
         try:
             spark.stop()            
             end_time = datetime.now()
-            print(f"Spark session ended at: {end_time}")
+            logger.info(f"Spark session ended at: {end_time}")
             # Duration
             duration = end_time - start_time
-            print(f"Total duration: {duration}")
+            logger.info(f"Total duration: {duration}")
 
         except Exception as e:
             logger.info("Spark session stopped.")
