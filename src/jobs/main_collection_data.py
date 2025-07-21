@@ -270,24 +270,24 @@ def main():
             #df = read_data(spark,  config['S3_INPUT_PATH'])
             df.printSchema() 
             df.show()
-            processed_df = transform_data(df,'fact-res')
-            processed_df = transform_data(df,'fact')
-            processed_df = transform_data(df,'issues')
-            processed_df = transform_data(df,'entity')
 
             # Show schema and sample data    
             #write_to_postgres(processed_df, config)
             logger.info("Writing to output path")
             ##generate_sqlite(processed_df)
             output_path = f"s3://development-collection-data/emr-data-processing/assemble-parquet/{dataset}/"
+            processed_df = transform_data(df,'fact-res')
             processed_df=populate_tables(processed_df, 'fact-res')
             write_to_s3(processed_df, f"{output_path}output-parquet-fact-res")
+            processed_df = transform_data(df,'fact')
             processed_df=populate_tables(processed_df, 'fact')
             write_to_s3(processed_df, f"{output_path}output-parquet-fact")
-            processed_df=populate_tables(processed_df, 'issues')
-            write_to_s3(processed_df, f"{output_path}output-parquet-issues")
-            processed_df=populate_tables(processed_df, 'entity')
-            write_to_s3(processed_df, f"{output_path}output-parquet-fact")
+            #processed_df = transform_data(df,'issues')
+            #processed_df=populate_tables(processed_df, 'issues')
+            #write_to_s3(processed_df, f"{output_path}output-parquet-issues")
+            #processed_df = transform_data(df,'entity')
+            #processed_df=populate_tables(processed_df, 'entity')
+            #write_to_s3(processed_df, f"{output_path}output-parquet-entity")
 
     except Exception as e:
         logger.exception("An error occurred during the ETL process: %s", str(e))
