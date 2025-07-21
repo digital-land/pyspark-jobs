@@ -15,7 +15,6 @@ from jobs import transform_collection_data
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (coalesce,collect_list,concat_ws,dayofmonth,expr,first,month,to_date,year)
 from pyspark.sql.types import (StringType,StructField,StructType,TimestampType)
-from pyspark.sql.exceptions import AnalysisException
 #from utils.path_utils import load_json_from_repo
 
 # -------------------- Logging Configuration --------------------
@@ -155,14 +154,8 @@ def read_data(spark, input_path):
         logger.info(f"Reading data from {input_path}")
         return spark.read.csv(input_path, header=True, inferSchema=True)
     
-    except AnalysisException as ae:
-        logger.error(f"Spark analysis error while reading data from {input_path}: {ae}")
-        raise
-    except FileNotFoundError:
-        logger.error(f"File not found: {input_path}")
-        raise
     except Exception as e:
-        logger.exception(f"Unexpected error while reading data from {input_path}")
+        logger.error(f"Error reading data from {input_path}: {str(e)}")
         raise
 
 # -------------------- Data Transformer --------------------
@@ -218,23 +211,25 @@ def populate_tables(df, table_name):
 def write_to_s3(df, output_path):
     try:   
         logger.info(f"Writing data to S3 at {output_path}") 
-    # Convert entry-date to date type and extract year, month, day
         
-        #df = df.withColumn("start_date_parsed", to_date(coalesce("start_date", "entry_date"), "yyyy-MM-dd")) \
-        # entry date is when added to the platform and start date is when it became legally applicable.
-        #Confired with client that for partitioning we will use the available entry date when another date is not available. 873
-        df = df.withColumn("entry_date", to_date("entry_date", "yyyy-MM-dd")) \
-        .withColumn("year", year("entry_date_parsed")) \
-        .withColumn("month", month("entry_date_parsed")) \
-        .withColumn("day", dayofmonth("entry_date_parsed"))
-        df.drop("entry_date_parsed")
-    # -------------------- PostgreSQL Writer --------------------
-        #Write to S3 partitioned by year, month, day
+        # Convert entry-date to date type and use it for partitioning
+        df = df.withColumn("entry_date_parsed", to_date("entry_date", "yyyy-MM-dd"))
+        df = df.withColumn("year", year("entry_date_parsed")) \
+              .withColumn("month", month("entry_date_parsed")) \
+              .withColumn("day", dayofmonth("entry_date_parsed"))
+        
+        # Drop the temporary parsing column
+        df = df.drop("entry_date_parsed")
+        
+        # Write to S3 partitioned by year, month, day
         df.write \
-        .partitionBy("year", "month", "day") \
-        .mode("overwrite") \
-        .option("header", "true") \
-        .parquet(output_path)
+          .partitionBy("year", "month", "day") \
+          .mode("overwrite") \
+          .option("header", "true") \
+          .parquet(output_path)
+        
+        logger.info(f"Successfully wrote data to {output_path}")
+        
     except Exception as e:
         logger.error(f"Failed to write to S3: {e}", exc_info=True)
         raise
