@@ -165,84 +165,95 @@ def read_data(spark, input_path):
 
 # -------------------- Data Transformer --------------------
 def transform_data(df, table_name):      
-    
-    #json_data = load_json_from_repo("~/pyspark-jobs/src/config/transformed-source.json")
-    #TODO: Update this to be dynamic and remove hardcoded path
+    try:
+        #json_data = load_json_from_repo("~/pyspark-jobs/src/config/transformed-source.json")
+        #TODO: Update this to be dynamic and remove hardcoded path
 
-    json_data = "src/config/transformed-source.json" 
+        json_data = "src/config/transformed-source.json" 
 
-    # base_path = os.path.dirname(__file__)
-    # json_data = os.path.join(base_path, "../config/transformed-source.json")    
+        # base_path = os.path.dirname(__file__)
+        # json_data = os.path.join(base_path, "../config/transformed-source.json")    
 
-    # json_data = read_json_file("s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/src/config/transformed-source.json")
-    logger.info(f"Transforming data with schema: {json_data}")
+        # json_data = read_json_file("s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/src/config/transformed-source.json")
+        logger.info(f"Transforming data with schema: {json_data}")
 
-    # Extract the list of fields
-    fields = json_data.get("transport-access-node", [])
-    logger.info(f"Fields to select: {fields}")
-    
-    # Replace hyphens with underscores in column names
-    for col in df.columns:
-        if "-" in col:
-            df = df.withColumnRenamed(col, col.replace("-", "_"))
+        # Extract the list of fields
+        fields = json_data.get("transport-access-node", [])
+        logger.info(f"Fields to select: {fields}")
+        
+        # Replace hyphens with underscores in column names
+        for col in df.columns:
+            if "-" in col:
+                df = df.withColumnRenamed(col, col.replace("-", "_"))
 
-    # Get actual DataFrame columns
-    df_columns = df.columns
+        # Get actual DataFrame columns
+        df_columns = df.columns
 
-    # Find fields that are present in both DataFrame and json    
-    if set(fields) == set(df.columns):
-        logger.info("All fields are present in the DataFrame")
-    else:
-        logger.warning("Some fields are missing from the DataFrame")
-    if table_name == 'fact-res':
-       transformed_df = transform_collection_data.transform_data_fact_res(df)
-    elif table_name == 'fact':
-       transformed_df = transform_collection_data.transform_data_fact(df)
-    elif table_name == 'entity':
-       transformed_df = transform_collection_data.transform_data_entity(df)
-    elif table_name == 'issues':
-       transformed_df = transform_collection_data.transform_data_issues(df)
+        # Find fields that are present in both DataFrame and json    
+        if set(fields) == set(df.columns):
+            logger.info("All fields are present in the DataFrame")
+        else:
+            logger.warning("Some fields are missing from the DataFrame")
+        if table_name == 'fact-res':
+        transformed_df = transform_collection_data.transform_data_fact_res(df)
+        elif table_name == 'fact':
+        transformed_df = transform_collection_data.transform_data_fact(df)
+        elif table_name == 'entity':
+        transformed_df = transform_collection_data.transform_data_entity(df)
+        elif table_name == 'issues':
+        transformed_df = transform_collection_data.transform_data_issues(df)
 
-    return transformed_df
+        return transformed_df
+    except Exception as e:
+        logger.error(f"Error transforming data for table {table_name}: {e}", exc_info=True)
+        raise
 
-def populate_tables(df, table_name):   
-    from utils.path_utils import load_json_from_repo
-    
-    # base_path = os.path.dirname(__file__)
-    # json_data = os.path.join(base_path, "../config/transformed-target.json")
+def populate_tables(df, table_name): 
+    try:  
+        from utils.path_utils import load_json_from_repo
+        
+        # base_path = os.path.dirname(__file__)
+        # json_data = os.path.join(base_path, "../config/transformed-target.json")
 
-    json_data = "src/config/transformed-target.json" 
+        json_data = "src/config/transformed-target.json" 
 
-    # json_data = load_json_from_repo("~/pyspark-jobs/src/config/transformed-target.json")
+        # json_data = load_json_from_repo("~/pyspark-jobs/src/config/transformed-target.json")
 
-    # Extract the list of fields
-    fields = json_data.get(table_name, [])
-    
-    # Select only those columns from the DataFrame that are for fact_resource table
-    df_selected = df[fields]
-    return df_selected
+        # Extract the list of fields
+        fields = json_data.get(table_name, [])
+        
+        # Select only those columns from the DataFrame that are for fact_resource table
+        df_selected = df[fields]
+        return df_selected
+    except Exception as e:
+        logger.error(f"Error populating tables for {table_name}: {e}", exc_info=True)
+        raise
 
 
 # -------------------- S3 Writer --------------------
-def write_to_s3(df, output_path):   
-    logger.info(f"Writing data to S3 at {output_path}") 
-# Convert entry-date to date type and extract year, month, day
-    
-    #df = df.withColumn("start_date_parsed", to_date(coalesce("start_date", "entry_date"), "yyyy-MM-dd")) \
-    # entry date is when added to the platform and start date is when it became legally applicable.
-    #Confired with client that for partitioning we will use the available entry date when another date is not available. 873
-    df = df.withColumn("entry_date", to_date("entry_date", "yyyy-MM-dd")) \
-    .withColumn("year", year("entry_date_parsed")) \
-    .withColumn("month", month("entry_date_parsed")) \
-    .withColumn("day", dayofmonth("entry_date_parsed"))
-    df.drop("entry_date_parsed")
-# -------------------- PostgreSQL Writer --------------------
-    #Write to S3 partitioned by year, month, day
-    df.write \
-    .partitionBy("year", "month", "day") \
-    .mode("overwrite") \
-    .option("header", "true") \
-    .parquet(output_path)
+def write_to_s3(df, output_path):
+    try:   
+        logger.info(f"Writing data to S3 at {output_path}") 
+    # Convert entry-date to date type and extract year, month, day
+        
+        #df = df.withColumn("start_date_parsed", to_date(coalesce("start_date", "entry_date"), "yyyy-MM-dd")) \
+        # entry date is when added to the platform and start date is when it became legally applicable.
+        #Confired with client that for partitioning we will use the available entry date when another date is not available. 873
+        df = df.withColumn("entry_date", to_date("entry_date", "yyyy-MM-dd")) \
+        .withColumn("year", year("entry_date_parsed")) \
+        .withColumn("month", month("entry_date_parsed")) \
+        .withColumn("day", dayofmonth("entry_date_parsed"))
+        df.drop("entry_date_parsed")
+    # -------------------- PostgreSQL Writer --------------------
+        #Write to S3 partitioned by year, month, day
+        df.write \
+        .partitionBy("year", "month", "day") \
+        .mode("overwrite") \
+        .option("header", "true") \
+        .parquet(output_path)
+    except Exception as e:
+        logger.error(f"Failed to write to S3: {e}", exc_info=True)
+        raise
     
 
 def generate_sqlite(df):
@@ -264,21 +275,26 @@ def generate_sqlite(df):
 
     except Exception as e:
         logger.error(f"Failed to write to SQLite: {e}", exc_info=True)
+        raise
 
 # -------------------- PostgreSQL Writer --------------------
 
 ##writing to postgres db
 def write_to_postgres(df, config):
-    logger.info(f"Writing data to PostgreSQL table {config['TABLE_NAME']}")
-    df.write \
-        .format(config['PG_JDBC']) \
-        .option("url", config['PG_URL']) \
-        .option("dbtable", config['TABLE_NAME']) \
-        .option("user", config['USER_NAME']) \
-        .option("password", config['PASSWORD']) \
-        .option("driver", config['DRIVER']) \
-        .mode("overwrite") \
-        .save()
+    try:
+        logger.info(f"Writing data to PostgreSQL table {config['TABLE_NAME']}")
+        df.write \
+            .format(config['PG_JDBC']) \
+            .option("url", config['PG_URL']) \
+            .option("dbtable", config['TABLE_NAME']) \
+            .option("user", config['USER_NAME']) \
+            .option("password", config['PASSWORD']) \
+            .option("driver", config['DRIVER']) \
+            .mode("overwrite") \
+            .save()
+    except Exception as e:
+        logger.error(f"Failed to write to PostgreSQL: {e}", exc_info=True)
+        raise
 # -------------------- Main --------------------
 def main():
     try:
