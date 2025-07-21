@@ -2,6 +2,7 @@ import configparser
 import logging
 import os
 import boto3
+import pkgutil
 from datetime import datetime
 #import sqlite3
 import sys
@@ -90,25 +91,61 @@ def create_spark_session(config,app_name="EMR Transform Job"):
 
 
 # -------------------- Metadata Loader --------------------
-def load_metadata(s3_uri):
-    """
-    Load a JSON configuration file from an S3 URI.
-    Example URI: S3://development-collection-data/emr-data-processing/src0/pyspark-jobs/src/config/configuration.json
-    """
-    if not s3_uri.startswith("s3://"):
-        raise ValueError("Invalid S3 URI")
-    try:
-        s3 = boto3.client('s3')
-        parts = s3_uri.replace("s3://", "").split("/", 1)
-        bucket = parts[0]
-        key = parts[1]
+# def load_metadata(s3_uri):
+#     """
+#     Load a JSON configuration file from an S3 URI.
+#     Example URI: S3://development-collection-data/emr-data-processing/src0/pyspark-jobs/src/config/configuration.json
+#     """
+#     logger.info(f"Loading metadata from {s3_uri}")
+
+#     if not s3_uri.startswith("s3://"):
+#         raise ValueError("Invalid S3 URI")
+#     try:
+#         s3 = boto3.client('s3')
+#         parts = s3_uri.replace("s3://", "").split("/", 1)
+#         bucket = parts[0]
+#         key = parts[1]
     
-        response = s3.get_object(Bucket=bucket, Key=key)
-        return json.load(response['Body'])
+#         response = s3.get_object(Bucket=bucket, Key=key)
+#         return json.load(response['Body'])
   
+#     except Exception as e:
+#         logger.exception(f"Unexpected error while loading metadata from {s3_uri}")
+#         raise
+
+
+def load_metadata(uri: str) -> dict:
+    """
+    Load a JSON configuration file from either an S3 URI or a package-relative path.
+
+    Args:
+        uri (str): S3 URI (e.g., s3://bucket/key) or package-relative path (e.g., config/datasets.json)
+
+    Returns:
+        dict: Parsed JSON content.
+
+    Raises:
+        FileNotFoundError: If the file is not found.
+        ValueError: If the file content is invalid.
+    """
+    logger.info(f"Loading metadata from {uri}")
+
+    try:
+        if uri.lower().startswith("s3://"):
+            s3 = boto3.client("s3")
+            bucket, key = uri.replace("s3://", "", 1).split("/", 1)
+            response = s3.get_object(Bucket=bucket, Key=key)
+            return json.load(response["Body"])
+        else:
+            data = pkgutil.get_data(__package__, uri)
+            if data is None:
+                raise FileNotFoundError(f"File not found in package: {uri}")
+            return json.loads(data.decode("utf-8"))
+
     except Exception as e:
-        logger.exception(f"Unexpected error while loading metadata from {s3_uri}")
+        logger.exception(f"Error loading metadata from {uri}: {e}")
         raise
+
 
 # -------------------- Data Reader --------------------
 def read_data(spark, input_path):
@@ -132,9 +169,10 @@ def transform_data(df, table_name):
     #json_data = load_json_from_repo("~/pyspark-jobs/src/config/transformed-source.json")
     #TODO: Update this to be dynamic and remove hardcoded path
 
+    json_data = "src/config/transformed-source.json" 
 
-    base_path = os.path.dirname(__file__)
-    json_data = os.path.join(base_path, "../config/transformed-source.json")
+    # base_path = os.path.dirname(__file__)
+    # json_data = os.path.join(base_path, "../config/transformed-source.json")    
 
     # json_data = read_json_file("s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/src/config/transformed-source.json")
     logger.info(f"Transforming data with schema: {json_data}")
@@ -170,9 +208,10 @@ def transform_data(df, table_name):
 def populate_tables(df, table_name):   
     from utils.path_utils import load_json_from_repo
     
+    # base_path = os.path.dirname(__file__)
+    # json_data = os.path.join(base_path, "../config/transformed-target.json")
 
-    base_path = os.path.dirname(__file__)
-    json_data = os.path.join(base_path, "../config/transformed-target.json")
+    json_data = "src/config/transformed-target.json" 
 
     # json_data = load_json_from_repo("~/pyspark-jobs/src/config/transformed-target.json")
 
@@ -191,11 +230,12 @@ def write_to_s3(df, output_path):
     
     #df = df.withColumn("start_date_parsed", to_date(coalesce("start_date", "entry_date"), "yyyy-MM-dd")) \
     # entry date is when added to the platform and start date is when it became legally applicable.
-    df = df.withColumn("start_date_parsed", to_date("start_date", "yyyy-MM-dd")) \
-    .withColumn("year", year("start_date_parsed")) \
-    .withColumn("month", month("start_date_parsed")) \
-    .withColumn("day", dayofmonth("start_date_parsed"))
-    df.drop("start_date_parsed")
+    #Confired with client that for partitioning we will use the available entry date when another date is not available. 873
+    df = df.withColumn("entry_date", to_date("entry_date", "yyyy-MM-dd")) \
+    .withColumn("year", year("entry_date_parsed")) \
+    .withColumn("month", month("entry_date_parsed")) \
+    .withColumn("day", dayofmonth("entry_date_parsed"))
+    df.drop("entry_date_parsed")
 # -------------------- PostgreSQL Writer --------------------
     #Write to S3 partitioned by year, month, day
     df.write \
@@ -248,8 +288,10 @@ def main():
         
         # Define paths to JSON configuration files
 
-        base_path = os.path.dirname(__file__)
-        dataset_json_path = os.path.join(base_path, "../config/datasets.json")
+        dataset_json_path = "src/config/datasets.json"        
+
+        # base_path = os.path.dirname(__file__)
+        # dataset_json_path = os.path.join(base_path, "../config/datasets.json")
 
         # dataset_json_path="s3://development-collection-data/emr-data-processing/src0/pyspark-jobs/src/config/datasets.json"
         # dataset_json_path="/home/MHCLG-Repo/pyspark-jobs/src/config/datasets.json"
