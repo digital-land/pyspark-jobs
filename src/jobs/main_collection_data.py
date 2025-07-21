@@ -9,7 +9,7 @@ from dataclasses import fields
 from logging import config
 from logging.config import dictConfig
 import json
-import transform_collection_data
+from . import transform_collection_data
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (coalesce,collect_list,concat_ws,dayofmonth,expr,first,month,to_date,year)
 from pyspark.sql.types import (StringType,StructField,StructType,TimestampType)
