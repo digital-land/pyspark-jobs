@@ -5,6 +5,7 @@ import boto3
 import pkgutil
 import json
 import sys
+import argparse
 from jobs.transform_collection_data import (transform_data_fact, transform_data_fact_res,
                                        transform_data_issues, transform_data_entity) 
 #import sqlite3
@@ -256,14 +257,33 @@ def write_to_postgres(df, config):
     except Exception as e:
         logger.error(f"Failed to write to PostgreSQL: {e}", exc_info=True)
         raise
+# -------------------- Argument Parser --------------------
+def parse_args():
+    logger.info("parse_args:Parsing command line arguments")
+    parser = argparse.ArgumentParser(description="ETL Process for Collection Data")
+    parser.add_argument("--load_type", type=str, required=True,
+                        help="Type of load operation (e.g., full, incremental)")
+    parser.add_argument("--data_set", type=str, required=True,
+                        help="Name of the dataset to process")
+    args = parser.parse_args()
+    logger.info(f"parse_args:Adding arguments for dataset: {args.data_set}")
+    return args
+
 
 # -------------------- Main --------------------
-def main():
-    try:
+def main(args):
+    try:        
+        load_type = args.load_type
+        data_set = args.data_set
+        logger.info(f"Main: Load type is {load_type} and dataset is {data_set}")
+
         logger.info("Main: Starting main ETL process for collection Data")          
         start_time = datetime.now()
-        logger.info(f"Main: Spark session started at: {start_time}")
+        logger.info(f"Main: Spark session started at: {start_time}")        
         
+        dataset_json_name = args.dataset_json_path
+        load_type = args.output_base_path
+
         # Define paths to JSON configuration files
         dataset_json_path = "config/datasets.json"  
         # Relative path within the package
@@ -333,5 +353,6 @@ def main():
         logger.info(f"Total duration: {duration}")
 
 
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__":    
+    args = parse_args()
+    main(args)
