@@ -5,7 +5,7 @@ import boto3
 import pkgutil
 import json
 import sys
-from transform_collection_data import (transform_data_fact, transform_data_fact_res,
+from jobs.transform_collection_data import (transform_data_fact, transform_data_fact_res,
                                        transform_data_issues, transform_data_entity) 
 #import sqlite3
 from datetime import datetime
