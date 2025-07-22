@@ -7,7 +7,8 @@ setup(
     package_dir={'': 'src'},
     include_package_data=True,
     package_data={
-        'jobs.config': ['datasets.json'],
+        # 'jobs.config': ['datasets.json'],
+        'jobs.config': ['*.json'],  # Include all JSON files in src/config
     },
     install_requires=[],
     author='M Santana',

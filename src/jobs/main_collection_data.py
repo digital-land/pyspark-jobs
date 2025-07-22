@@ -6,15 +6,16 @@ import pkgutil
 import json
 import sys
 #import sqlite3
-
 from datetime import datetime
 from dataclasses import fields
 from logging import config
 from logging.config import dictConfig
 #from jobs import transform_collection_data
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import (coalesce,collect_list,concat_ws,dayofmonth,expr,first,month,to_date,year)
+from pyspark.sql.functions import (coalesce,collect_list,concat_ws,dayofmonth,expr,first,month,to_date,year,row_number)
 from pyspark.sql.types import (StringType,StructField,StructType,TimestampType)
+from pyspark.sql.window import Window
+
 #from utils.path_utils import load_json_from_repo
 
 # -------------------- Logging Configuration --------------------
@@ -42,33 +43,36 @@ dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger(__name__)
 
 # -------------------- Json File Reader --------------------
-def read_json_file(file_path):    
-    """
-    Reads a JSON file from either a local path or an S3 URI.
+# def read_json_file(file_path):    
+#     """
+#     Reads a JSON file from either a local path or an S3 URI.
     
-    Args:
-        file_path (str): Path to the JSON file. Can be local or S3 URI.
+#     Args:
+#         file_path (str): Path to the JSON file. Can be local or S3 URI.
     
-    Returns:
-        dict: Parsed JSON content.
-    """    
-    if file_path.startswith("s3://"):
-        try:
-            s3 = boto3.client("s3")
-            bucket, key = file_path.replace("s3://", "").split("/", 1)
-            response = s3.get_object(Bucket=bucket, Key=key)
-            content = response["Body"].read().decode("utf-8")
-            return json.loads(content)
-        except Exception as e:
-            logger.error(f"Failed to read JSON from S3: {e}")
-            raise
-    else:
-        try:
-            with open(file_path, "r") as file:
-                return json.load(file)
-        except Exception as e:
-            logger.error(f"Failed to read JSON from local path: {e}")
-            raise
+#     Returns:
+#         dict: Parsed JSON content.
+#     """    
+#     if file_path.startswith("s3://"):
+#         try:
+#             logger.info(f"Reading JSON from S3: {file_path}")
+#             s3 = boto3.client("s3")
+#             bucket, key = file_path.replace("s3://", "").split("/", 1)
+#             response = s3.get_object(Bucket=bucket, Key=key)
+#             logger.info(f"Successfully read JSON from S3: {response}")
+#             content = response["Body"].read().decode("utf-8")
+#             return json.loads(content)
+#         except Exception as e:
+#             logger.error(f"Failed to read JSON from S3: {e}")
+#             raise
+#     else:
+#         try:
+#             logger.info(f"Reading JSON from local path: {file_path}")
+#             with open(file_path, "r") as file:
+#                 return json.load(file)
+#         except Exception as e:
+#             logger.error(f"Failed to read JSON from local path: {e}")
+#             raise
 
 # -------------------- Spark Session --------------------
 def create_spark_session(config,app_name="EMR Transform Job"):
@@ -190,7 +194,10 @@ def read_data(spark, input_path):
 # -------------------- Data Transformer --------------------
 def transform_data(df, table_name):      
     try:
-        json_data = read_json_file("src/config/transformed-source.json")
+        dataset_json_transformed_path = "config/transformed_source.json"
+        #json_data = read_json_file(dataset_json_transformed_path)
+        json_data = load_metadata(dataset_json_transformed_path)
+
         logger.info(f"Transforming data with schema: {json_data}")
 
         # Extract the list of fields
@@ -213,6 +220,9 @@ def transform_data(df, table_name):
             logger.warning("Some fields are missing")
             
         if table_name == 'fact-res':
+            logger.info("Transforming data for Fact Resource table")
+            df.printSchema() 
+            df.show()
             return transform_data_fact_res(df)
         elif table_name == 'fact':
             return transform_data_fact(df)
@@ -306,7 +316,7 @@ def write_to_postgres(df, config):
 
 # -------------------- Transformation Testing --------------------
 def transform_data_fact(df):      
-    logger.info("Transforming data for fact table")
+    logger.info("Transforming data for Fact table")
     # Define the window specification
     window_spec = Window.partitionBy("fact").orderBy("priority", "entry_date", "entry_number").rowsBetween(Window.unboundedPreceding, Window.currentRow)
     logger.info(f"Window specification defined for partitioning by 'fact' and ordering {window_spec})")
@@ -315,17 +325,16 @@ def transform_data_fact(df):
     logger.info(f"Row number added to DataFrame {df_with_rownum.columns}")
     
     # Filter to keep only the top row per partition
-    final_df = df_with_rownum.filter(df_with_rownum["row_num"] == 1).drop("row_num")
-    logger.info(f"Final DataFrame after filtering: {final_df.columns}")
-    final_df_show = final_df.select("fact","end_date","entity","field", "priority", "entry_date", "reference_entity","start_date", "value")
-    return final_df_show
+    transf_df = df_with_rownum.filter(df_with_rownum["row_num"] == 1).drop("row_num")    
+    transf_df = transf_df.select("fact","end_date","entity","field","entry_date","priority","reference_entity","start_date", "value")
+    logger.info(f"Final DataFrame after filtering: {transf_df.columns}")
+    return transf_df
 
 def transform_data_fact_res(df):      
-    logger.info("Transforming data for fact table")
-    #
-    logger.info(f"Final DataFrame after filtering: {final_df.columns}")
-    final_df_show = final_df.select("fact","end_date","source","entry_number", "priority", "entry_date", "start_date")
-    return final_df_show
+    logger.info("Transforming data for Fact Resource table")
+    transf_df = df.select("end_date","fact","entry_date","entry_number", "priority","resource","start_date")
+    logger.info(f"Final DataFrame after filtering: {transf_df.columns}")
+    return transf_df
 
 
 def transform_data_issues(df):      
