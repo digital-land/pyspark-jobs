@@ -11,7 +11,7 @@ from datetime import datetime
 from dataclasses import fields
 from logging import config
 from logging.config import dictConfig
-from jobs import transform_collection_data
+#from jobs import transform_collection_data
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (coalesce,collect_list,concat_ws,dayofmonth,expr,first,month,to_date,year)
 from pyspark.sql.types import (StringType,StructField,StructType,TimestampType)
@@ -117,10 +117,10 @@ def create_spark_session(config,app_name="EMR Transform Job"):
 
 def load_metadata(uri: str) -> dict:
     """
-    Load a JSON configuration file from either an S3 URI or a package-relative path.
+    Load a JSON configuration file from either an S3 URI or a local file path.
 
     Args:
-        uri (str): S3 URI (e.g., s3://bucket/key) or package-relative path (e.g., config/datasets.json)
+        uri (str): S3 URI (e.g., s3://bucket/key) or local file path
 
     Returns:
         dict: Parsed JSON content.
@@ -130,22 +130,51 @@ def load_metadata(uri: str) -> dict:
         ValueError: If the file content is invalid.
     """
     logger.info(f"Loading metadata from {uri}")
-
     try:
         if uri.lower().startswith("s3://"):
+            # Handle S3 path
             s3 = boto3.client("s3")
             bucket, key = uri.replace("s3://", "", 1).split("/", 1)
             response = s3.get_object(Bucket=bucket, Key=key)
             return json.load(response["Body"])
         else:
-            data = pkgutil.get_data(__package__, uri)
-            if data is None:
-                raise FileNotFoundError(f"File not found in package: {uri}")
-            return json.loads(data.decode("utf-8"))
+            # Handle local file path or file within .whl package
+            try:
+                # Try to load using pkgutil if running from .whl
+                package_name = __package__  # will be 'jobs'
+                logger.info(f"Attempting to load from package using pkgutil with package_name: {package_name} and uri: {uri}")
+                data = pkgutil.get_data(package_name, uri)
+                if data:
+                    logger.info("Successfully loaded from package using pkgutil")
+                    return json.loads(data.decode('utf-8'))
+                else:
+                    raise FileNotFoundError(f"pkgutil.get_data could not find {uri}")
+            except Exception as e:
+                # If pkgutil fails, try to load from the file system
+                logger.warning(f"pkgutil.get_data failed: {e}, attempting to read from file system. Error: {e}")
+                try:
+                    # Check if the path is absolute
+                    if os.path.isabs(uri):
+                        filepath = uri
+                    else:
+                        # Construct the absolute path relative to the script's location
+                        script_dir = os.path.dirname(os.path.abspath(__file__))
+                        filepath = os.path.join(script_dir, uri)
 
-    except Exception as e:
-        logger.exception(f"Error loading metadata from {uri}: {e}")
+                    logger.info(f"Attempting to load from file system with filepath: {filepath}")
+                    with open(filepath, 'r') as f:
+                        logger.info("Successfully loaded from file system")
+                        return json.load(f)
+                except FileNotFoundError as e:
+                    logger.error(f"Configuration file not found in file system: {e}")
+                    raise
+    except FileNotFoundError as e:
+        logger.error(f"Configuration file not found: {e}")
         raise
+    except Exception as e:
+        logger.error(f"Error loading metadata from {uri}: {e}")
+        raise
+
 
 
 # -------------------- Data Reader --------------------
@@ -184,13 +213,13 @@ def transform_data(df, table_name):
             logger.warning("Some fields are missing")
             
         if table_name == 'fact-res':
-            return transform_collection_data.transform_data_fact_res(df)
+            return transform_data_fact_res(df)
         elif table_name == 'fact':
-            return transform_collection_data.transform_data_fact(df)
+            return transform_data_fact(df)
         elif table_name == 'entity':
-            return transform_collection_data.transform_data_entity(df)
+            return transform_data_entity(df)
         elif table_name == 'issues':
-            return transform_collection_data.transform_data_issues(df)
+            return transform_data_issues(df)
         else:
             raise ValueError(f"Unknown table name: {table_name}")
 
@@ -274,6 +303,41 @@ def write_to_postgres(df, config):
     except Exception as e:
         logger.error(f"Failed to write to PostgreSQL: {e}", exc_info=True)
         raise
+
+# -------------------- Transformation Testing --------------------
+def transform_data_fact(df):      
+    logger.info("Transforming data for fact table")
+    # Define the window specification
+    window_spec = Window.partitionBy("fact").orderBy("priority", "entry_date", "entry_number").rowsBetween(Window.unboundedPreceding, Window.currentRow)
+    logger.info(f"Window specification defined for partitioning by 'fact' and ordering {window_spec})")
+    # Add row number
+    df_with_rownum = df.withColumn("row_num", row_number().over(window_spec))
+    logger.info(f"Row number added to DataFrame {df_with_rownum.columns}")
+    
+    # Filter to keep only the top row per partition
+    final_df = df_with_rownum.filter(df_with_rownum["row_num"] == 1).drop("row_num")
+    logger.info(f"Final DataFrame after filtering: {final_df.columns}")
+    final_df_show = final_df.select("fact","end_date","entity","field", "priority", "entry_date", "reference_entity","start_date", "value")
+    return final_df_show
+
+def transform_data_fact_res(df):      
+    logger.info("Transforming data for fact table")
+    #
+    logger.info(f"Final DataFrame after filtering: {final_df.columns}")
+    final_df_show = final_df.select("fact","end_date","source","entry_number", "priority", "entry_date", "start_date")
+    return final_df_show
+
+
+def transform_data_issues(df):      
+    
+    return df
+
+def transform_data_entity(df):     
+    
+        
+    return df
+
+
 # -------------------- Main --------------------
 def main():
     try:
@@ -283,7 +347,9 @@ def main():
         
         # Define paths to JSON configuration files
 
-        dataset_json_path = "src/config/datasets.json"        
+        dataset_json_path = "config/datasets.json"  # Relative path within the package
+        logger.info(f"Using dataset_json_path: {dataset_json_path}")
+  
 
         # base_path = os.path.dirname(__file__)
         # dataset_json_path = os.path.join(base_path, "../config/datasets.json")
@@ -294,9 +360,7 @@ def main():
         logger.info(f"Processing dataset: {dataset_json_path}")              
          # Load AWS configuration
         config_json_datasets = load_metadata(dataset_json_path)
-
-        logger.info(f"Loaded configuration #872 : {config_json_datasets}")
-        #logger.info(f"Loaded dataset configuration #872 : {config_dataset}")
+        logger.info(f"Loaded configuration: {config_json_datasets}")
  
         for dataset, path_info in config_json_datasets.items():
             if not path_info.get("enabled", False):
@@ -345,18 +409,13 @@ def main():
     except Exception as e:
         logger.exception("An error occurred during the ETL process: %s", str(e))
     finally:
-        try:
-            spark.stop()            
-            end_time = datetime.now()
-            logger.info(f"Spark session ended at: {end_time}")
-            # Duration
-            duration = end_time - start_time
-            logger.info(f"Total duration: {duration}")
+        spark.stop()            
+        end_time = datetime.now()
+        logger.info(f"Spark session ended at: {end_time}")
+        # Duration
+        duration = end_time - start_time
+        logger.info(f"Total duration: {duration}")
 
-        except Exception as e:
-            logger.info("Spark session stopped.")
-        except Exception as stop_err:
-            logger.exception("An error occurred while stopping Spark: %s", str(e))
 
 if __name__ == "__main__":
     main()

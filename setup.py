@@ -5,12 +5,11 @@ setup(
     version='0.1.0',
     packages=find_packages(where='src'),
     package_dir={'': 'src'},
-    install_requires=[
-        # 'pandas>=1.3.0',
-        # 'numpy>=1.21.0',
-        # Add other dependencies here, but exclude pyspark
-    ],
     include_package_data=True,
+    package_data={
+        'jobs.config': ['datasets.json'],
+    },
+    install_requires=[],
     author='M Santana',
     description='PySpark jobs for EMR Serverless with Airflow integration',
     python_requires='>=3.8',
