@@ -1,5 +1,5 @@
 import os
-import yaml
+import json
 
 def resolve_desktop_path(relative_path):
     """
@@ -15,18 +15,16 @@ def resolve_repo_path(relative_path):
     repo_base = os.path.join(os.path.expanduser("~"), "github_repo", "pyspark-jobs")
     return os.path.join(repo_base, relative_path)
 
-def load_yaml_from_repo(relative_path):
+def load_json_from_repo(relative_path):
     """
-    Loads a YAML file from a path relative to the 'pyspark-jobs' repo.
+    Loads a JSON file from a path relative to the 'pyspark-jobs' repo.
 
     Args:
         relative_path (str): The path relative to the user's repo directory.
 
     Returns:
-        dict: Parsed YAML content.
+        dict: Parsed JSON content.
     """
     full_path = resolve_repo_path(relative_path)
     with open(full_path, "r") as file:
-        return yaml.safe_load(file)
-
-
+        return json.load(file)
