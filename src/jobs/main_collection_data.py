@@ -36,6 +36,15 @@ LOGGING_CONFIG = {
             "level": "INFO",
         },
     },
+    
+    "file": {
+                "class": "logging.FileHandler",
+                "formatter": "default",
+                "level": "INFO",
+                "filename": "logs/emr_transform_job.log",  # You can customize the path
+                "mode": "a",  # Append mode
+            },
+
     "root": {
         "handlers": ["console"],
         "level": "INFO",
