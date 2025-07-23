@@ -139,7 +139,6 @@ def load_metadata(uri: str) -> dict:
         raise
 
 
-
 # -------------------- Data Reader --------------------
 def read_data(spark, input_path):
     try:
@@ -326,7 +325,7 @@ def main(args):
             ##generate_sqlite(processed_df)
 
             logger.info("Main: Writing to target s3 output path: process started")
-            output_path = f"s3://development-collection-data/emr-data-processing/assemble-parquet/{dataset}/"
+            output_path = f"s3://development-collection-data/emr-data-processing/assemble-parquet/{data_set}/"
             logger.info(f" Main: Writing to output path: {output_path}")
 
             processed_df = transform_data(df,'fact-res')
@@ -349,10 +348,7 @@ def main(args):
             logger.info(f"Main: Delta load type specified: {load_type}")
         else:
             logger.error(f"Main: Invalid load type specified: {load_type}")
-            raise ValueError(f"Invalid load type: {load_type}")
-
-
-        
+            raise ValueError(f"Invalid load type: {load_type}")        
 
     except Exception as e:
         logger.exception("Main: An error occurred during the ETL process: %s", str(e))
