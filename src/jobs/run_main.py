@@ -33,6 +33,8 @@ def parse_args():
                         help="Type of load operation (e.g., full, incremental)")
     parser.add_argument("--data_set", type=str, required=True,
                         help="Name of the dataset to process")
+    parser.add_argument("--path", type=str, required=True,
+                        help="Path to the dataset")
     args = parser.parse_args()
     print(f"parse_args:Adding arguments for dataset: {args}")
     return args

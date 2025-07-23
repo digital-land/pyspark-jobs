@@ -266,15 +266,14 @@ def main(args):
     try:        
         load_type = args.load_type
         data_set = args.data_set
-        logger.info(f"Main: Load type is {load_type} and dataset is {data_set}")
+        path = args.path
+
+        logger.info(f"Main: Load type is {load_type} and dataset is {data_set} and path is {path}")
 
         logger.info("Main: Starting main ETL process for collection Data")          
         start_time = datetime.now()
-        logger.info(f"Main: Spark session started at: {start_time}")        
+        logger.info(f"Main: Spark session started at: {start_time}")  
         
-        dataset_json_name = args.dataset_json_path
-        load_type = args.output_base_path
-
         # Define paths to JSON configuration files
         dataset_json_path = "config/datasets.json"  
         # Relative path within the package
