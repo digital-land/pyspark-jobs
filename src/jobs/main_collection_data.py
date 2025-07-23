@@ -257,21 +257,12 @@ def write_to_postgres(df, config):
     except Exception as e:
         logger.error(f"Failed to write to PostgreSQL: {e}", exc_info=True)
         raise
-# -------------------- Argument Parser --------------------
-def parse_args():
-    logger.info("parse_args:Parsing command line arguments")
-    parser = argparse.ArgumentParser(description="ETL Process for Collection Data")
-    parser.add_argument("--load_type", type=str, required=True,
-                        help="Type of load operation (e.g., full, incremental)")
-    parser.add_argument("--data_set", type=str, required=True,
-                        help="Name of the dataset to process")
-    args = parser.parse_args()
-    logger.info(f"parse_args:Adding arguments for dataset: {args.data_set}")
-    return args
+
 
 
 # -------------------- Main --------------------
 def main(args):
+    logger.info(f"Main: Starting ETL process for Collection Data {args.load_type} and dataset {args.data_set}")
     try:        
         load_type = args.load_type
         data_set = args.data_set
@@ -353,6 +344,5 @@ def main(args):
         logger.info(f"Total duration: {duration}")
 
 
-if __name__ == "__main__":    
-    args = parse_args()
-    main(args)
+#if __name__ == "__main__":    
+    #main()
