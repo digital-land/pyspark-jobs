@@ -55,7 +55,9 @@ dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger(__name__)
 
 # -------------------- Spark Session --------------------
-def create_spark_session(config,app_name="EMR Transform Job"):
+#def create_spark_session(config,app_name="EMR Transform Job"):
+def create_spark_session(app_name="EMR Transform Job"):
+
     try:
         logger.info(f"Creating Spark session with app name: {app_name}")
 
@@ -272,42 +274,43 @@ def write_to_postgres(df, config):
 # -------------------- Main --------------------
 def main(args):
     logger.info(f"Main: Starting ETL process for Collection Data {args.load_type} and dataset {args.data_set}")
-    try:        
+    try: 
+
+        logger.info("Main: Starting main ETL process for collection Data")          
+        start_time = datetime.now()
+        logger.info(f"Main: Spark session started at: {start_time}")    
+
         load_type = args.load_type
         data_set = args.data_set
-        dataset_json_path = args.path
+        s3_uri = args.path
+
+        spark = create_spark_session()
+        logger.info(f"Main: Spark session created successfully for dataset: {data_set}")
 
         if(load_type == 'full'):
             #invoke full load logic
             logger.info(f"Main: Full load type specified: {load_type}")
-            logger.info(f"Main: Load type is {load_type} and dataset is {data_set} and path is {dataset_json_path}")
-
-            logger.info("Main: Starting main ETL process for collection Data")          
-            start_time = datetime.now()
-            logger.info(f"Main: Spark session started at: {start_time}")  
+            logger.info(f"Main: Load type is {load_type} and dataset is {data_set} and path is {s3_uri}")             
             
             # Define paths to JSON configuration files
             #dataset_json_path = "config/datasets.json"  
             # Relative path within the package
-            logger.info(f"Main: JSON configuration files path for datasets: {dataset_json_path}")              
+            #logger.info(f"Main: JSON configuration files path for datasets: {s3_uri}")              
             # Load AWS configuration
-            config_json_datasets = load_metadata(dataset_json_path)
-            logger.info(f"Main: JSON configuration files for config files: {config_json_datasets}")
+            #config_json_datasets = load_metadata(s3_uri)
+            #logger.info(f"Main: JSON configuration files for config files: {config_json_datasets}")
 
             #for dataset, path_info in config_json_datasets.items():
             #if not path_info.get("enabled", False):
                 #logger.info(f"Main: Skipping dataset with false as enabled flag: {dataset}")
                 #continue
             #ogger.info(f"Main: Started Processing enabled dataset : {dataset}")
-            logger.info(f"Main: Processing dataset with path information : {dataset_json_path}")
-            
-            full_path = f"{dataset_json_path}*.csv"
+            logger.info(f"Main: Processing dataset with path information : {s3_uri}")
+
+            full_path = f"{s3_uri}*.csv"
             logger.info(f"Main: Dataset input path including csv file path: {full_path}")
 
-
-            spark = create_spark_session(config_json_datasets)
-            logger.info(f"Main: Spark session created successfully for dataset: {data_set}")
-
+            
             # Read CSV using the dynamic schema
             df = spark.read.option("header", "true").csv(full_path)
             df.cache()  # Cache the DataFrame for performance
