@@ -27,8 +27,6 @@ def transform_data_fact_res(df):
 
 def transform_data_issue(df): 
     logger.info("transform_data_issue:Transforming data for Issue table") 
-    from pyspark.sql.functions import lit
-
     transf_df = df.withColumn("start_date", lit("").cast("string")) \
        .withColumn("entry_date", lit("").cast("string")) \
        .withColumn("end_date", lit("").cast("string"))    

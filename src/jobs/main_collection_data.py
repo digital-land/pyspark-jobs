@@ -290,9 +290,8 @@ def main(args):
        
         s3_uri=s3_uri+data_set+"-collection"
 
-        #table_names=["fact","fact_res","entity","issue"]
-        table_names=["issue"]
-
+        table_names=["fact","fact_res","entity","issue"]
+        
         spark = create_spark_session()
         logger.info(f"Main: Spark session created successfully for dataset: {data_set}")
 
