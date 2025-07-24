@@ -1,5 +1,6 @@
+
 {
-  "transport-access-node": [
+  "schema_fact_res_fact_entity": [
     "end_date",
     "entity",
     "entry_date",
@@ -11,5 +12,16 @@
     "resource",
     "start_date",
     "value"
+  ],
+  "schema_issue": [
+    "dataset",
+    "resource",
+    "line_number",
+    "entry_number",
+    "field",
+    "entity",
+    "issue_type",
+    "value",
+    "message"    
   ]
 }

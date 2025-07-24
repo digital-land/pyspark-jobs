@@ -1,5 +1,5 @@
 from venv import logger
-from pyspark.sql.functions import row_number
+from pyspark.sql.functions import row_number, lit
 from pyspark.sql.window import Window
 
 # -------------------- Transformation Processing --------------------
@@ -25,9 +25,14 @@ def transform_data_fact_res(df):
     return transf_df
 
 
-def transform_data_issues(df):     
-    
-    return df
+def transform_data_issue(df): 
+    logger.info("transform_data_issue:Transforming data for Issue table") 
+    transf_df = df.withColumn("start_date", lit("").cast("string")) \
+       .withColumn("entry_date", lit("").cast("string")) \
+       .withColumn("end_date", lit("").cast("string"))    
+
+    logger.info(f"transform_data_fact_res:Final DataFrame after filtering: {transf_df.columns}")      
+    return transf_df
 
 def transform_data_entity(df):       
         

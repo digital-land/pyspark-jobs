@@ -7,7 +7,7 @@ import json
 import sys
 import argparse
 from jobs.transform_collection_data import (transform_data_fact, transform_data_fact_res,
-                                       transform_data_issues, transform_data_entity) 
+                                       transform_data_issue, transform_data_entity) 
 #import sqlite3
 from datetime import datetime
 from dataclasses import fields
@@ -150,16 +150,20 @@ def read_data(spark, input_path):
         raise
 
 # -------------------- Data Transformer --------------------
-def transform_data(df, table_name):      
+def transform_data(df, schema_name):      
     try:
         dataset_json_transformed_path = "config/transformed_source.json"
-        logger.info(f"transform_data: Transforming data for table: {table_name} using schema from {dataset_json_transformed_path}")
+        logger.info(f"transform_data: Transforming data for table: {schema_name} using schema from {dataset_json_transformed_path}")
         json_data = load_metadata(dataset_json_transformed_path)
         logger.info(f"transform_data: Transforming data with schema with json data: {json_data}")
 
         # Extract the list of fields
-        fields = json_data.get("transport-access-node", [])
-        logger.info(f"transform_data: Fields to select from json data {fields}")
+        if (schema_name == 'fact' or schema_name == 'fact_res' or schema_name == 'entity'):
+            fields = json_data.get("schema_fact_res_fact_entity", [])
+            logger.info(f"transform_data: Fields to select from json data {fields} for {schema_name}")
+        elif (schema_name == 'issue'):
+            fields = json_data.get("schema_issue", [])
+            logger.info(f"transform_data: Fields to select from json data {fields} for {schema_name}")
 
         # Replace hyphens with underscores in column names
         for col in df.columns:
@@ -180,20 +184,20 @@ def transform_data(df, table_name):
         else:
             logger.warning("transform_data: Some fields are missing in the DataFrame")
             
-        if table_name == 'fact-res':
+        if schema_name == 'fact_res':
             logger.info("transform_data: Transforming data for Fact Resource table")
             return transform_data_fact_res(df)
-        elif table_name == 'fact':
+        elif schema_name == 'fact':
             logger.info("transform_data: Transforming data for Fact table")
             return transform_data_fact(df)
-        elif table_name == 'entity':
+        elif schema_name == 'entity':
             logger.info("transform_data: Transforming data for Entity table")
             return transform_data_entity(df)
-        elif table_name == 'issues':
-            logger.info("transform_data: Transforming data for Issues table")
-            return transform_data_issues(df)
+        elif schema_name == 'issue':
+            logger.info("transform_data: Transforming data for Issue table")
+            return transform_data_issue(df)
         else:
-            raise ValueError(f"Unknown table name: {table_name}")
+            raise ValueError(f"Unknown table name: {schema_name}")
 
     except Exception as e:
         logger.error(f"Error transforming data: {e}")
@@ -203,16 +207,17 @@ def transform_data(df, table_name):
 def write_to_s3(df, output_path):
     try:   
         logger.info(f"Writing data to S3 at {output_path}") 
-        
+                
         # Convert entry-date to date type and use it for partitioning
+        #if df.entry_date!= 'NONE' or df.entry_date !='':
         df = df.withColumn("entry_date_parsed", to_date("entry_date", "yyyy-MM-dd"))
         df = df.withColumn("year", year("entry_date_parsed")) \
-              .withColumn("month", month("entry_date_parsed")) \
-              .withColumn("day", dayofmonth("entry_date_parsed"))
+            .withColumn("month", month("entry_date_parsed")) \
+            .withColumn("day", dayofmonth("entry_date_parsed"))
         
         # Drop the temporary parsing column
         df = df.drop("entry_date_parsed")
-        
+            
         # Write to S3 partitioned by year, month, day
         df.write \
           .partitionBy("year", "month", "day") \
@@ -278,15 +283,20 @@ def main(args):
         logger.info("Main: Starting main ETL process for collection Data")          
         start_time = datetime.now()
         logger.info(f"Main: Spark session started at: {start_time}")    
-
+        #s3://development-collection-data/transport-access-node-collection/transformed/transport-access-node
         load_type = args.load_type
         data_set = args.data_set
         s3_uri = args.path
+       
+        s3_uri=s3_uri+data_set+"-collection"
 
+        table_names=["fact","fact_res","entity","issue"]
+        
         spark = create_spark_session()
         logger.info(f"Main: Spark session created successfully for dataset: {data_set}")
 
         if(load_type == 'full'):
+            
             #invoke full load logic
             logger.info(f"Main: Full load type specified: {load_type}")
             logger.info(f"Main: Load type is {load_type} and dataset is {data_set} and path is {s3_uri}")             
@@ -304,43 +314,62 @@ def main(args):
                 #logger.info(f"Main: Skipping dataset with false as enabled flag: {dataset}")
                 #continue
             #ogger.info(f"Main: Started Processing enabled dataset : {dataset}")
-            logger.info(f"Main: Processing dataset with path information : {s3_uri}")
-
-            full_path = f"{s3_uri}*.csv"
-            logger.info(f"Main: Dataset input path including csv file path: {full_path}")
-
-            
-            # Read CSV using the dynamic schema
-            df = spark.read.option("header", "true").csv(full_path)
-            df.cache()  # Cache the DataFrame for performance
-
-            # Show schema and sample data 
-            df.printSchema() 
-            logger.info(f"Main: Schema information for the loaded dataframe")
-            df.show()
+            logger.info(f"Main: Processing dataset with path information : {s3_uri}")            
 
             # todo: for coming sprint
             #write_to_postgres(processed_df, config)
             #logger.info(f"writing data to postgress")
             ##generate_sqlite(processed_df)
 
-            logger.info("Main: Writing to target s3 output path: process started")
+            logger.info("Main: Set target s3 output path")
             output_path = f"s3://development-collection-data/emr-data-processing/assemble-parquet/{data_set}/"
-            logger.info(f" Main: Writing to output path: {output_path}")
+            logger.info(f" Main: Target output path: {output_path}")
+                         
+            df = None  # Initialise df to avoid UnboundLocalError
+            
+            for table_name in table_names:
+                if(table_name== 'fact' or table_name== 'fact_res' or table_name== 'entity'):
+                    full_path = f"{s3_uri}"+"/transformed/"+data_set+"/*.csv"
+                    logger.info(f"Main: Dataset input path including csv file path: {full_path}")
+                    
+                    
+                    if df is None or df.rdd.isEmpty():
+                        # Read CSV using the dynamic schema
+                        logger.info("Main: dataframe is empty")
+                        df = spark.read.option("header", "true").csv(full_path)
+                        df.cache()  # Cache the DataFrame for performance
+                    
+                    # Show schema and sample data 
+                    df.printSchema() 
+                    logger.info(f"Main: Schema information for the loaded dataframe")
+                    df.show()
+                    
+                    processed_df = transform_data(df,table_name)
+                    logger.info(f"Main: Transforming data for {table_name} table completed")
 
-            processed_df = transform_data(df,'fact-res')
-            logger.info("Main: Transforming data for FACT RESOURCE table completed")
+                    # Write to S3 for Fact Resource table
+                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}")
+                    logger.info(f"Main: Writing to s3 for {table_name} table completed")
 
-            # Write to S3 for Fact Resource table
-            write_to_s3(processed_df, f"{output_path}output-parquet-fact-res")
-            logger.info("Main: Writing to s3 for FACT RESOURCE table completed")
+                elif(table_name== 'issue'):
+                    full_path = f"{s3_uri}"+"/issue/"+data_set+"/*.csv"
+                    logger.info(f"Main: Dataset input path including csv file path: {full_path}")
+                    
+                    # Read CSV using the dynamic schema
+                    df = spark.read.option("header", "true").csv(full_path)
+                    df.cache()  # Cache the DataFrame for performance
 
-            processed_df = transform_data(df,'fact')
-            logger.info("Main: Transforming data for FACT table completed")
+                    # Show schema and sample data 
+                    df.printSchema() 
+                    logger.info(f"Main: Schema information for the loaded dataframe")
+                    df.show()
+                    processed_df = transform_data(df,table_name)                                      
 
-            # Write to S3 for Fact table
-            write_to_s3(processed_df, f"{output_path}output-parquet-fact")
-            logger.info("Main: Writing to s3 for FACT table completed")
+                    logger.info(f"Main: Transforming data for {table_name} table completed")
+
+                    # Write to S3 for Fact table
+                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}")
+                    logger.info(f"Main: Writing to s3 for {table_name} table completed")  
 
             logger.info("Main: Writing to target s3 output path: process completed")           
         elif(load_type == 'delta'):
