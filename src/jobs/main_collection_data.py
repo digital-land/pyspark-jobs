@@ -323,7 +323,8 @@ def main(args):
             logger.info("Main: Set target s3 output path")
             output_path = f"s3://development-collection-data/emr-data-processing/assemble-parquet/{data_set}/"
             logger.info(f" Main: Target output path: {output_path}")
-             
+                         
+            df = None  # Initialise df to avoid UnboundLocalError
             
             for table_name in table_names:
                 if(table_name== 'fact' or table_name== 'fact_res' or table_name== 'entity'):
@@ -331,7 +332,7 @@ def main(args):
                     logger.info(f"Main: Dataset input path including csv file path: {full_path}")
                     
                     
-                    if df.isEmpty():
+                    if df is None or df.rdd.isEmpty():
                         # Read CSV using the dynamic schema
                         logger.info("Main: dataframe is empty")
                         df = spark.read.option("header", "true").csv(full_path)
