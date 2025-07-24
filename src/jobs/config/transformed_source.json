@@ -16,11 +16,11 @@
   "schema_issue": [
     "dataset",
     "resource",
-    "line-number",
-    "entry-number",
+    "line_number",
+    "entry_number",
     "field",
     "entity",
-    "issue-type",
+    "issue_type",
     "value",
     "message"    
   ]
