@@ -184,7 +184,7 @@ def transform_data(df, schema_name):
         else:
             logger.warning("transform_data: Some fields are missing in the DataFrame")
             
-        if schema_name == 'fact-res':
+        if schema_name == 'fact_res':
             logger.info("transform_data: Transforming data for Fact Resource table")
             return transform_data_fact_res(df)
         elif schema_name == 'fact':
