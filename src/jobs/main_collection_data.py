@@ -207,16 +207,17 @@ def transform_data(df, schema_name):
 def write_to_s3(df, output_path):
     try:   
         logger.info(f"Writing data to S3 at {output_path}") 
-        
+                
         # Convert entry-date to date type and use it for partitioning
+        #if df.entry_date!= 'NONE' or df.entry_date !='':
         df = df.withColumn("entry_date_parsed", to_date("entry_date", "yyyy-MM-dd"))
         df = df.withColumn("year", year("entry_date_parsed")) \
-              .withColumn("month", month("entry_date_parsed")) \
-              .withColumn("day", dayofmonth("entry_date_parsed"))
+            .withColumn("month", month("entry_date_parsed")) \
+            .withColumn("day", dayofmonth("entry_date_parsed"))
         
         # Drop the temporary parsing column
         df = df.drop("entry_date_parsed")
-        
+            
         # Write to S3 partitioned by year, month, day
         df.write \
           .partitionBy("year", "month", "day") \
@@ -289,7 +290,8 @@ def main(args):
        
         s3_uri=s3_uri+data_set+"-collection"
 
-        table_names=["fact","fact_res","entity","issue"]
+        #table_names=["fact","fact_res","entity","issue"]
+        table_names=["issue"]
 
         spark = create_spark_session()
         logger.info(f"Main: Spark session created successfully for dataset: {data_set}")
@@ -362,7 +364,8 @@ def main(args):
                     df.printSchema() 
                     logger.info(f"Main: Schema information for the loaded dataframe")
                     df.show()
-                    processed_df = transform_data(df,table_name)
+                    processed_df = transform_data(df,table_name)                                      
+
                     logger.info(f"Main: Transforming data for {table_name} table completed")
 
                     # Write to S3 for Fact table
