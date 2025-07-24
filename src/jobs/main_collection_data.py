@@ -320,9 +320,9 @@ def main(args):
             #logger.info(f"writing data to postgress")
             ##generate_sqlite(processed_df)
 
-            logger.info("Main: Writing to target s3 output path: process started")
+            logger.info("Main: Set target s3 output path")
             output_path = f"s3://development-collection-data/emr-data-processing/assemble-parquet/{data_set}/"
-            logger.info(f" Main: Writing to output path: {output_path}")
+            logger.info(f" Main: Target output path: {output_path}")
              
             
             for table_name in table_names:
