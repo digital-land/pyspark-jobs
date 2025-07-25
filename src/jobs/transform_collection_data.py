@@ -1,6 +1,7 @@
 from venv import logger
-from pyspark.sql.functions import row_number, lit
+from pyspark.sql.functions import row_number, lit, first, to_json, struct
 from pyspark.sql.window import Window
+from pyspark.sql.functions import first
 
 # -------------------- Transformation Processing --------------------
 def transform_data_fact(df):      
@@ -34,6 +35,17 @@ def transform_data_issue(df):
     logger.info(f"transform_data_fact_res:Final DataFrame after filtering: {transf_df.columns}")      
     return transf_df
 
-def transform_data_entity(df):       
-        
-    return df
+def transform_data_entity(df):  
+    logger.info("transform_data_entity:Transforming data for Entity table") 
+    # Pivot the dataset based on 'field' and 'value', grouped by 'entry-number'
+    pivot_df = df.groupBy("entry_number","entity").pivot("field").agg(first("value"))
+    pivot_df = pivot_df.drop("entry_number", "organisation")
+    pivot_df=pivot_df.withColumn("topology", lit("geography")).withColumn("organisation_entity", lit("600010"))
+    # Create JSON column
+    pivot_df = pivot_df.withColumn(
+        "json",
+        to_json(struct("naptan_code","bus_stop_type" ,"transport_access_node_type"))
+    )
+    pivot_df = pivot_df.drop("naptan_code","bus_stop_type","transport_access_node_type")
+    logger.info(f"transform_data_entity:Final DataFrame after filtering: {pivot_df.columns}")
+    return pivot_df
