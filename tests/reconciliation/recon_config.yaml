@@ -1,0 +1,8 @@
+tables:
+  - source: "s3://raw-zone/source_a"
+    target: "s3://curated-zone/source_a"
+    tolerance: 0
+
+  - source: "s3://raw-zone/source_b"
+    target: "s3://curated-zone/source_b"
+    tolerance: 5
