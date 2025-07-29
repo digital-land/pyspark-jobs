@@ -67,7 +67,13 @@ def transform_data_entity(df,data_set,spark):
 
         # Pivot the transport-access-node based on 'field' and 'value', grouped by 'entry-number'
         pivot_df = df.groupBy("entry_number","entity").pivot("field").agg(first("value"))
+        for col in pivot_df.columns:
+            if "-" in col:
+                new_col = col.replace("-", "_")
+                pivot_df = pivot_df.withColumnRenamed(col, new_col)
+        logger.info(f"transform_data_entity:Pivoted DataFrame columns: {pivot_df.columns}")
         pivot_df = pivot_df.drop("entry_number")
+        logger.info(f"transform_data_entity:DataFrame after dropping 'entry_number': {pivot_df.columns}")
         pivot_df=pivot_df.withColumn("dataset", lit(data_set))
         logger.info(f"transform_data_entity:Final DataFrame after filtering: {pivot_df.columns}")
         #Create JSON column
@@ -96,7 +102,8 @@ def transform_data_entity(df,data_set,spark):
             .select(pivot_df_with_json["*"], dataset_df["typology"])
         
         pivot_df_with_json.select("typology").show(truncate=False)
-        logger.info(f"transform_data_entity:Final DataFrame after filtering: {pivot_df.show(truncate=False)}")
+
+        logger.info(f"transform_data_entity:Final DataFrame after filtering: {pivot_df_with_json.show(truncate=False)}")
 
         pivot_df_with_json = pivot_df_with_json.select("dataset", "end_date", "entity", "entry_date", "geojson", "geometry", "json", "name", "organisation_entity", "point", "prefix", "reference", "start_date", "typology")
 
