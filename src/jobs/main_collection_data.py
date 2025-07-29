@@ -150,7 +150,7 @@ def read_data(spark, input_path):
         raise
 
 # -------------------- Data Transformer --------------------
-def transform_data(df, schema_name):      
+def transform_data(df, schema_name, data_set,spark):      
     try:
         dataset_json_transformed_path = "config/transformed_source.json"
         logger.info(f"transform_data: Transforming data for table: {schema_name} using schema from {dataset_json_transformed_path}")
@@ -192,7 +192,7 @@ def transform_data(df, schema_name):
             return transform_data_fact(df)
         elif schema_name == 'entity':
             logger.info("transform_data: Transforming data for Entity table")
-            return transform_data_entity(df)
+            return transform_data_entity(df,data_set,spark)
         elif schema_name == 'issue':
             logger.info("transform_data: Transforming data for Issue table")
             return transform_data_issue(df)
@@ -343,8 +343,8 @@ def main(args):
                     df.printSchema() 
                     logger.info(f"Main: Schema information for the loaded dataframe")
                     df.show()
-                    
-                    processed_df = transform_data(df,table_name)
+                    #revise this code and for converting spark session as singleton in future
+                    processed_df = transform_data(df,table_name,data_set,spark)
                     logger.info(f"Main: Transforming data for {table_name} table completed")
 
                     # Write to S3 for Fact Resource table
