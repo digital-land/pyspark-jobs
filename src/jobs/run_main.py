@@ -22,23 +22,41 @@ Usage:
 This pattern ensures clean separation of concerns and supports scalable, maintainable job deployments.
 """
 
+from asyncio.log import logger
 from jobs.main_collection_data import main
 import argparse
 
 # -------------------- Argument Parser --------------------
 def parse_args():
-    print("parse_args:Parsing command line arguments")
-    parser = argparse.ArgumentParser(description="ETL Process for Collection Data")
-    parser.add_argument("--load_type", type=str, required=True,
-                        help="Type of load operation (e.g., full, incremental)")
-    parser.add_argument("--data_set", type=str, required=True,
-                        help="Name of the dataset to process")
-    parser.add_argument("--path", type=str, required=True,
-                        help="Path to the dataset")
-    args = parser.parse_args()
-    print(f"parse_args:Adding arguments for dataset: {args}")
-    return args
+    try:
+        print("parse_args:Parsing command line arguments")
+        parser = argparse.ArgumentParser(description="ETL Process for Collection Data")
+        parser.add_argument("--load_type", type=str, required=True,
+                            help="Type of load operation (e.g., full, incremental)")
+        parser.add_argument("--data_set", type=str, required=True,
+                            help="Name of the dataset to process")
+        parser.add_argument("--path", type=str, required=True,
+                            help="Path to the dataset")
+        args = parser.parse_args()
+        print(f"parse_args:Adding arguments for dataset: {args}")
+        return args
+    
+    except argparse.ArgumentError as ae:
+        logger.error(f"parse_args: Argument parsing error - {str(ae)}", exc_info=True)
+        sys.exit(1)
+    except SystemExit as se:
+        logger.error(f"parse_args: SystemExit triggered - likely due to missing or invalid arguments", exc_info=True)
+        raise
+    except Exception as e:
+        logger.error(f"parse_args: Unexpected error - {str(e)}", exc_info=True)
+        sys.exit(1)
+
 
 if __name__ == "__main__":
-    args = parse_args()
-    main(args)
+    try:
+        args = parse_args()
+        main(args)    
+    except Exception as e:
+        logger.error(f"__main__: An error occurred during execution - {str(e)}", exc_info=True)
+        sys.exit(1)
+
