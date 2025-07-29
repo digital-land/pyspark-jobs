@@ -105,7 +105,7 @@ def transform_data_entity(df,data_set,spark):
 
         logger.info(f"transform_data_entity:Final DataFrame after filtering: {pivot_df_with_json.show(truncate=False)}")
 
-        pivot_df_with_json = pivot_df_with_json.select("dataset", "end_date", "entity", "entry_date", "geojson", "geometry", "json", "name", "organisation_entity", "point", "prefix", "reference", "start_date", "typology")
+        pivot_df_with_json = pivot_df_with_json.select("dataset", "end_date", "entity", "entry_date", "geometry", "json", "name", "organisation_entity", "point", "prefix", "reference", "start_date", "typology")
 
         #pivot_df_with_json.write.mode("overwrite").option("header", True) \
         #.csv("/home/lakshmi/entity_testing/pivoted_entity_data.csv")
