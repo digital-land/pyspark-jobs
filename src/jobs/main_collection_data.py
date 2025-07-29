@@ -363,7 +363,7 @@ def main(args):
                     df.printSchema() 
                     logger.info(f"Main: Schema information for the loaded dataframe")
                     df.show()
-                    processed_df = transform_data(df,table_name)                                      
+                    processed_df = transform_data(df,table_name,data_set,spark)                                      
 
                     logger.info(f"Main: Transforming data for {table_name} table completed")
 
