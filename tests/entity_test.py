@@ -2,8 +2,6 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import first, lit,to_json, struct,col, regexp_replace
 import json
 
-
-
 # Create a Spark session
 spark = SparkSession.builder.appName("PivotDataset").getOrCreate()
 
@@ -52,7 +50,6 @@ pivot_df_with_json = pivot_df.withColumn("json",to_json(struct(*[col(c) for c in
 #    regexp_replace("json", '\\"', '"')  # replaces \" with "
 #)
 #
-
 
 #pivot_df_with_json = pivot_df.withColumn(    "json",    struct(*[col(c) for c in difference_columns]))
 
