@@ -216,10 +216,11 @@ def write_to_s3(df, output_path):
             .withColumn("day", dayofmonth("entry_date_parsed"))
         
         # Drop the temporary parsing column
-        df = df.drop("entry_date_parsed")
+        df = df.drop("entry_date_parsed","date", "month", "year")
             
         # Write to S3 partitioned by year, month, day
-        df.write \
+        df.drop("year", "month", "day") \
+          .write \
           .partitionBy("year", "month", "day") \
           .mode("overwrite") \
           .option("header", "true") \

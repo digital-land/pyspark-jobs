@@ -10,10 +10,16 @@ spark = SparkSession.builder.appName("PivotDataset").getOrCreate()
 # Load the CSV file into a DataFrame
 df = spark.read.option("header", True).csv("/home/lakshmi/entity_testing/title_boundary_testing_data.csv")
 df.show()
+fact_res_columns = ["end-date","fact","entry-date","entry-number", "priority","resource","start-date"]
+for column in fact_res_columns:
+    if column not in df.columns:
+        df = df.withColumn(column, lit("").cast("string"))
+df.show()
 transf_df = df.select("end-date","fact","entry-date","entry-number", "priority","resource","start-date")
 
 transf_df = transf_df.select("end-date", "fact", "entry-date", "entry-number", "priority", "resource", "start-date")
 
+ 
 print(transf_df.columns)
 transf_df.show()
 
