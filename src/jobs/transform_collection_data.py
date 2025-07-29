@@ -67,10 +67,10 @@ def transform_data_entity(df,data_set,spark):
 
         # Pivot the transport-access-node based on 'field' and 'value', grouped by 'entry-number'
         pivot_df = df.groupBy("entry_number","entity").pivot("field").agg(first("value"))
-        for col in pivot_df.columns:
-            if "-" in col:
-                new_col = col.replace("-", "_")
-                pivot_df = pivot_df.withColumnRenamed(col, new_col)
+        for column in pivot_df.columns:  # <-- changed from 'col' to 'column'
+            if "-" in column:
+                new_col = column.replace("-", "_")
+                pivot_df = pivot_df.withColumnRenamed(column, new_col)
         logger.info(f"transform_data_entity:Pivoted DataFrame columns: {pivot_df.columns}")
         pivot_df = pivot_df.drop("entry_number")
         logger.info(f"transform_data_entity:DataFrame after dropping 'entry_number': {pivot_df.columns}")
@@ -93,8 +93,8 @@ def transform_data_entity(df,data_set,spark):
         #Find difference columns
         difference_columns = list(set(pivot_df_columns) - set(standard_column))
 
-        #Dynamically create a struct of difference columns and convert to JSON
-        pivot_df_with_json = pivot_df.withColumn("json",to_json(struct(*[col(c) for c in difference_columns])))
+        # Dynamically create a struct of difference columns and convert to JSON
+        pivot_df_with_json = pivot_df.withColumn("json", to_json(struct(*[col(c) for c in difference_columns])))
 
         dataset_df = spark.read.option("header", "true").csv("s3://development-collection-data/emr-data-processing/specification/dataset/dataset.csv")
 
