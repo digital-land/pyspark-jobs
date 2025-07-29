@@ -8,8 +8,8 @@ spark = SparkSession.builder.appName("PivotDataset").getOrCreate()
 #path = r"\\wsl$\Ubuntu\home\lakshmiproject\data.txt"
 
 # Load the CSV file into a DataFrame
-df = spark.read.option("header", True).csv("/home/lakshmi/entity_testing/entity_sample_data.csv")
-dataset_name_arg='transport-access-node'
+df = spark.read.option("header", True).csv("/home/lakshmi/entity_testing/title_boundary_testing_data.csv")
+dataset_name_arg='title-boundary'
 # Pivot the transport-access-node based on 'field' and 'value', grouped by 'entry-number'
 pivot_df = df.groupBy("entry-number","entity").pivot("field").agg(first("value"))
 pivot_df = pivot_df.drop("entry-number")
@@ -38,6 +38,7 @@ pivot_df = pivot_df.drop("organisation")
 standard_column = ["dataset", "end-date", "entity", "entry-date", "geometry", "json", "name", "organisation_entity", "point", "prefix", "reference", "start-date", "typology"]
 pivot_df_columns = pivot_df.columns
 
+
 # Step 2: Find difference columns
 difference_columns = list(set(pivot_df_columns) - set(standard_column))
 
@@ -60,6 +61,7 @@ dataset_df = spark.read.option("header", "true").csv("/home/lakshmi/entity_testi
 pivot_df_with_json = pivot_df_with_json.join(dataset_df, pivot_df_with_json.dataset == dataset_df.dataset, "left") \
     .select(pivot_df_with_json["*"], dataset_df["typology"])
 pivot_df_with_json.select("typology").show(truncate=False)
+print(pivot_df_columns)
 
 #pivot_df = pivot_df.withColumn("json",to_json(struct("naptan-code","bus-stop-type" ,"transport-access-node-type")))
 #{"bus-stop-type":"CUS","naptan-code":"22000047","transport-access-node-type":"BCT"}
