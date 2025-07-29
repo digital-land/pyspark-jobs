@@ -18,6 +18,7 @@ def transform_data_fact(df):
         transf_df = df_with_rownum.filter(df_with_rownum["row_num"] == 1).drop("row_num")    
         transf_df = transf_df.select("fact","end_date","entity","field","entry_date","priority","reference_entity","start_date", "value")
         logger.info(f"transform_data_fact:Final DataFrame after filtering: {transf_df.columns}")
+        transf_df = transf_df.select("end_date", "entity", "fact", "field", "entry_date", "priority", "reference_entity", "start_date", "value")
         return transf_df
     except Exception as e:
         logger.error(f"transform_data_fact:Error occurred - {e}")
@@ -29,6 +30,9 @@ def transform_data_fact_res(df):
         logger.info("transform_data_fact_res:Transforming data for Fact Resource table")
         transf_df = df.select("end_date","fact","entry_date","entry_number", "priority","resource","start_date")
         logger.info(f"transform_data_fact_res:Final DataFrame after filtering: {transf_df.columns}")
+
+        transf_df = transf_df.select("end_date", "fact", "entry_date", "entry_number", "priority", "resource", "start_date")
+
         return transf_df
     except Exception as e:
         logger.error(f"transform_data_fact_res:Error occurred - {e}")
@@ -42,7 +46,8 @@ def transform_data_issue(df):
         .withColumn("entry_date", lit("").cast("string")) \
         .withColumn("end_date", lit("").cast("string"))   \
 
-        logger.info(f"transform_data_fact_res:Final DataFrame after filtering: {transf_df.columns}")      
+        logger.info(f"transform_data_fact_res:Final DataFrame after filtering: {transf_df.columns}")  
+        transf_df = transf_df.select("end_date", "entity", "entry_date", "entry_number", "field", "issue_type", "line_number", "dataset", "resource", "start_date", "value", "message")    
         return transf_df
     except Exception as e:
         logger.error(f"transform_data_issue:Error occurred - {e}")
@@ -61,8 +66,8 @@ def transform_data_entity(df,data_set,spark):
         #pivot_df = pivot_df.drop("naptan_code","bus_stop_type","transport_access_node_type")
 
         # Pivot the transport-access-node based on 'field' and 'value', grouped by 'entry-number'
-        pivot_df = df.groupBy("entry-number","entity").pivot("field").agg(first("value"))
-        pivot_df = pivot_df.drop("entry-number")
+        pivot_df = df.groupBy("entry_number","entity").pivot("field").agg(first("value"))
+        pivot_df = pivot_df.drop("entry_number")
         pivot_df=pivot_df.withColumn("dataset", lit(data_set))
         logger.info(f"transform_data_entity:Final DataFrame after filtering: {pivot_df.columns}")
         #Create JSON column
@@ -76,7 +81,7 @@ def transform_data_entity(df,data_set,spark):
             .select(pivot_df["*"], organisation_df["entity"].alias("organisation_entity"))
         pivot_df = pivot_df.drop("organisation")
         # Define standard columns
-        standard_column = ["dataset", "end-date", "entity", "entry-date", "geometry", "json", "name", "organisation_entity", "point", "prefix", "reference", "start-date", "typology"]
+        standard_column = ["dataset", "end_date", "entity", "entry_date", "geometry", "json", "name", "organisation_entity", "point", "prefix", "reference", "start_date", "typology"]
         pivot_df_columns = pivot_df.columns
 
         #Find difference columns
@@ -89,7 +94,11 @@ def transform_data_entity(df,data_set,spark):
 
         pivot_df_with_json = pivot_df_with_json.join(dataset_df, pivot_df_with_json.dataset == dataset_df.dataset, "left") \
             .select(pivot_df_with_json["*"], dataset_df["typology"])
+        
         pivot_df_with_json.select("typology").show(truncate=False)
+        logger.info(f"transform_data_entity:Final DataFrame after filtering: {pivot_df.show(truncate=False)}")
+
+        pivot_df_with_json = pivot_df_with_json.select("dataset", "end_date", "entity", "entry_date", "geojson", "geometry", "json", "name", "organisation_entity", "point", "prefix", "reference", "start_date", "typology")
 
         #pivot_df_with_json.write.mode("overwrite").option("header", True) \
         #.csv("/home/lakshmi/entity_testing/pivoted_entity_data.csv")
