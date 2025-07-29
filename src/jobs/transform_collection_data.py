@@ -1,7 +1,6 @@
 from venv import logger
 from pyspark.sql.functions import row_number, lit, first, to_json, struct, col
 from pyspark.sql.window import Window
-from pyspark.sql.functions import first
 
 # -------------------- Transformation Processing --------------------
 def transform_data_fact(df):
@@ -104,6 +103,14 @@ def transform_data_entity(df,data_set,spark):
         pivot_df_with_json.select("typology").show(truncate=False)
 
         logger.info(f"transform_data_entity:Final DataFrame after filtering: {pivot_df_with_json.show(truncate=False)}")
+
+        # Add missing columns with default values
+        if 'end_date' not in pivot_df_with_json.columns:
+            pivot_df_with_json = pivot_df_with_json.withColumn('end_date', lit("").cast("string"))
+        if 'name' not in pivot_df_with_json.columns:
+            pivot_df_with_json = pivot_df_with_json.withColumn('name', lit("").cast("string"))
+        if 'point' not in pivot_df_with_json.columns:
+            pivot_df_with_json = pivot_df_with_json.withColumn('point', lit("").cast("string"))
 
         pivot_df_with_json = pivot_df_with_json.select("dataset", "end_date", "entity", "entry_date", "geometry", "json", "name", "organisation_entity", "point", "prefix", "reference", "start_date", "typology")
 
