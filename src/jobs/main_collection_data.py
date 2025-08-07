@@ -254,25 +254,6 @@ def generate_sqlite(df):
         logger.error(f"Failed to write to SQLite: {e}", exc_info=True)
         raise
 
-# -------------------- PostgreSQL Writer --------------------
-
-##writing to postgres db
-def write_to_postgres(df, config):
-    try:
-        logger.info(f"Writing data to PostgreSQL table {config['TABLE_NAME']}")
-        df.write \
-            .format(config['PG_JDBC']) \
-            .option("url", config['PG_URL']) \
-            .option("dbtable", config['TABLE_NAME']) \
-            .option("user", config['USER_NAME']) \
-            .option("password", config['PASSWORD']) \
-            .option("driver", config['DRIVER']) \
-            .mode("overwrite") \
-            .save()
-    except Exception as e:
-        logger.error(f"Failed to write to PostgreSQL: {e}", exc_info=True)
-        raise
-
 
 
 # -------------------- Main --------------------
