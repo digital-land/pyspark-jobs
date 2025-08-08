@@ -1,34 +1,126 @@
+"""
+Unit tests for fact data transformation functionality.
+"""
+import pytest
 from pyspark.sql import SparkSession
 from pyspark.sql.window import Window
-from pyspark.sql.functions import first, lit,to_json, struct,col, regexp_replace,row_number
-import json
+from pyspark.sql.functions import lit, row_number
+from pyspark.sql.types import StructType, StructField, StringType
 
-# Create a Spark session
-spark = SparkSession.builder.appName("PivotDataset").getOrCreate()
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
-#path = r"\\wsl$\Ubuntu\home\lakshmiproject\data.txt"
+from jobs.transform_collection_data import transform_data_fact
 
-# Load the CSV file into a DataFrame
-df = spark.read.option("header", True).csv("/home/lakshmi/entity_testing/title_boundary_testing_data.csv")
-df = df.withColumn('priority', lit("").cast("string"))
-for col in df.columns:
-            if "-" in col:
-                new_col = col.replace("-", "_")
-                df = df.withColumnRenamed(col, new_col)
-df.show()
-window_spec = Window.partitionBy("fact").orderBy("priority", "entry_date", "entry_number").rowsBetween(Window.unboundedPreceding, Window.currentRow)
-print(f"transform_data_fact:Window specification defined for partitioning by 'fact' and ordering {window_spec})")
-# Add row number
-df_with_rownum = df.withColumn("row_num", row_number().over(window_spec))
-print(f"transform_data_fact:Row number added to DataFrame {df_with_rownum.columns}")
 
-# Filter to keep only the top row per partition
-transf_df = df_with_rownum.filter(df_with_rownum["row_num"] == 1).drop("row_num")    
-transf_df = transf_df.select("fact","end_date","entity","field","entry_date","priority","reference_entity","start_date", "value")
-print(f"transform_data_fact:Final DataFrame after filtering: {transf_df.columns}")
-transf_df = transf_df.select("end_date", "entity", "fact", "field", "entry_date", "priority", "reference_entity", "start_date", "value")
-transf_df.show()
+@pytest.fixture(scope="session")
+def spark():
+    """Create a Spark session for testing."""
+    return SparkSession.builder \
+        .appName("FactTestSuite") \
+        .master("local[2]") \
+        .config("spark.sql.shuffle.partitions", "2") \
+        .getOrCreate()
 
-#pivot_df = pivot_df.withColumn("json",to_json(struct("naptan-code","bus-stop-type" ,"transport-access-node-type")))
-#{"bus-stop-type":"CUS","naptan-code":"22000047","transport-access-node-type":"BCT"}
-#transf_df.write.mode("overwrite").option("header", True) .csv("/home/lakshmi/entity_testing/pivoted_entity_data.csv")
+
+@pytest.fixture
+def sample_fact_data(spark):
+    """Create sample fact data for testing."""
+    schema = StructType([
+        StructField("fact", StringType(), True),
+        StructField("end_date", StringType(), True),
+        StructField("entity", StringType(), True),
+        StructField("field", StringType(), True),
+        StructField("entry_date", StringType(), True),
+        StructField("entry_number", StringType(), True),
+        StructField("priority", StringType(), True),
+        StructField("reference_entity", StringType(), True),
+        StructField("resource", StringType(), True),
+        StructField("start_date", StringType(), True),
+        StructField("value", StringType(), True)
+    ])
+    
+    data = [
+        ("fact1", "2025-12-31", "entity1", "field1", "2025-01-01", "1", "1", "ref1", "res1", "2025-01-01", "value1"),
+        ("fact1", "2025-12-31", "entity1", "field1", "2025-01-02", "2", "2", "ref1", "res1", "2025-01-01", "value2"),
+        ("fact2", "2025-12-31", "entity2", "field2", "2025-01-01", "3", "1", "ref2", "res2", "2025-01-01", "value3"),
+    ]
+    
+    return spark.createDataFrame(data, schema)
+
+
+def test_transform_data_fact_columns_exist(sample_fact_data):
+    """Test that transform_data_fact returns expected columns."""
+    result = transform_data_fact(sample_fact_data)
+    expected_columns = ["end_date", "entity", "fact", "field", "entry_date", "priority", "reference_entity", "start_date", "value"]
+    
+    assert result.columns == expected_columns
+
+
+def test_transform_data_fact_deduplication(sample_fact_data):
+    """Test that transform_data_fact removes duplicates correctly based on priority."""
+    result = transform_data_fact(sample_fact_data)
+    
+    # Should have 2 rows (one per fact, keeping highest priority)
+    assert result.count() == 2
+    
+    # Check that we kept the records with priority 1 (highest priority)
+    fact1_records = result.filter(result.fact == "fact1").collect()
+    fact2_records = result.filter(result.fact == "fact2").collect()
+    
+    assert len(fact1_records) == 1
+    assert len(fact2_records) == 1
+    assert fact1_records[0].priority == "1"
+    assert fact2_records[0].priority == "1"
+
+
+def test_transform_data_fact_with_hyphenated_columns(spark):
+    """Test handling of hyphenated column names."""
+    schema = StructType([
+        StructField("fact", StringType(), True),
+        StructField("end-date", StringType(), True),  # Hyphenated
+        StructField("entity", StringType(), True),
+        StructField("field", StringType(), True),
+        StructField("entry-date", StringType(), True),  # Hyphenated
+        StructField("entry-number", StringType(), True),  # Hyphenated
+        StructField("priority", StringType(), True),
+        StructField("reference-entity", StringType(), True),  # Hyphenated
+        StructField("resource", StringType(), True),
+        StructField("start-date", StringType(), True),  # Hyphenated
+        StructField("value", StringType(), True)
+    ])
+    
+    data = [("fact1", "2025-12-31", "entity1", "field1", "2025-01-01", "1", "1", "ref1", "res1", "2025-01-01", "value1")]
+    df = spark.createDataFrame(data, schema)
+    
+    # The function should handle hyphenated columns
+    result = transform_data_fact(df)
+    
+    # Should still return the expected columns
+    expected_columns = ["end_date", "entity", "fact", "field", "entry_date", "priority", "reference_entity", "start_date", "value"]
+    assert result.columns == expected_columns
+
+
+def test_transform_data_fact_empty_dataframe(spark):
+    """Test transform_data_fact with empty DataFrame."""
+    schema = StructType([
+        StructField("fact", StringType(), True),
+        StructField("end_date", StringType(), True),
+        StructField("entity", StringType(), True),
+        StructField("field", StringType(), True),
+        StructField("entry_date", StringType(), True),
+        StructField("entry_number", StringType(), True),
+        StructField("priority", StringType(), True),
+        StructField("reference_entity", StringType(), True),
+        StructField("resource", StringType(), True),
+        StructField("start_date", StringType(), True),
+        StructField("value", StringType(), True)
+    ])
+    
+    empty_df = spark.createDataFrame([], schema)
+    result = transform_data_fact(empty_df)
+    
+    assert result.count() == 0
+    expected_columns = ["end_date", "entity", "fact", "field", "entry_date", "priority", "reference_entity", "start_date", "value"]
+    assert result.columns == expected_columns
