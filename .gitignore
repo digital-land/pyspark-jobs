@@ -263,3 +263,73 @@ Thumbs.db
 *.tmp
 logs/
 temp/
+
+# PySpark and Big Data
+spark-warehouse/
+derby.log
+metastore_db/
+*.crc
+*.parquet
+*.orc
+*.avro
+checkpoint/
+_SUCCESS
+
+# Airflow specific
+airflow-webserver.pid
+airflow-scheduler.pid
+airflow.db
+dags/__pycache__/
+plugins/__pycache__/
+airflow_home/
+unittests.cfg
+
+# Jupyter Notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+# Data files (add specific patterns based on your needs)
+*.csv
+*.tsv
+*.xlsx
+*.xls
+*.json.gz
+*.csv.gz
+data/
+datasets/
+output/
+results/
+*.pickle
+*.pkl
+
+# AWS and EMR
+*.zip
+*.tar.gz
+*.jar
+bootstrap-actions/
+step-logs/
+emr_venv/
+lambda_layer*.zip
+
+# Build artifacts and packaging
+build/
+dist/
+*.whl
+*.egg-info/
+pyspark_jobs_with_deps.zip
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Configuration files with potentially sensitive data
+*config*.json
+*config*.yaml
+*config*.yml
+application.properties
+spark-defaults.conf
+
+# OS and Editor specific
+*.Zone.Identifier
+*:PG$Secure
