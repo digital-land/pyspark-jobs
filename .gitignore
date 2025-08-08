@@ -218,5 +218,48 @@ emr_venv/bin/python
 emr_venv/bin/python3.12
 emr_venv/bin/Activate.ps1
 emr_venv/pyvenv.cfg
-.gitignore
-.gitignore
+
+# Security - Sensitive files (PUBLIC REPOSITORY)
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+secrets/
+credentials/
+.aws/
+.secrets
+secret_*
+*_secret.*
+*_secrets.*
+*.secret
+config_local.json
+config_prod.json
+config_dev.json
+*config_private*
+terraform.tfstate*
+terraform.tfvars
+.terraform/
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDEs and editors
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs and temporary files
+*.log
+*.tmp
+logs/
+temp/
