@@ -4,7 +4,7 @@
 from venv import logger
 import psycopg2
 from psycopg2 import sql
-from jobs.dbaccess.setting_secrets import get_secret
+from jobs.utils.aws_secrets_manager import get_secret
 
 # Define your table schema
 # https://github.com/digital-land/digital-land.info/blob/main/application/db/models.py - refered from here
@@ -30,14 +30,20 @@ columns = {
 #conn_params = get_secret()  # Assuming this function retrieves the secret as a dictionary
 # read host, port,dbname,user, password
 
-conn_params = {
+conn_params_local = {
     "host": "localhost",
     "port": 5432,
     "dbname": "public",
     "user": "postgres",
     "password": "postgres"
 }
-
+conn_params_aws = {
+    "host": "localhost",
+    "port": 5432,
+    "dbname": "public",
+    "user": "postgres",
+    "password": "postgres"
+}
 
 # Create table if not exists
 def create_table():
