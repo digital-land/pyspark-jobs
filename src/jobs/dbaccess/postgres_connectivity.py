@@ -8,8 +8,9 @@ from jobs.utils.aws_secrets_manager import get_secret
 
 # Define your table schema
 # https://github.com/digital-land/digital-land.info/blob/main/application/db/models.py - refered from here
-table_name = "entity"
-columns = {   
+#TODO: rename to actual name after testing and client approvals , as it replce the existing postgres entity data
+dbtable_name = "pyspark_entity"
+pyspark_entity_columns = {   
     "dataset": "TEXT",
     "end_date": "DATE",
     "entity": "TEXT",
@@ -30,36 +31,45 @@ columns = {
 #conn_params = get_secret()  # Assuming this function retrieves the secret as a dictionary
 # read host, port,dbname,user, password
 
-conn_params_local = {
-    "host": "localhost",
-    "port": 5432,
-    "dbname": "public",
-    "user": "postgres",
-    "password": "postgres"
-}
-conn_params_aws = {
-    "host": "localhost",
-    "port": 5432,
-    "dbname": "public",
-    "user": "postgres",
-    "password": "postgres"
-}
+
+def get_aws_secret():
+    aws_secrets_json = get_secret("dev/pyspark/postgres")
+    
+    # Parse the JSON string
+    secrets = json.loads(aws_secrets_json)
+
+    # Extract required fields
+    username = secrets.get("username")
+    password = secrets.get("password")
+    dbName = secrets.get("dbName")
+    host = secrets.get("host")
+    port = secrets.get("port")
+    print(f"get_aws_secret:Retrieved secrets for {dbName} at {host}:{port} with user {username}")
+    conn_params ={
+        "dbname": dbName,
+        "host": host,
+        "port": port,
+        "user": username,
+        "password": password
+    }
+    return conn_params
+
 
 # Create table if not exists
-def create_table():
+def create_table(conn_params):
     try:
         conn = psycopg2.connect(**conn_params)
         cur = conn.cursor()
         # Build CREATE TABLE SQL dynamically
-        column_defs = ", ".join([f"{col} {dtype}" for col, dtype in columns.items()])
+        column_defs = ", ".join([f"{col} {dtype}" for col, dtype in pyspark_entity_columns.items()])
         create_query = sql.SQL(
-            f"CREATE TABLE IF NOT EXISTS {table_name} ({column_defs});"
+            f"CREATE TABLE IF NOT EXISTS {dbtable_name} ({column_defs});"
         )
-        logger.info(f"create_table:Creating table {table_name} with columns: {columns.keys()}")
+        logger.info(f"create_table:Creating table {dbtable_name} with columns: {pyspark_entity_columns.keys()}")
 
         cur.execute(create_query)
         conn.commit()
-        logger.info(f"create_table:Table '{table_name}' created successfully (if it didn't exist).")
+        logger.info(f"create_table:Table '{dbtable_name}' created successfully (if it didn't exist).")
 
     except Exception as e:
         logger.error(f"create_table:Error creating table: {e}", exc_info=True)
@@ -69,7 +79,7 @@ def create_table():
             conn.close()
 
 # Run the function
-create_table()
+create_table(get_aws_secret())
 
 # -------------------- PostgreSQL Writer --------------------
 
