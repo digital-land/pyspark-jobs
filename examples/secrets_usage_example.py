@@ -19,7 +19,9 @@ logger = logging.getLogger(__name__)
 
 def example_database_connection():
     """
-    Example: How to retrieve database credentials and use them.
+    Example: How to retrieve database credentials and use them SECURELY.
+    
+    SECURITY NOTICE: This example shows the WRONG way and RIGHT way to handle credentials.
     """
     try:
         # Method 1: Using environment variable to specify secret name
@@ -36,16 +38,56 @@ def example_database_connection():
         database = db_creds.get("database", "postgres")
         
         # Create connection string (example for PostgreSQL)
+        # NOTE: In production, pass these credentials directly to your database client
+        # DO NOT return, log, or expose connection strings as they contain sensitive information
         connection_string = f"postgresql://{username}:{password}@{host}:{port}/{database}"
-        logger.info(f"Database connection string created for host: {host}")
+        logger.info(f"Database credentials retrieved successfully")
         
-        return connection_string
+        # For security demonstration purposes only - in real code, use credentials directly
+        # with your database client and don't return or expose any connection details
+        return {"status": "success", "message": "Database credentials ready for use"}
         
     except SecretsManagerError as e:
         logger.error(f"Failed to retrieve database credentials: {e}")
         raise
     except Exception as e:
         logger.error(f"Unexpected error in database connection setup: {e}")
+        raise
+
+
+def example_secure_database_usage():
+    """
+    Example: SECURE way to use database credentials without exposing sensitive data.
+    """
+    try:
+        # Retrieve credentials securely
+        db_creds = get_database_credentials(
+            secret_name=os.getenv("POSTGRES_SECRET_NAME", "myapp/database/postgres"),
+            region_name=os.getenv("AWS_REGION", "us-east-1")
+        )
+        
+        # RIGHT WAY: Use credentials directly with your database client
+        # Example with psycopg2 (PostgreSQL) - credentials never exposed
+        import psycopg2
+        
+        conn = psycopg2.connect(
+            host=db_creds["host"],
+            port=db_creds["port"],
+            database=db_creds.get("database", "postgres"),
+            user=db_creds["username"],
+            password=db_creds["password"]
+        )
+        
+        logger.info("Database connection established securely")
+        
+        # Use the connection for your database operations
+        # ...
+        
+        conn.close()
+        return {"status": "success"}
+        
+    except Exception as e:
+        logger.error(f"Secure database connection failed: {str(e)}")
         raise
 
 
@@ -158,8 +200,11 @@ if __name__ == "__main__":
     
     # Example usage
     try:
-        print("=== Database Credentials Example ===")
+        print("=== Database Credentials Example (Educational - shows what NOT to do) ===")
         example_database_connection()
+        
+        print("\n=== SECURE Database Usage Example ===")
+        example_secure_database_usage()
         
         print("\n=== API Key Example ===")
         example_api_key_retrieval()

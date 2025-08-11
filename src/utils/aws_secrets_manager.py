@@ -58,7 +58,7 @@ def get_secret(secret_name: str, region_name: Optional[str] = None) -> str:
     if not region_name:
         region_name = os.getenv("AWS_REGION", "us-east-1")
     
-    logger.info(f"Retrieving secret '{secret_name}' from region '{region_name}'")
+    logger.info(f"Retrieving secret '{secret_name}'")
     
     try:
         # Create a Secrets Manager client
@@ -74,9 +74,9 @@ def get_secret(secret_name: str, region_name: Optional[str] = None) -> str:
         # Get the secret string
         secret_value = response.get('SecretString')
         if secret_value is None:
-            raise SecretsManagerError(f"Secret '{secret_name}' does not contain a string value")
+            raise SecretsManagerError("Secret does not contain a string value")
         
-        logger.info(f"Successfully retrieved secret '{secret_name}'")
+        logger.info("Successfully retrieved secret")
         return secret_value
         
     except NoCredentialsError:
@@ -86,12 +86,12 @@ def get_secret(secret_name: str, region_name: Optional[str] = None) -> str:
         
     except ClientError as e:
         error_code = e.response.get('Error', {}).get('Code', 'Unknown')
-        error_msg = f"Failed to retrieve secret '{secret_name}': {error_code} - {str(e)}"
+        error_msg = f"Failed to retrieve secret: {error_code}"
         logger.error(error_msg)
         raise SecretsManagerError(error_msg)
         
     except Exception as e:
-        error_msg = f"Unexpected error retrieving secret '{secret_name}': {str(e)}"
+        error_msg = "Unexpected error retrieving secret"
         logger.error(error_msg)
         raise SecretsManagerError(error_msg)
 
@@ -116,11 +116,11 @@ def get_secret_json(secret_name: str, region_name: Optional[str] = None) -> Dict
     
     try:
         secret_dict = json.loads(secret_string)
-        logger.info(f"Successfully parsed JSON secret '{secret_name}'")
+        logger.info("Successfully parsed JSON secret")
         return secret_dict
         
     except json.JSONDecodeError as e:
-        error_msg = f"Secret '{secret_name}' is not valid JSON: {str(e)}"
+        error_msg = "Secret is not valid JSON"
         logger.error(error_msg)
         raise SecretsManagerError(error_msg)
 
@@ -135,7 +135,9 @@ def get_database_credentials(secret_name: str, region_name: Optional[str] = None
         "password": "db_password",
         "host": "db_host",
         "port": "5432",
-        "database": "db_name"
+        "database": "db_name",
+        "engine": "postgres",
+        "dbClusterIdentifier": "my-cluster"
     }
     
     Args:
@@ -144,7 +146,8 @@ def get_database_credentials(secret_name: str, region_name: Optional[str] = None
                                    environment variable or defaults to us-east-1
     
     Returns:
-        Dict[str, str]: Database credentials with keys: username, password, host, port, database
+        Dict[str, str]: Database credentials with keys: username, password, host, port, 
+                       and optionally: database, engine, dbClusterIdentifier
         
     Raises:
         SecretsManagerError: If the secret cannot be retrieved or required keys are missing
@@ -156,15 +159,25 @@ def get_database_credentials(secret_name: str, region_name: Optional[str] = None
     missing_keys = [key for key in required_keys if key not in credentials]
     
     if missing_keys:
-        error_msg = f"Database secret '{secret_name}' missing required keys: {missing_keys}"
+        error_msg = f"Database secret missing required keys: {missing_keys}"
         logger.error(error_msg)
         raise SecretsManagerError(error_msg)
     
-    # Set default port if not provided
+    # Set default port if not provided, with engine-specific defaults
     if "port" not in credentials:
-        credentials["port"] = "5432"  # Default PostgreSQL port
-        
-    logger.info(f"Successfully retrieved database credentials from '{secret_name}'")
+        engine = credentials.get("engine", "").lower()
+        if engine == "mysql":
+            credentials["port"] = "3306"
+        elif engine in ["postgres", "postgresql"]:
+            credentials["port"] = "5432"
+        else:
+            credentials["port"] = "5432"  # Default to PostgreSQL port
+    
+    # Convert port to string if it's an integer
+    credentials["port"] = str(credentials["port"])
+    
+    # Note: Do not log actual credential values (username, password, host, port, etc.) for security
+    logger.info("Successfully retrieved database credentials")
     return credentials
 
 
@@ -197,7 +210,7 @@ def get_secret_with_fallback(secret_name: str,
     if env_var_name:
         env_value = os.getenv(env_var_name)
         if env_value:
-            logger.info(f"Using environment variable '{env_var_name}' as fallback")
+            logger.info("Using environment variable fallback")
             return env_value
     
     # Try AWS Secrets Manager
@@ -205,9 +218,9 @@ def get_secret_with_fallback(secret_name: str,
         return get_secret(secret_name, region_name)
     except SecretsManagerError as e:
         if env_var_name:
-            error_msg = f"Failed to retrieve secret '{secret_name}' and environment variable '{env_var_name}' is not set: {str(e)}"
+            error_msg = "Failed to retrieve secret and environment variable fallback is not set"
         else:
-            error_msg = f"Failed to retrieve secret '{secret_name}': {str(e)}"
+            error_msg = "Failed to retrieve secret"
         
         logger.error(error_msg)
         raise SecretsManagerError(error_msg)
