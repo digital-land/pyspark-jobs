@@ -12,10 +12,8 @@ from jobs.utils.logger_config import (
     setup_logging, 
     get_logger, 
     log_execution_time, 
-    LogContext,
     set_spark_log_level,
-    quick_setup,
-    S3LogHandler
+    quick_setup
 )
 
 # Example 1: Basic logging setup
@@ -48,8 +46,6 @@ def example_file_logging():
     # Setup logging with file output enabled
     setup_logging(
         log_level="DEBUG",
-        enable_console=True,
-        enable_file=True,
         log_file="logs/example_job.log",
         environment="development"
     )
@@ -70,7 +66,6 @@ def example_environment_config():
     # Set environment variables (in real usage, these would be set by your deployment)
     os.environ["LOG_LEVEL"] = "WARNING"
     os.environ["LOG_FILE"] = "logs/production_job.log"
-    os.environ["LOG_FILE_ENABLED"] = "true"
     os.environ["ENVIRONMENT"] = "production"
     
     # Setup logging using environment variables
@@ -98,22 +93,23 @@ def example_long_running_task():
     return "Task completed successfully"
 
 
-# Example 5: Context logging
-def example_context_logging():
-    """Example of adding context to log messages."""
-    print("\n=== Example 5: Context Logging ===")
+# Example 5: Structured logging (alternative to LogContext)
+def example_structured_logging():
+    """Example of structured logging without LogContext."""
+    print("\n=== Example 5: Structured Logging ===")
     
     logger = get_logger(__name__)
     
     # Normal logging
     logger.info("Processing dataset")
     
-    # Logging with context
-    with LogContext({"job_id": "JOB_12345", "dataset": "transport-access-node"}):
-        logger.info("Processing started for dataset")
-        logger.info("Data transformation in progress")
-        logger.warning("Some data quality issues detected")
-        logger.info("Processing completed successfully")
+    # Structured logging with extra info in message
+    job_id = "JOB_12345"
+    dataset = "transport-access-node"
+    logger.info(f"[{job_id}] [{dataset}] Processing started for dataset")
+    logger.info(f"[{job_id}] [{dataset}] Data transformation in progress")
+    logger.warning(f"[{job_id}] [{dataset}] Some data quality issues detected")
+    logger.info(f"[{job_id}] [{dataset}] Processing completed successfully")
 
 
 # Example 6: Spark logging configuration
@@ -158,32 +154,25 @@ def example_multiple_loggers():
     main_logger.info("Main process completed")
 
 
-# Example 9: Production vs Development logging
-def example_s3_logging():
-    """Example of S3 logging configuration."""
-    print("\n=== Example 9: S3 Logging ===")
+# Example 9: File logging for production
+def example_production_file_logging():
+    """Example of file logging for production environments."""
+    print("\n=== Example 9: Production File Logging ===")
     
-    # S3 logging setup
+    # Production file logging setup
     setup_logging(
         log_level="INFO",
-        enable_console=True,
-        enable_s3=True,
-        s3_bucket="arn:aws:s3:::development-pyspark-jobs-logs",
-        s3_key_prefix="example-logs",
-        environment="development"
+        log_file="logs/production_job.log",
+        environment="production"
     )
     
-    logger = get_logger("s3_example")
+    logger = get_logger("production_example")
     
-    logger.info("This message will be sent to both console and S3")
-    logger.warning("S3 logging buffers messages and uploads periodically")
-    logger.error("Error messages are also captured in S3")
+    logger.info("This message will be sent to both console and file")
+    logger.warning("File logging with rotation handles large log volumes")
+    logger.error("Error messages are captured in the log file")
     
-    # Force flush to S3 (normally happens automatically)
-    for handler in logging.getLogger().handlers:
-        if isinstance(handler, S3LogHandler):
-            handler.flush()
-            break
+    print("Check logs/production_job.log for the logged messages")
 
 
 def example_production_vs_development():
@@ -201,21 +190,18 @@ def example_production_vs_development():
     dev_logger.debug("Debug message with line number")
     dev_logger.info("Info message with detailed context")
     
-    # Production setup (less verbose, no line numbers, S3 logging)
+    # Production setup (less verbose, no line numbers, file logging)
     print("\nProduction logging:")
     setup_logging(
         log_level="WARNING", 
-        enable_console=False,
-        enable_s3=True,
-        s3_bucket="arn:aws:s3:::development-pyspark-jobs-logs",
-        s3_key_prefix="production-logs",
+        log_file="logs/production.log",
         environment="production"
     )
     
     prod_logger = get_logger("production_module")
     prod_logger.debug("This debug won't show")
     prod_logger.info("This info won't show")
-    prod_logger.warning("Production warning message sent to S3")
+    prod_logger.warning("Production warning message logged to file")
 
 
 def main():
@@ -232,11 +218,11 @@ def main():
     result = example_long_running_task()
     print(f"Result: {result}")
     
-    example_context_logging()
+    example_structured_logging()
     example_spark_logging()
     example_quick_setup()
     example_multiple_loggers()
-    example_s3_logging()
+    example_production_file_logging()
     example_production_vs_development()
     
     print("\n" + "=" * 50)
