@@ -4,7 +4,7 @@ This guide explains how to use the centralized logging module in the PySpark job
 
 ## Overview
 
-The `utils.logger_config` module provides a flexible, environment-aware logging configuration that can be used across all PySpark jobs and utilities. It eliminates the need for duplicated logging setup code and ensures consistent logging behavior.
+The `jobs.utils.logger_config` module provides a flexible, environment-aware logging configuration that can be used across all PySpark jobs and utilities. It eliminates the need for duplicated logging setup code and ensures consistent logging behavior.
 
 ## Key Features
 
@@ -22,7 +22,7 @@ The `utils.logger_config` module provides a flexible, environment-aware logging 
 ### Basic Setup
 
 ```python
-from utils.logger_config import setup_logging, get_logger
+from jobs.utils.logger_config import setup_logging, get_logger
 
 # Setup logging (call once at application start)
 setup_logging()
@@ -86,7 +86,7 @@ export LOG_CONSOLE=true
 ### 1. Basic Logging Setup
 
 ```python
-from utils.logger_config import setup_logging, get_logger
+from jobs.utils.logger_config import setup_logging, get_logger
 
 # Setup with custom configuration
 setup_logging(
@@ -102,7 +102,7 @@ logger = get_logger(__name__)
 ### 2. Environment-Based Configuration
 
 ```python
-from utils.logger_config import setup_logging, get_logger
+from jobs.utils.logger_config import setup_logging, get_logger
 
 # Uses environment variables for configuration
 setup_logging()
@@ -113,7 +113,7 @@ logger = get_logger(__name__)
 ### 3. Execution Time Tracking
 
 ```python
-from utils.logger_config import log_execution_time, get_logger
+from jobs.utils.logger_config import log_execution_time, get_logger
 
 logger = get_logger(__name__)
 
@@ -131,7 +131,7 @@ def process_data(df):
 ### 4. Context Logging
 
 ```python
-from utils.logger_config import LogContext, get_logger
+from jobs.utils.logger_config import LogContext, get_logger
 
 logger = get_logger(__name__)
 
@@ -143,7 +143,7 @@ with LogContext({"job_id": "ETL_123", "dataset": "transport"}):
 ### 5. Spark Integration
 
 ```python
-from utils.logger_config import set_spark_log_level
+from jobs.utils.logger_config import set_spark_log_level
 
 # Reduce Spark's verbose logging
 set_spark_log_level("WARN")  # Options: OFF, FATAL, ERROR, WARN, INFO, DEBUG, TRACE, ALL
@@ -152,7 +152,7 @@ set_spark_log_level("WARN")  # Options: OFF, FATAL, ERROR, WARN, INFO, DEBUG, TR
 ### 6. S3 Logging
 
 ```python
-from utils.logger_config import setup_logging, get_logger
+from jobs.utils.logger_config import setup_logging, get_logger
 
 # Setup with S3 logging
 setup_logging(
@@ -174,7 +174,7 @@ logger.info("This message will be sent to both console and S3")
 ### 7. Quick Setup for Scripts
 
 ```python
-from utils.logger_config import quick_setup
+from jobs.utils.logger_config import quick_setup
 
 # One-liner setup for simple scripts
 logger = quick_setup(log_level="INFO", environment="development")
@@ -200,7 +200,7 @@ logger = logging.getLogger(__name__)
 
 **After:**
 ```python
-from utils.logger_config import setup_logging, get_logger, log_execution_time
+from jobs.utils.logger_config import setup_logging, get_logger, log_execution_time
 
 setup_logging(
     log_level=os.getenv("LOG_LEVEL", "INFO"),
@@ -293,7 +293,7 @@ examples/
 ### Debug Logging Configuration
 
 ```python
-from utils.logger_config import get_logging_config
+from jobs.utils.logger_config import get_logging_config
 import json
 
 # Print current logging configuration
@@ -306,7 +306,7 @@ print(json.dumps(config, indent=2))
 If you have existing code with manual logging configuration:
 
 1. **Remove old logging setup**: Delete `LOGGING_CONFIG` dictionaries and `dictConfig()` calls
-2. **Import new module**: `from utils.logger_config import setup_logging, get_logger`
+2. **Import new module**: `from jobs.utils.logger_config import setup_logging, get_logger`
 3. **Setup logging once**: Call `setup_logging()` at application startup
 4. **Get loggers**: Replace `logging.getLogger(__name__)` with `get_logger(__name__)`
 5. **Add decorators**: Use `@log_execution_time` for key functions

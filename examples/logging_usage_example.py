@@ -8,7 +8,7 @@ to set up consistent logging across your PySpark applications.
 import os
 import time
 import logging
-from utils.logger_config import (
+from jobs.utils.logger_config import (
     setup_logging, 
     get_logger, 
     log_execution_time, 

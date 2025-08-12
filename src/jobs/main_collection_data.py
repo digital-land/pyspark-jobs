@@ -18,7 +18,7 @@ from pyspark.sql.types import (StringType,StructField,StructType,TimestampType)
 from pyspark.sql.window import Window
 
 # Import the new logging module
-from utils.logger_config import setup_logging, get_logger, log_execution_time, set_spark_log_level
+from jobs.utils.logger_config import setup_logging, get_logger, log_execution_time, set_spark_log_level
 
 #from utils.path_utils import load_json_from_repo
 

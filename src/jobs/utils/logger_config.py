@@ -6,7 +6,7 @@ all PySpark jobs and utilities. It supports different logging levels, formats,
 and output destinations based on environment settings.
 
 Usage:
-    from utils.logger_config import get_logger, setup_logging
+    from jobs.utils.logger_config import get_logger, setup_logging
     
     # Setup logging configuration (call once at application start)
     setup_logging()
@@ -254,7 +254,7 @@ def get_logging_config(
     
     if enable_s3 and s3_bucket:
         handlers["s3"] = {
-            "class": "utils.logger_config.S3LogHandler",
+            "class": "jobs.utils.logger_config.S3LogHandler",
             "formatter": "detailed",
             "level": log_level,
             "s3_bucket": s3_bucket,

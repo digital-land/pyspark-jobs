@@ -23,7 +23,7 @@ This pattern ensures clean separation of concerns and supports scalable, maintai
 """
 
 from jobs.main_collection_data import main
-from utils.logger_config import setup_logging, get_logger
+from jobs.utils.logger_config import setup_logging, get_logger
 import argparse
 import sys
 
