@@ -1,4 +1,6 @@
-from venv import logger
+from jobs.utils.logger_config import get_logger
+
+logger = get_logger(__name__)
 from pyspark.sql.functions import row_number, lit, first, to_json, struct, col
 from pyspark.sql.window import Window
 

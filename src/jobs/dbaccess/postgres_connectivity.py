@@ -1,7 +1,9 @@
 # -------------------- Postgres table creation --------------------
 
 ##writing to postgres db
-from venv import logger
+from jobs.utils.logger_config import get_logger
+
+logger = get_logger(__name__)
 import psycopg2
 from psycopg2 import sql
 from jobs.utils.aws_secrets_manager import get_secret
