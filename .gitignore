@@ -318,6 +318,14 @@ dist/
 *.egg-info/
 pyspark_jobs_with_deps.zip
 
+# AWS deployment build outputs
+build_output/
+build_venv/
+temp_venv/
+dependencies.tar.gz
+deployment_manifest.json
+upload_to_s3.sh
+
 # Database files
 *.db
 *.sqlite
