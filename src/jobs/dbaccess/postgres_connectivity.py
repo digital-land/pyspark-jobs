@@ -52,6 +52,7 @@ def get_aws_secret():
         "user": username,
         "password": password
     }
+    print(conn_params)
     return conn_params
 
 
@@ -77,9 +78,6 @@ def create_table(conn_params):
         if conn:
             cur.close()
             conn.close()
-
-# Run the function
-create_table(get_aws_secret())
 
 # -------------------- PostgreSQL Writer --------------------
 

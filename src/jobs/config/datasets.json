@@ -3,6 +3,10 @@
     "path": "s3://development-collection-data/transport-access-node-collection/transformed/transport-access-node/",
     "enabled": true
   },
+  "sample-transport-access-node": {
+    "path": "s3://development-collection-data/transport-access-node-collection/transformed/sample-transport-access-node/",
+    "enabled": true
+  },
   "title-boundaries": {
     "path": "s3://development-collection-data/title-boundary-collection/transformed/title-boundary/",
     "enabled": false

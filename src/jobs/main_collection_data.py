@@ -8,6 +8,7 @@ import sys
 import argparse
 from jobs.transform_collection_data import (transform_data_fact, transform_data_fact_res,
                                        transform_data_issue, transform_data_entity) 
+from dbaccess.postgres_connectivity import create_table, get_aws_secret
 #import sqlite3
 from datetime import datetime
 from dataclasses import fields
@@ -268,6 +269,7 @@ def main(args):
         load_type = args.load_type
         data_set = args.data_set
         s3_uri = args.path
+        env=args.env
        
         s3_uri=s3_uri+data_set+"-collection"
 
@@ -356,6 +358,71 @@ def main(args):
         elif(load_type == 'delta'):
             #invoke delta load logic
             logger.info(f"Main: Delta load type specified: {load_type}")
+
+
+            
+        elif(load_type == 'sample'):
+            #invoke sample load logic
+            logger.info(f"Main: Sample load type specified: {load_type}")
+                        #invoke full load logic
+            logger.info(f"Main: Full load type specified: {load_type}")
+            logger.info(f"Main: Load type is {load_type} and dataset is {data_set} and path is {s3_uri}")    
+                       
+            logger.info(f"Main: Processing dataset with path information : {s3_uri}")         
+
+            logger.info("Main: Set target s3 output path")
+            #output_path = f"s3://development-collection-data/emr-data-processing/assemble-parquet/{data_set}/"
+            output_path = f"s3://development-collection-data/{data_set}-collection/sample-assemble-parquet/"
+            logger.info(f" Main: Target output path: {output_path}")
+                         
+            df = None  # Initialise df to avoid UnboundLocalError
+            
+            for table_name in table_names:
+                if(table_name== 'fact' or table_name== 'fact_res' or table_name== 'entity'):
+                    full_path = f"{s3_uri}"+"/transformed/"+data_set+"/*.csv"
+                    logger.info(f"Main: Dataset input path including csv file path: {full_path}")
+                    
+                    
+                    if df is None or df.rdd.isEmpty():
+                        # Read CSV using the dynamic schema
+                        logger.info("Main: dataframe is empty")
+                        df = spark.read.option("header", "true").csv(full_path)
+                        df.cache()  # Cache the DataFrame for performance
+                    
+                    # Show schema and sample data 
+                    df.printSchema() 
+                    logger.info(f"Main: Schema information for the loaded dataframe")
+                    df.show()
+                    #revise this code and for converting spark session as singleton in future
+                    processed_df = transform_data(df,table_name,data_set,spark)
+                    logger.info(f"Main: Transforming data for {table_name} table completed")
+
+                    # Write to S3 for Fact Resource table
+                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}")
+                    logger.info(f"Main: Writing to s3 for {table_name} table completed")
+
+                elif(table_name== 'issue'):
+                    full_path = f"{s3_uri}"+"/issue/"+data_set+"/*.csv"
+                    logger.info(f"Main: Dataset input path including csv file path: {full_path}")
+                    
+                    # Read CSV using the dynamic schema
+                    df = spark.read.option("header", "true").csv(full_path)
+                    df.cache()  # Cache the DataFrame for performance
+
+                    # Show schema and sample data 
+                    df.printSchema() 
+                    logger.info(f"Main: Schema information for the loaded dataframe")
+                    df.show()
+                    processed_df = transform_data(df,table_name,data_set,spark)                                      
+
+                    logger.info(f"Main: Transforming data for {table_name} table completed")
+
+                    # Write to S3 for Fact table
+                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}")
+                    logger.info(f"Main: Writing to s3 for {table_name} table completed") 
+                    create_table(get_aws_secret())
+                    logger.info(f"Main: Invoking postgres table creation is completed")  
+
         else:
             logger.error(f"Main: Invalid load type specified: {load_type}")
             raise ValueError(f"Invalid load type: {load_type}")        
