@@ -22,9 +22,14 @@ Usage:
 This pattern ensures clean separation of concerns and supports scalable, maintainable job deployments.
 """
 
-from asyncio.log import logger
 from jobs.main_collection_data import main
+from utils.logger_config import setup_logging, get_logger
 import argparse
+import sys
+
+# Setup basic logging for the entry point
+setup_logging(log_level="INFO", environment="production")
+logger = get_logger(__name__)
 
 # -------------------- Argument Parser --------------------
 def parse_args():

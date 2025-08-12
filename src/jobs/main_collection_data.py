@@ -1,5 +1,4 @@
 import configparser
-import logging
 import os
 import boto3
 import pkgutil
@@ -12,51 +11,33 @@ from dbaccess.postgres_connectivity import create_table, get_aws_secret
 #import sqlite3
 from datetime import datetime
 from dataclasses import fields
-from logging import config
-from logging.config import dictConfig
 #from jobs import transform_collection_data
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (coalesce,collect_list,concat_ws,dayofmonth,expr,first,month,to_date,year,row_number)
 from pyspark.sql.types import (StringType,StructField,StructType,TimestampType)
 from pyspark.sql.window import Window
 
+# Import the new logging module
+from utils.logger_config import setup_logging, get_logger, log_execution_time, set_spark_log_level
+
 #from utils.path_utils import load_json_from_repo
 
-# -------------------- Logging Configuration --------------------
-LOGGING_CONFIG = {
-    "version": 1,
-    "formatters": {
-        "default": {
-            "format": "[%(asctime)s] %(levelname)s - %(message)s",
-        },
-    },
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-            "formatter": "default",
-            "level": "INFO",
-        },
-    },
-    
-    "file": {
-                "class": "logging.FileHandler",
-                "formatter": "default",
-                "level": "INFO",
-                "filename": "logs/emr_transform_job.log",  # You can customize the path
-                "mode": "a",  # Append mode
-            },
+# -------------------- Logging Setup --------------------
+# Setup logging with environment-specific configuration
+setup_logging(
+    log_level=os.getenv("LOG_LEVEL", "INFO"),
+    enable_file=True,
+    log_file="logs/emr_transform_job.log",
+    enable_s3=True,
+    s3_bucket="arn:aws:s3:::development-pyspark-jobs-logs",
+    s3_key_prefix="pyspark-jobs",
+    environment=os.getenv("ENVIRONMENT", "development")
+)
 
-    "root": {
-        "handlers": ["console"],
-        "level": "INFO",
-    },
-}
-
-dictConfig(LOGGING_CONFIG)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # -------------------- Spark Session --------------------
-#def create_spark_session(config,app_name="EMR Transform Job"):
+@log_execution_time
 def create_spark_session(app_name="EMR Transform Job"):
 
     try:
@@ -71,6 +52,10 @@ def create_spark_session(app_name="EMR Transform Job"):
         ##   .config("spark.jars", jar_path) \
         ##   .getOrCreate()
         spark_session = SparkSession.builder.appName(app_name).getOrCreate()
+        
+        # Set Spark logging level to reduce verbosity
+        #set_spark_log_level("WARN")
+        
         return spark_session
 
     except Exception as e:
@@ -78,7 +63,7 @@ def create_spark_session(app_name="EMR Transform Job"):
         return None
 
 # -------------------- Metadata Loader --------------------
-
+@log_execution_time
 def load_metadata(uri: str) -> dict:
     """
     Load a JSON configuration file from either an S3 URI or a local file path.
@@ -151,6 +136,7 @@ def read_data(spark, input_path):
         raise
 
 # -------------------- Data Transformer --------------------
+@log_execution_time
 def transform_data(df, schema_name, data_set,spark):      
     try:
         dataset_json_transformed_path = "config/transformed_source.json"
@@ -205,6 +191,7 @@ def transform_data(df, schema_name, data_set,spark):
         raise
 
 # -------------------- S3 Writer --------------------
+@log_execution_time
 def write_to_s3(df, output_path):
     try:   
         logger.info(f"Writing data to S3 at {output_path}") 
@@ -258,6 +245,7 @@ def generate_sqlite(df):
 
 
 # -------------------- Main --------------------
+@log_execution_time
 def main(args):
     logger.info(f"Main: Starting ETL process for Collection Data {args.load_type} and dataset {args.data_set}")
     try: 
