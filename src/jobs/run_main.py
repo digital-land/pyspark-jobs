@@ -38,7 +38,7 @@ def parse_args():
         parser.add_argument("--path", type=str, required=True,
                             help="Path to the dataset")
         parser.add_argument("--env", type=str, required=True,
-                            help="Environment (e.g., dev, staging, prod, local)")
+                            help="Environment (e.g., development, staging, production, local)")
         args = parser.parse_args()
         print(f"parse_args:Adding arguments for dataset: {args}")
         return args

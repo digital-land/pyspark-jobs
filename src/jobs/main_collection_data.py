@@ -285,19 +285,7 @@ def main(args):
             logger.info(f"Main: Full load type specified: {load_type}")
             logger.info(f"Main: Load type is {load_type} and dataset is {data_set} and path is {s3_uri}")             
             
-            # Define paths to JSON configuration files
-            #dataset_json_path = "config/datasets.json"  
-            # Relative path within the package
-            #logger.info(f"Main: JSON configuration files path for datasets: {s3_uri}")              
-            # Load AWS configuration
-            #config_json_datasets = load_metadata(s3_uri)
-            #logger.info(f"Main: JSON configuration files for config files: {config_json_datasets}")
-
-            #for dataset, path_info in config_json_datasets.items():
-            #if not path_info.get("enabled", False):
-                #logger.info(f"Main: Skipping dataset with false as enabled flag: {dataset}")
-                #continue
-            #ogger.info(f"Main: Started Processing enabled dataset : {dataset}")
+       
             logger.info(f"Main: Processing dataset with path information : {s3_uri}")            
 
             # todo: for coming sprint
@@ -306,7 +294,7 @@ def main(args):
             ##generate_sqlite(processed_df)
 
             logger.info("Main: Set target s3 output path")
-            output_path = f"s3://development-collection-data/emr-data-processing/assemble-parquet/{data_set}/"
+            output_path = f"s3://{env}-pyspark-assemble-parquet/{data_set}/"
             logger.info(f" Main: Target output path: {output_path}")
                          
             df = None  # Initialise df to avoid UnboundLocalError
@@ -370,7 +358,7 @@ def main(args):
             logger.info(f"Main: Processing dataset with path information : {s3_uri}")         
 
             logger.info("Main: Set target s3 output path")
-            output_path = f"s3://development-collection-data/{data_set}-collection/sample-assemble-parquet/"
+            output_path = f"s3://{env}-pyspark-assemble-parquet/sample-{data_set}/"
             logger.info(f" Main: Target output path: {output_path}")
                          
             df = None  # Initialise df to avoid UnboundLocalError
