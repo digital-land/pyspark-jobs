@@ -270,7 +270,8 @@ def main(args):
         data_set = args.data_set
         s3_uri = args.path
         env=args.env
-       
+        logger.info(f"Main: env variable for the dataset: {env}")
+
         s3_uri=s3_uri+data_set+"-collection"
 
         table_names=["fact","fact_res","entity","issue"]
@@ -364,14 +365,11 @@ def main(args):
         elif(load_type == 'sample'):
             #invoke sample load logic
             logger.info(f"Main: Sample load type specified: {load_type}")
-                        #invoke full load logic
-            logger.info(f"Main: Full load type specified: {load_type}")
             logger.info(f"Main: Load type is {load_type} and dataset is {data_set} and path is {s3_uri}")    
                        
             logger.info(f"Main: Processing dataset with path information : {s3_uri}")         
 
             logger.info("Main: Set target s3 output path")
-            #output_path = f"s3://development-collection-data/emr-data-processing/assemble-parquet/{data_set}/"
             output_path = f"s3://development-collection-data/{data_set}-collection/sample-assemble-parquet/"
             logger.info(f" Main: Target output path: {output_path}")
                          
