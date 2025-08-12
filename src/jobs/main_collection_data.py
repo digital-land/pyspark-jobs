@@ -7,7 +7,7 @@ import sys
 import argparse
 from jobs.transform_collection_data import (transform_data_fact, transform_data_fact_res,
                                        transform_data_issue, transform_data_entity) 
-from dbaccess.postgres_connectivity import create_table, get_aws_secret
+from jobs.dbaccess.postgres_connectivity import create_table, get_aws_secret
 #import sqlite3
 from datetime import datetime
 from dataclasses import fields
