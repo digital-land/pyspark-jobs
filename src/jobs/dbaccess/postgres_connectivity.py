@@ -78,10 +78,7 @@ def get_aws_secret():
             "port": int(port),  # Ensure port is integer
             "user": username,
             "password": password,
-            "timeout": 30,  # Connection timeout in seconds
-            "tcp_keepalives_idle": 600,  # Keep connection alive
-            "tcp_keepalives_interval": 30,
-            "tcp_keepalives_count": 3
+            "timeout": 30  # Connection timeout in seconds
         }
         
         # Don't log the actual connection params as they contain sensitive information
