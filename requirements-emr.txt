@@ -1,9 +1,9 @@
 # EMR Serverless Dependencies
 # This file excludes PySpark since it's pre-installed in EMR Serverless
 
-# AWS SDK and services
-boto3>=1.26.0
-botocore>=1.29.0
+# AWS SDK and services - pinning to compatible versions for EMR Serverless
+boto3>=1.34.0,<2.0.0
+botocore>=1.34.0,<2.0.0
 
 # Database connectivity (pure Python - no binary dependencies)
 pg8000>=1.30.0

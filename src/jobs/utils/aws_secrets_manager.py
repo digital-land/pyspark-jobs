@@ -61,12 +61,39 @@ def get_secret(secret_name: str, region_name: Optional[str] = None) -> str:
     logger.info(f"Retrieving secret '{secret_name}'")
     
     try:
-        # Create a Secrets Manager client
-        session = boto3.session.Session()
-        client = session.client(
-            service_name='secretsmanager',
-            region_name=region_name
-        )
+        # Try multiple approaches to create the client to handle EMR Serverless environment issues
+        client = None
+        
+        # Method 1: Try creating client directly with boto3 (standard approach)
+        try:
+            client = boto3.client(
+                service_name='secretsmanager',
+                region_name=region_name
+            )
+            logger.info("Successfully created Secrets Manager client using direct boto3.client method")
+        except Exception as e1:
+            logger.warning(f"Failed to create client with direct method: {e1}")
+            
+            # Method 2: Try with explicit session and minimal configuration
+            try:
+                session = boto3.session.Session(region_name=region_name)
+                client = session.client('secretsmanager')
+                logger.info("Successfully created Secrets Manager client using session method")
+            except Exception as e2:
+                logger.warning(f"Failed to create client with session method: {e2}")
+                
+                # Method 3: Try with environment-based configuration
+                try:
+                    # Set environment variable for botocore
+                    os.environ['AWS_DEFAULT_REGION'] = region_name
+                    client = boto3.client('secretsmanager')
+                    logger.info("Successfully created Secrets Manager client using environment method")
+                except Exception as e3:
+                    logger.error(f"All client creation methods failed. Last error: {e3}")
+                    raise e3
+        
+        if client is None:
+            raise SecretsManagerError("Failed to create Secrets Manager client")
         
         # Retrieve the secret
         response = client.get_secret_value(SecretId=secret_name)
@@ -91,8 +118,9 @@ def get_secret(secret_name: str, region_name: Optional[str] = None) -> str:
         raise SecretsManagerError(error_msg)
         
     except Exception as e:
-        error_msg = "Unexpected error retrieving secret"
+        error_msg = f"Unexpected error retrieving secret: {str(e)}"
         logger.error(error_msg)
+        logger.error(f"Exception details: {type(e).__name__}: {e}")
         raise SecretsManagerError(error_msg)
 
 
@@ -179,6 +207,78 @@ def get_database_credentials(secret_name: str, region_name: Optional[str] = None
     # Note: Do not log actual credential values (username, password, host, port, etc.) for security
     logger.info("Successfully retrieved database credentials")
     return credentials
+
+
+def get_secret_emr_compatible(secret_name: str, region_name: Optional[str] = None) -> str:
+    """
+    EMR Serverless compatible secret retrieval with multiple fallback strategies.
+    
+    This function is specifically designed to handle the botocore data loading issues
+    that can occur in EMR Serverless environments.
+    
+    Args:
+        secret_name (str): The name or ARN of the secret to retrieve
+        region_name (str, optional): AWS region. If not provided, uses AWS_REGION 
+                                   environment variable or defaults to eu-west-2
+    
+    Returns:
+        str: The secret string value
+        
+    Raises:
+        SecretsManagerError: If the secret cannot be retrieved through any method
+        ValueError: If secret_name is empty or None
+    """
+    if not secret_name:
+        raise ValueError("secret_name cannot be empty or None")
+    
+    if not region_name:
+        region_name = os.getenv("AWS_REGION", "eu-west-2")
+    
+    logger.info(f"EMR-compatible retrieval of secret '{secret_name}'")
+    
+    # Strategy 1: Try environment variable override first (for testing/development)
+    env_secret_name = secret_name.replace("/", "_").replace("-", "_").upper()
+    env_value = os.getenv(f"SECRET_{env_secret_name}")
+    if env_value:
+        logger.info(f"Using environment variable fallback: SECRET_{env_secret_name}")
+        return env_value
+    
+    # Strategy 2: Try the regular get_secret method
+    try:
+        return get_secret(secret_name, region_name)
+    except Exception as e:
+        logger.warning(f"Regular secret retrieval failed: {e}")
+        
+        # Strategy 3: Try hardcoded region endpoints as last resort
+        try:
+            logger.info("Attempting fallback with explicit endpoint configuration")
+            import botocore.config
+            
+            # Try with explicit endpoint configuration
+            config = botocore.config.Config(
+                region_name=region_name,
+                retries={'max_attempts': 3},
+                max_pool_connections=50
+            )
+            
+            client = boto3.client(
+                'secretsmanager',
+                region_name=region_name,
+                config=config
+            )
+            
+            response = client.get_secret_value(SecretId=secret_name)
+            secret_value = response.get('SecretString')
+            
+            if secret_value is None:
+                raise SecretsManagerError("Secret does not contain a string value")
+                
+            logger.info("Successfully retrieved secret using fallback method")
+            return secret_value
+            
+        except Exception as fallback_error:
+            logger.error(f"All secret retrieval strategies failed. Last error: {fallback_error}")
+            raise SecretsManagerError(f"Failed to retrieve secret '{secret_name}' using any available method. Ensure AWS credentials are properly configured and the secret exists in region {region_name}")
 
 
 def get_secret_with_fallback(secret_name: str, 

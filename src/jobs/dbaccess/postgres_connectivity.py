@@ -6,7 +6,7 @@ from jobs.utils.logger_config import get_logger
 
 logger = get_logger(__name__)
 import pg8000
-from jobs.utils.aws_secrets_manager import get_secret
+from jobs.utils.aws_secrets_manager import get_secret_emr_compatible
 
 # Define your table schema
 # https://github.com/digital-land/digital-land.info/blob/main/application/db/models.py - refered from here
@@ -35,27 +35,63 @@ pyspark_entity_columns = {
 
 
 def get_aws_secret():
-    aws_secrets_json = get_secret("dev/pyspark/postgres")
+    """
+    Retrieve AWS secrets for PostgreSQL connection with EMR Serverless compatibility.
     
-    # Parse the JSON string
-    secrets = json.loads(aws_secrets_json)
+    This function uses the EMR-compatible secret retrieval method that includes
+    multiple fallback strategies to handle botocore issues in EMR environments.
+    
+    Returns:
+        dict: PostgreSQL connection parameters
+        
+    Raises:
+        Exception: If secrets cannot be retrieved or parsed
+    """
+    try:
+        logger.info("Attempting to retrieve PostgreSQL secrets using EMR-compatible method")
+        aws_secrets_json = get_secret_emr_compatible("dev/pyspark/postgres")
+        
+        # Parse the JSON string
+        secrets = json.loads(aws_secrets_json)
 
-    # Extract required fields
-    username = secrets.get("username")
-    password = secrets.get("password")
-    dbName = secrets.get("dbName")
-    host = secrets.get("host")
-    port = secrets.get("port")
-    print(f"get_aws_secret:Retrieved secrets for {dbName} at {host}:{port} with user {username}")
-    conn_params ={
-        "dbname": dbName,
-        "host": host,
-        "port": port,
-        "user": username,
-        "password": password
-    }
-    print(conn_params)
-    return conn_params
+        # Extract required fields
+        username = secrets.get("username")
+        password = secrets.get("password")
+        dbName = secrets.get("dbName")
+        host = secrets.get("host")
+        port = secrets.get("port")
+        
+        # Validate required fields
+        required_fields = ["username", "password", "dbName", "host", "port"]
+        missing_fields = [field for field in required_fields if not secrets.get(field)]
+        
+        if missing_fields:
+            error_msg = f"Missing required secret fields: {missing_fields}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        
+        logger.info(f"get_aws_secret: Retrieved secrets for {dbName} at {host}:{port} with user {username}")
+        
+        conn_params = {
+            "dbname": dbName,
+            "host": host,
+            "port": int(port),  # Ensure port is integer
+            "user": username,
+            "password": password
+        }
+        
+        # Don't log the actual connection params as they contain sensitive information
+        logger.info("get_aws_secret: Successfully prepared connection parameters")
+        return conn_params
+        
+    except json.JSONDecodeError as e:
+        error_msg = f"Failed to parse secrets JSON: {e}"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+    except Exception as e:
+        error_msg = f"Failed to retrieve AWS secrets: {e}"
+        logger.error(error_msg)
+        raise
 
 
 # Create table if not exists

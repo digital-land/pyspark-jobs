@@ -184,6 +184,34 @@ build_dependencies() {
     
     # Create dependencies archive
     cd temp_venv/lib/python*/site-packages/
+    
+    # Verify critical dependencies are present
+    print_status "Verifying critical dependencies are present..."
+    critical_deps=("boto3" "botocore" "pg8000")
+    missing_deps=()
+    
+    for dep in "${critical_deps[@]}"; do
+        if [[ ! -d "$dep" && ! -d "${dep}"* ]]; then
+            missing_deps+=("$dep")
+        fi
+    done
+    
+    if [[ ${#missing_deps[@]} -gt 0 ]]; then
+        print_error "Critical dependencies missing: ${missing_deps[*]}"
+        print_error "This may cause runtime errors in EMR Serverless."
+        exit 1
+    fi
+    
+    print_success "All critical dependencies verified present"
+    
+    # Check for botocore data directory (this is what causes the DataNotFoundError)
+    if [[ -d "botocore/data" ]]; then
+        print_success "botocore data directory found - this should prevent DataNotFoundError"
+    else
+        print_warning "botocore data directory not found - this may cause DataNotFoundError in EMR"
+        print_warning "Consider upgrading botocore version in requirements-emr.txt"
+    fi
+    
     zip -r "$BUILD_DIR/dependencies/dependencies.zip" .
     
     # Deactivate and cleanup
