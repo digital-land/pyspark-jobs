@@ -339,6 +339,8 @@ def main(args):
             logger.info(f"Main: Sample load type specified: {load_type}")
             logger.info(f"Main: Load type is {load_type} and dataset is {data_set} and path is {s3_uri}")    
                        
+
+                     
             logger.info(f"Main: Processing dataset with path information : {s3_uri}")         
 
             logger.info("Main: Set target s3 output path")
@@ -349,7 +351,7 @@ def main(args):
             
             for table_name in table_names:
                 if(table_name== 'fact' or table_name== 'fact_res' or table_name== 'entity'):
-                    full_path = f"{s3_uri}"+"/transformed/"+data_set+"/*.csv"
+                    full_path = f"{s3_uri}"+"/transformed/sample-"+data_set+"/*.csv"
                     logger.info(f"Main: Dataset input path including csv file path: {full_path}")
                     
                     
