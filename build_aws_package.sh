@@ -165,20 +165,22 @@ build_dependencies() {
     # Install only the external dependencies (not pre-installed in EMR Serverless)
     print_status "Installing external dependencies..."
     
-    # Install psycopg2-binary (using current platform - will work for EMR Serverless)
-    print_status "Installing psycopg2-binary..."
+    # Install EMR-specific dependencies (excluding PySpark which is pre-installed)
+    print_status "Installing EMR dependencies (excluding PySpark)..."
     print_warning "Note: Dependencies will be packaged for current platform. For Linux compatibility,"
     print_warning "consider building this package in a Linux environment or Docker container."
     print_warning "To use Docker for Linux-compatible build, run: ./build_aws_package.sh --docker"
     
-    # Install psycopg2-binary normally
-    pip install --quiet psycopg2-binary>=2.9.0 || {
-        print_error "Failed to install psycopg2-binary."
+    # Install dependencies from EMR requirements file
+    if [[ -f "$PROJECT_DIR/requirements-emr.txt" ]]; then
+        pip install --quiet -r "$PROJECT_DIR/requirements-emr.txt" || {
+            print_error "Failed to install EMR dependencies."
+            exit 1
+        }
+    else
+        print_error "requirements-emr.txt not found. Please create it or use regular requirements.txt"
         exit 1
-    }
-    
-    # Install other dependencies
-    pip install --quiet PyYAML==6.0.1 typing-extensions==4.8.0
+    fi
     
     # Create dependencies archive
     cd temp_venv/lib/python*/site-packages/
@@ -201,8 +203,8 @@ build_dependencies_docker() {
 FROM python:3.9-slim
 RUN apt-get update && apt-get install -y zip && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
-COPY requirements.txt /build/
-RUN pip install --no-cache-dir --target /build/deps -r requirements.txt && \
+COPY requirements-emr.txt /build/
+RUN pip install --no-cache-dir --target /build/deps -r requirements-emr.txt && \
     cd /build/deps && \
     zip -r /build/dependencies.zip .
 EOF

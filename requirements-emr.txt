@@ -1,0 +1,18 @@
+# EMR Serverless Dependencies
+# This file excludes PySpark since it's pre-installed in EMR Serverless
+
+# AWS SDK and services
+boto3>=1.26.0
+botocore>=1.29.0
+
+# Database connectivity
+psycopg2-binary>=2.9.0
+
+# Configuration and data handling
+PyYAML>=6.0
+
+# Python standard library extensions
+typing-extensions>=4.0.0
+
+# Package metadata
+setuptools>=65.0.0
