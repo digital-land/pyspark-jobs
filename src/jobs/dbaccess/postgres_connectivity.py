@@ -5,8 +5,7 @@ import json
 from jobs.utils.logger_config import get_logger
 
 logger = get_logger(__name__)
-import psycopg2
-from psycopg2 import sql
+import pg8000
 from jobs.utils.aws_secrets_manager import get_secret
 
 # Define your table schema
@@ -64,13 +63,11 @@ def create_table(conn_params):
     conn = None
     cur = None
     try:
-        conn = psycopg2.connect(**conn_params)
+        conn = pg8000.connect(**conn_params)
         cur = conn.cursor()
         # Build CREATE TABLE SQL dynamically
         column_defs = ", ".join([f"{col} {dtype}" for col, dtype in pyspark_entity_columns.items()])
-        create_query = sql.SQL(
-            f"CREATE TABLE IF NOT EXISTS {dbtable_name} ({column_defs});"
-        )
+        create_query = f"CREATE TABLE IF NOT EXISTS {dbtable_name} ({column_defs});"
         logger.info(f"create_table:Creating table {dbtable_name} with columns: {pyspark_entity_columns.keys()}")
 
         cur.execute(create_query)

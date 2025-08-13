@@ -26,11 +26,7 @@ from jobs.utils.logger_config import setup_logging, get_logger, log_execution_ti
 # Setup logging with environment-specific configuration
 setup_logging(
     log_level=os.getenv("LOG_LEVEL", "INFO"),
-    enable_file=True,
     log_file="logs/emr_transform_job.log",
-    enable_s3=True,
-    s3_bucket="arn:aws:s3:::development-pyspark-jobs-logs",
-    s3_key_prefix="pyspark-jobs",
     environment=os.getenv("ENVIRONMENT", "development")
 )
 
