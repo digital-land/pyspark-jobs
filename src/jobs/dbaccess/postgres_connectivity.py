@@ -73,7 +73,7 @@ def get_aws_secret():
         logger.info(f"get_aws_secret: Retrieved secrets for {dbName} at {host}:{port} with user {username}")
         
         conn_params = {
-            "dbname": dbName,
+            "database": dbName,  # pg8000 uses 'database' not 'dbname'
             "host": host,
             "port": int(port),  # Ensure port is integer
             "user": username,
