@@ -185,32 +185,46 @@ build_dependencies() {
     # Create dependencies archive
     cd temp_venv/lib/python*/site-packages/
     
-    # Verify critical dependencies are present
-    print_status "Verifying critical dependencies are present..."
-    critical_deps=("boto3" "botocore" "pg8000")
+    # Verify dependencies and ensure AWS SDK packages are NOT included
+    print_status "Verifying dependencies..."
+    
+    # Check that AWS SDK packages are NOT included (they should use native EMR versions)
+    aws_packages=("boto3" "botocore")
+    found_aws_packages=()
+    
+    for pkg in "${aws_packages[@]}"; do
+        if [[ -d "$pkg" || -d "${pkg}"* ]]; then
+            found_aws_packages+=("$pkg")
+        fi
+    done
+    
+    if [[ ${#found_aws_packages[@]} -gt 0 ]]; then
+        print_error "AWS SDK packages found in dependencies: ${found_aws_packages[*]}"
+        print_error "These packages should NOT be included as they are pre-installed in EMR Serverless."
+        print_error "This can cause the 'DataNotFoundError: Unable to load data for: endpoints' error."
+        print_error "Remove boto3/botocore from requirements-emr.txt and rebuild."
+        exit 1
+    fi
+    
+    print_success "✅ AWS SDK packages correctly excluded (using EMR native versions)"
+    
+    # Check for required custom dependencies
+    required_deps=("pg8000")
     missing_deps=()
     
-    for dep in "${critical_deps[@]}"; do
+    for dep in "${required_deps[@]}"; do
         if [[ ! -d "$dep" && ! -d "${dep}"* ]]; then
             missing_deps+=("$dep")
         fi
     done
     
     if [[ ${#missing_deps[@]} -gt 0 ]]; then
-        print_error "Critical dependencies missing: ${missing_deps[*]}"
-        print_error "This may cause runtime errors in EMR Serverless."
+        print_error "Required dependencies missing: ${missing_deps[*]}"
+        print_error "Please check requirements-emr.txt"
         exit 1
     fi
     
-    print_success "All critical dependencies verified present"
-    
-    # Check for botocore data directory (this is what causes the DataNotFoundError)
-    if [[ -d "botocore/data" ]]; then
-        print_success "botocore data directory found - this should prevent DataNotFoundError"
-    else
-        print_warning "botocore data directory not found - this may cause DataNotFoundError in EMR"
-        print_warning "Consider upgrading botocore version in requirements-emr.txt"
-    fi
+    print_success "✅ All required custom dependencies present"
     
     zip -r "$BUILD_DIR/dependencies/dependencies.zip" .
     
