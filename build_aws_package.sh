@@ -149,6 +149,12 @@ build_dependencies() {
     
     cd "$PROJECT_DIR"
     
+    # Check if Docker is available for Linux-compatible builds
+    if command_exists docker && [[ "$1" == "--docker" ]]; then
+        build_dependencies_docker
+        return
+    fi
+    
     # Create temporary virtual environment
     $PYTHON_VERSION -m venv temp_venv
     source temp_venv/bin/activate
@@ -159,13 +165,16 @@ build_dependencies() {
     # Install only the external dependencies (not pre-installed in EMR Serverless)
     print_status "Installing external dependencies..."
     
-    # Install psycopg2-binary first with binary preference
-    pip install --quiet --only-binary=psycopg2-binary psycopg2-binary==2.9.7 || {
-        print_warning "Failed to install psycopg2-binary==2.9.7, trying latest version..."
-        pip install --quiet --only-binary=psycopg2-binary psycopg2-binary || {
-            print_error "Failed to install psycopg2-binary. Please install PostgreSQL development libraries."
-            exit 1
-        }
+    # Install psycopg2-binary (using current platform - will work for EMR Serverless)
+    print_status "Installing psycopg2-binary..."
+    print_warning "Note: Dependencies will be packaged for current platform. For Linux compatibility,"
+    print_warning "consider building this package in a Linux environment or Docker container."
+    print_warning "To use Docker for Linux-compatible build, run: ./build_aws_package.sh --docker"
+    
+    # Install psycopg2-binary normally
+    pip install --quiet psycopg2-binary>=2.9.0 || {
+        print_error "Failed to install psycopg2-binary."
+        exit 1
     }
     
     # Install other dependencies
@@ -181,6 +190,53 @@ build_dependencies() {
     rm -rf temp_venv/
     
     print_success "Dependencies archive created: dependencies.zip"
+}
+
+# Create dependencies using Docker for Linux compatibility
+build_dependencies_docker() {
+    print_status "Creating dependencies using Docker for Linux compatibility..."
+    
+    # Create a temporary Dockerfile for dependency building
+    cat > temp_dockerfile << 'EOF'
+FROM python:3.9-slim
+RUN apt-get update && apt-get install -y zip && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+COPY requirements.txt /build/
+RUN pip install --no-cache-dir --target /build/deps -r requirements.txt && \
+    cd /build/deps && \
+    zip -r /build/dependencies.zip .
+EOF
+    
+    # Build dependencies in Docker container
+    print_status "Building dependencies in Docker container..."
+    docker build -f temp_dockerfile -t pyspark-deps-builder . || {
+        print_error "Failed to build Docker image for dependencies"
+        rm -f temp_dockerfile
+        exit 1
+    }
+    
+    # Extract the dependencies.zip from the built image
+    docker create --name temp-deps-container pyspark-deps-builder || {
+        print_error "Failed to create temporary container"
+        rm -f temp_dockerfile
+        exit 1
+    }
+    
+    docker cp temp-deps-container:/build/dependencies.zip "$BUILD_DIR/dependencies/" || {
+        print_error "Failed to copy dependencies from Docker container"
+        docker rm temp-deps-container
+        rm -f temp_dockerfile
+        exit 1
+    }
+    
+    # Clean up temporary container
+    docker rm temp-deps-container
+    
+    # Clean up
+    docker rmi pyspark-deps-builder >/dev/null 2>&1 || true
+    rm -f temp_dockerfile
+    
+    print_success "Dependencies archive created using Docker: dependencies.zip"
 }
 
 # Copy entry scripts
@@ -257,14 +313,17 @@ echo "Uploading files to S3..."
 # Upload wheel package
 echo "Uploading wheel package..."
 aws s3 cp "$SCRIPT_DIR/whl_pkg/"*.whl "s3://$S3_BUCKET/pkg/whl_pkg/"
+aws s3 cp "$SCRIPT_DIR/whl_pkg/"*.whl "s3://$S3_BUCKET/emr-data-processing/src0/whl_pkg/"
 
 # Upload dependencies
 echo "Uploading dependencies..."
 aws s3 cp "$SCRIPT_DIR/dependencies/dependencies.zip" "s3://$S3_BUCKET/pkg/dependencies/"
+aws s3 cp "$SCRIPT_DIR/dependencies/dependencies.zip" "s3://$S3_BUCKET/emr-data-processing/src0/dependencies/dependencies.zip"
 
 # Upload entry script
 echo "Uploading entry script..."
 aws s3 cp "$SCRIPT_DIR/entry_script/run_main.py" "s3://$S3_BUCKET/pkg/entry_script/"
+aws s3 cp "$SCRIPT_DIR/entry_script/run_main.py" "s3://$S3_BUCKET/emr-data-processing/src0/entry_script/"
 
 echo "Upload completed successfully!"
 echo ""
@@ -332,7 +391,7 @@ main() {
     clean_build
     setup_build_dir
     build_wheel
-    build_dependencies
+    build_dependencies "$1"
     copy_entry_scripts
     generate_manifest
     generate_upload_script

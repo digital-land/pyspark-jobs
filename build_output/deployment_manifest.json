@@ -1,7 +1,7 @@
 {
     "project": "pyspark-jobs",
     "version": "0.1.0",
-    "build_timestamp": "2025-08-12T23:11:06Z",
+    "build_timestamp": "2025-08-13T01:10:01Z",
     "s3_bucket": "development-pyspark-jobs-codepackage",
     "files": {
         "wheel_package": {
@@ -10,8 +10,8 @@
             "description": "Main application wheel package"
         },
         "dependencies": {
-            "local_path": "dependencies/dependencies.tar.gz",
-            "s3_path": "s3://development-pyspark-jobs-codepackage/pkg/dependencies/dependencies.tar.gz",
+            "local_path": "dependencies/dependencies.zip",
+            "s3_path": "s3://development-pyspark-jobs-codepackage/pkg/dependencies/dependencies.zip",
             "description": "External Python dependencies archive"
         },
         "entry_script": {
@@ -22,6 +22,6 @@
     },
     "emr_serverless_config": {
         "entryPoint": "s3://development-pyspark-jobs-codepackage/pkg/entry_script/run_main.py",
-        "sparkSubmitParameters": "--py-files s3://development-pyspark-jobs-codepackage/pkg/whl_pkg/pyspark_jobs-0.1.0-py3-none-any.whl --archives s3://development-pyspark-jobs-codepackage/pkg/dependencies/dependencies.tar.gz#deps --conf spark.emr-serverless.driverEnv.PYTHONPATH=/home/hadoop/deps --conf spark.emr-serverless.executorEnv.PYTHONPATH=/home/hadoop/deps"
+        "sparkSubmitParameters": "--py-files s3://development-pyspark-jobs-codepackage/pkg/whl_pkg/pyspark_jobs-0.1.0-py3-none-any.whl,s3://development-pyspark-jobs-codepackage/pkg/dependencies/dependencies.zip"
     }
 }

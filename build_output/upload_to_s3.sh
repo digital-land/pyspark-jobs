@@ -13,14 +13,17 @@ echo "Uploading files to S3..."
 # Upload wheel package
 echo "Uploading wheel package..."
 aws s3 cp "$SCRIPT_DIR/whl_pkg/"*.whl "s3://$S3_BUCKET/pkg/whl_pkg/"
+aws s3 cp "$SCRIPT_DIR/whl_pkg/"*.whl "s3://$S3_BUCKET/emr-data-processing/src0/whl_pkg/"
 
 # Upload dependencies
 echo "Uploading dependencies..."
 aws s3 cp "$SCRIPT_DIR/dependencies/dependencies.zip" "s3://$S3_BUCKET/pkg/dependencies/"
+aws s3 cp "$SCRIPT_DIR/dependencies/dependencies.zip" "s3://$S3_BUCKET/emr-data-processing/src0/dependencies/dependencies.zip"
 
 # Upload entry script
 echo "Uploading entry script..."
 aws s3 cp "$SCRIPT_DIR/entry_script/run_main.py" "s3://$S3_BUCKET/pkg/entry_script/"
+aws s3 cp "$SCRIPT_DIR/entry_script/run_main.py" "s3://$S3_BUCKET/emr-data-processing/src0/entry_script/"
 
 echo "Upload completed successfully!"
 echo ""
