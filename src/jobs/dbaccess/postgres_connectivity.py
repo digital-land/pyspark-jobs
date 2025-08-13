@@ -77,7 +77,11 @@ def get_aws_secret():
             "host": host,
             "port": int(port),  # Ensure port is integer
             "user": username,
-            "password": password
+            "password": password,
+            "timeout": 30,  # Connection timeout in seconds
+            "tcp_keepalives_idle": 600,  # Keep connection alive
+            "tcp_keepalives_interval": 30,
+            "tcp_keepalives_count": 3
         }
         
         # Don't log the actual connection params as they contain sensitive information
@@ -95,28 +99,80 @@ def get_aws_secret():
 
 
 # Create table if not exists
-def create_table(conn_params):
+def create_table(conn_params, max_retries=3, retry_delay=5):
+    """
+    Create table with retry logic and better error handling.
+    
+    Args:
+        conn_params (dict): Database connection parameters
+        max_retries (int): Maximum number of connection attempts
+        retry_delay (int): Delay between retries in seconds
+    """
+    import time
+    from pg8000.exceptions import InterfaceError, DatabaseError
+    
     conn = None
     cur = None
-    try:
-        conn = pg8000.connect(**conn_params)
-        cur = conn.cursor()
-        # Build CREATE TABLE SQL dynamically
-        column_defs = ", ".join([f"{col} {dtype}" for col, dtype in pyspark_entity_columns.items()])
-        create_query = f"CREATE TABLE IF NOT EXISTS {dbtable_name} ({column_defs});"
-        logger.info(f"create_table:Creating table {dbtable_name} with columns: {pyspark_entity_columns.keys()}")
+    
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"create_table: Attempting database connection (attempt {attempt + 1}/{max_retries})")
+            logger.info(f"create_table: Connecting to {conn_params['host']}:{conn_params['port']}")
+            
+            conn = pg8000.connect(**conn_params)
+            cur = conn.cursor()
+            
+            # Build CREATE TABLE SQL dynamically
+            column_defs = ", ".join([f"{col} {dtype}" for col, dtype in pyspark_entity_columns.items()])
+            create_query = f"CREATE TABLE IF NOT EXISTS {dbtable_name} ({column_defs});"
+            logger.info(f"create_table: Creating table {dbtable_name} with columns: {list(pyspark_entity_columns.keys())}")
 
-        cur.execute(create_query)
-        conn.commit()
-        logger.info(f"create_table:Table '{dbtable_name}' created successfully (if it didn't exist).")
-
-    except Exception as e:
-        logger.error(f"create_table:Error creating table: {e}", exc_info=True)
-    finally:
-        if cur:
-            cur.close()
-        if conn:
-            conn.close()
+            cur.execute(create_query)
+            conn.commit()
+            logger.info(f"create_table: Table '{dbtable_name}' created successfully (if it didn't exist).")
+            return  # Success, exit function
+            
+        except InterfaceError as e:
+            logger.error(f"create_table: Network/Interface error (attempt {attempt + 1}/{max_retries}): {e}")
+            if "Can't create a connection" in str(e) or "timeout" in str(e).lower():
+                logger.error("create_table: This appears to be a network connectivity issue.")
+                logger.error("create_table: Possible causes:")
+                logger.error("create_table: 1. EMR Serverless not configured in correct VPC")
+                logger.error("create_table: 2. Security group rules blocking connection")
+                logger.error("create_table: 3. RDS database not accessible from EMR subnet")
+            
+            if attempt < max_retries - 1:
+                logger.info(f"create_table: Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                logger.error("create_table: All connection attempts failed")
+                raise
+                
+        except DatabaseError as e:
+            logger.error(f"create_table: Database error: {e}")
+            raise  # Don't retry database errors
+            
+        except Exception as e:
+            logger.error(f"create_table: Unexpected error (attempt {attempt + 1}/{max_retries}): {e}", exc_info=True)
+            if attempt < max_retries - 1:
+                logger.info(f"create_table: Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                raise
+        finally:
+            if cur:
+                try:
+                    cur.close()
+                except Exception as e:
+                    logger.warning(f"create_table: Error closing cursor: {e}")
+            if conn:
+                try:
+                    conn.close()
+                except Exception as e:
+                    logger.warning(f"create_table: Error closing connection: {e}")
+            # Reset for next iteration
+            conn = None
+            cur = None
 
 # -------------------- PostgreSQL Writer --------------------
 
