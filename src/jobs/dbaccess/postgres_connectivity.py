@@ -1,6 +1,7 @@
 # -------------------- Postgres table creation --------------------
 
 ##writing to postgres db
+import json
 from jobs.utils.logger_config import get_logger
 
 logger = get_logger(__name__)
@@ -60,6 +61,8 @@ def get_aws_secret():
 
 # Create table if not exists
 def create_table(conn_params):
+    conn = None
+    cur = None
     try:
         conn = psycopg2.connect(**conn_params)
         cur = conn.cursor()
@@ -77,8 +80,9 @@ def create_table(conn_params):
     except Exception as e:
         logger.error(f"create_table:Error creating table: {e}", exc_info=True)
     finally:
-        if conn:
+        if cur:
             cur.close()
+        if conn:
             conn.close()
 
 # -------------------- PostgreSQL Writer --------------------

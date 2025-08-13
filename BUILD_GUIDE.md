@@ -36,7 +36,7 @@ build_output/
 ├── whl_pkg/
 │   └── pyspark_jobs-0.1.0-py3-none-any.whl
 ├── dependencies/
-│   └── dependencies.tar.gz
+│   └── dependencies.zip
 ├── entry_script/
 │   └── run_main.py
 ├── deployment_manifest.json
@@ -58,7 +58,7 @@ Use the configuration from `deployment_manifest.json` for your EMR Serverless jo
 ```json
 {
   "entryPoint": "s3://development-pyspark-jobs-codepackage/pkg/entry_script/run_main.py",
-  "sparkSubmitParameters": "--py-files s3://development-pyspark-jobs-codepackage/pkg/whl_pkg/pyspark_jobs-0.1.0-py3-none-any.whl --archives s3://development-pyspark-jobs-codepackage/pkg/dependencies/dependencies.tar.gz#deps --conf spark.emr-serverless.driverEnv.PYTHONPATH=/home/hadoop/deps --conf spark.emr-serverless.executorEnv.PYTHONPATH=/home/hadoop/deps"
+  "sparkSubmitParameters": "--py-files s3://development-pyspark-jobs-codepackage/pkg/whl_pkg/pyspark_jobs-0.1.0-py3-none-any.whl,s3://development-pyspark-jobs-codepackage/pkg/dependencies/dependencies.zip"
 }
 ```
 
@@ -99,7 +99,7 @@ Or upload files individually:
 
 ```bash
 aws s3 cp build_output/whl_pkg/*.whl s3://development-pyspark-jobs-codepackage/pkg/whl_pkg/
-aws s3 cp build_output/dependencies/dependencies.tar.gz s3://development-pyspark-jobs-codepackage/pkg/dependencies/
+aws s3 cp build_output/dependencies/dependencies.zip s3://development-pyspark-jobs-codepackage/pkg/dependencies/
 aws s3 cp build_output/entry_script/run_main.py s3://development-pyspark-jobs-codepackage/pkg/entry_script/
 ```
 

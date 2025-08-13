@@ -173,14 +173,14 @@ build_dependencies() {
     
     # Create dependencies archive
     cd temp_venv/lib/python*/site-packages/
-    tar -czf "$BUILD_DIR/dependencies/dependencies.tar.gz" .
+    zip -r "$BUILD_DIR/dependencies/dependencies.zip" .
     
     # Deactivate and cleanup
     cd "$PROJECT_DIR"
     deactivate
     rm -rf temp_venv/
     
-    print_success "Dependencies archive created: dependencies.tar.gz"
+    print_success "Dependencies archive created: dependencies.zip"
 }
 
 # Copy entry scripts
@@ -217,8 +217,8 @@ generate_manifest() {
             "description": "Main application wheel package"
         },
         "dependencies": {
-            "local_path": "dependencies/dependencies.tar.gz",
-            "s3_path": "s3://$S3_BUCKET/pkg/dependencies/dependencies.tar.gz",
+            "local_path": "dependencies/dependencies.zip",
+            "s3_path": "s3://$S3_BUCKET/pkg/dependencies/dependencies.zip",
             "description": "External Python dependencies archive"
         },
         "entry_script": {
@@ -229,7 +229,7 @@ generate_manifest() {
     },
     "emr_serverless_config": {
         "entryPoint": "s3://$S3_BUCKET/pkg/entry_script/run_main.py",
-        "sparkSubmitParameters": "--py-files s3://$S3_BUCKET/pkg/whl_pkg/$WHEEL_NAME --archives s3://$S3_BUCKET/pkg/dependencies/dependencies.tar.gz#deps --conf spark.emr-serverless.driverEnv.PYTHONPATH=/home/hadoop/deps --conf spark.emr-serverless.executorEnv.PYTHONPATH=/home/hadoop/deps"
+        "sparkSubmitParameters": "--py-files s3://$S3_BUCKET/pkg/whl_pkg/$WHEEL_NAME,s3://$S3_BUCKET/pkg/dependencies/dependencies.zip"
     }
 }
 EOF
@@ -260,7 +260,7 @@ aws s3 cp "$SCRIPT_DIR/whl_pkg/"*.whl "s3://$S3_BUCKET/pkg/whl_pkg/"
 
 # Upload dependencies
 echo "Uploading dependencies..."
-aws s3 cp "$SCRIPT_DIR/dependencies/dependencies.tar.gz" "s3://$S3_BUCKET/pkg/dependencies/"
+aws s3 cp "$SCRIPT_DIR/dependencies/dependencies.zip" "s3://$S3_BUCKET/pkg/dependencies/"
 
 # Upload entry script
 echo "Uploading entry script..."
@@ -305,7 +305,7 @@ show_summary() {
     echo "  📁 whl_pkg/"
     echo "     └── $WHEEL_NAME"
     echo "  📁 dependencies/"
-    echo "     └── dependencies.tar.gz"
+    echo "     └── dependencies.zip"
     echo "  📁 entry_script/"
     echo "     └── run_main.py"
     echo "  📄 deployment_manifest.json"

@@ -16,7 +16,7 @@ aws s3 cp "$SCRIPT_DIR/whl_pkg/"*.whl "s3://$S3_BUCKET/pkg/whl_pkg/"
 
 # Upload dependencies
 echo "Uploading dependencies..."
-aws s3 cp "$SCRIPT_DIR/dependencies/dependencies.tar.gz" "s3://$S3_BUCKET/pkg/dependencies/"
+aws s3 cp "$SCRIPT_DIR/dependencies/dependencies.zip" "s3://$S3_BUCKET/pkg/dependencies/"
 
 # Upload entry script
 echo "Uploading entry script..."
