@@ -6,6 +6,8 @@ from jobs.utils.logger_config import get_logger
 
 logger = get_logger(__name__)
 import pg8000
+from pg8000.exceptions import DatabaseError
+
 from jobs.utils.aws_secrets_manager import get_secret_emr_compatible
 
 # Define your table schema
@@ -174,28 +176,28 @@ def create_table(conn_params, max_retries=3, retry_delay=5):
 # -------------------- PostgreSQL Writer --------------------
 
 ##writing to postgres db
-def write_to_postgres(df, config):
-    
-    config = {
-        "TABLE_NAME": "entity",
-        "PG_JDBC": "jdbc",
-        "PG_URL": "jdbc:postgresql://localhost:5432/test_db",
-        "USER_NAME": "test_user",
-        "PASSWORD": "test_password",
-        "DRIVER": "org.postgresql.Driver"
+def write_to_postgres(df, conn_params):
+    """
+    Insert DataFrame rows into PostgreSQL table using PySpark JDBC writer.
+    Args:
+        df (pyspark.sql.DataFrame): DataFrame to insert
+        conn_params (dict): PostgreSQL connection parameters
+    """
+    # Ensure table exists before inserting
+    create_table(conn_params)
+
+    url = f"jdbc:postgresql://{conn_params['host']}:{conn_params['port']}/{conn_params['database']}"
+    properties = {
+        "user": conn_params["user"],
+        "password": conn_params["password"],
+        "driver": "org.postgresql.Driver"
     }
+
     try:
-        logger.info(f"Writing data to PostgreSQL table {config['TABLE_NAME']}")
         df.write \
-            .format(config['PG_JDBC']) \
-            .option("url", config['PG_URL']) \
-            .option("dbtable", config['TABLE_NAME']) \
-            .option("user", config['USER_NAME']) \
-            .option("password", config['PASSWORD']) \
-            .option("driver", config['DRIVER']) \
-            .mode("overwrite") \
-            .save()
+            .jdbc(url=url, table=dbtable_name, mode="append", properties=properties)
+        logger.info(f"write_to_postgres: Inserted {df.count()} rows into {dbtable_name} using JDBC")
     except Exception as e:
-        logger.error(f"Failed to write to PostgreSQL: {e}", exc_info=True)
+        logger.error(f"write_to_postgres: Failed to write to PostgreSQL via JDBC: {e}", exc_info=True)
         raise
 

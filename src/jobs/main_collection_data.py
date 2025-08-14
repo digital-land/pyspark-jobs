@@ -7,7 +7,7 @@ import sys
 import argparse
 from jobs.transform_collection_data import (transform_data_fact, transform_data_fact_res,
                                        transform_data_issue, transform_data_entity) 
-from jobs.dbaccess.postgres_connectivity import create_table, get_aws_secret
+from jobs.dbaccess.postgres_connectivity import create_table,write_to_postgres, get_aws_secret
 #import sqlite3
 from datetime import datetime
 from dataclasses import fields
@@ -392,7 +392,8 @@ def main(args):
                     # Write to S3 for Fact table
                     write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}")
                     logger.info(f"Main: Writing to s3 for {table_name} table completed") 
-                    create_table(get_aws_secret())
+                    #create_table(get_aws_secret())
+                    write_to_postgres(processed_df, get_aws_secret())
                     logger.info(f"Main: Invoking postgres table creation is completed")  
 
         else:
