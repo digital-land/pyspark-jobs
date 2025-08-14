@@ -79,7 +79,7 @@ def transform_data_entity(df,data_set,spark):
         logger.info(f"transform_data_entity:Final DataFrame after filtering: {pivot_df.columns}")
         #Create JSON column
         if 'geometry' not in pivot_df.columns:
-            pivot_df = pivot_df.withColumn('geometry', lit("").cast("string"))
+            pivot_df = pivot_df.withColumn('geometry', lit(None).cast("string"))
 
         pivot_df = pivot_df.drop("geojson")
         
@@ -112,11 +112,12 @@ def transform_data_entity(df,data_set,spark):
         if 'name' not in pivot_df_with_json.columns:
             pivot_df_with_json = pivot_df_with_json.withColumn('name', lit("").cast("string"))
         if 'point' not in pivot_df_with_json.columns:
-            pivot_df_with_json = pivot_df_with_json.withColumn('point', lit("").cast("string"))
+            pivot_df_with_json = pivot_df_with_json.withColumn('point', lit(None).cast("string"))
 
-        # Fix date columns: convert empty strings to NULL for PostgreSQL compatibility
-        logger.info("transform_data_entity: Fixing date columns for PostgreSQL compatibility")
+        # Fix date and geometry columns: convert empty strings to NULL for PostgreSQL compatibility
+        logger.info("transform_data_entity: Fixing date and geometry columns for PostgreSQL compatibility")
         
+        # Handle date columns
         date_columns = ["end_date", "entry_date", "start_date"]
         for date_col in date_columns:
             if date_col in pivot_df_with_json.columns:
@@ -126,6 +127,18 @@ def transform_data_entity(df,data_set,spark):
                     when(col(date_col) == "", None)
                     .when(col(date_col).isNull(), None)
                     .otherwise(to_date(col(date_col), "yyyy-MM-dd"))
+                )
+        
+        # Handle geometry columns: convert empty strings to NULL
+        geometry_columns = ["geometry", "point"]
+        for geom_col in geometry_columns:
+            if geom_col in pivot_df_with_json.columns:
+                logger.info(f"transform_data_entity: Processing geometry column: {geom_col}")
+                pivot_df_with_json = pivot_df_with_json.withColumn(
+                    geom_col,
+                    when(col(geom_col) == "", None)
+                    .when(col(geom_col).isNull(), None)
+                    .otherwise(col(geom_col))
                 )
         
         pivot_df_with_json = pivot_df_with_json.select("dataset", "end_date", "entity", "entry_date", "geometry", "json", "name", "organisation_entity", "point", "prefix", "reference", "start_date", "typology")
