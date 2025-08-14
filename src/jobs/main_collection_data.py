@@ -313,6 +313,11 @@ def main(args):
                     write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}")
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")
 
+                      # Write to Postgres for Entity table
+                    if (table_name == 'entity'):
+                        write_to_postgres(processed_df, get_aws_secret())
+                        logger.info(f"Main: Writing to Postgres for {table_name} table completed")  
+
                 elif(table_name== 'issue'):
                     full_path = f"{s3_uri}"+"/issue/"+data_set+"/*.csv"
                     logger.info(f"Main: Dataset input path including csv file path: {full_path}")
