@@ -341,3 +341,4 @@ spark-defaults.conf
 # OS and Editor specific
 *.Zone.Identifier
 *:PG$Secure
+build_output/deployment_manifest.json

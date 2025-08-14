@@ -44,10 +44,16 @@ def create_spark_session(app_name="EMR Transform Job"):
         ##jar_path = config['AWS']['S3_SQLITE_JDBC_JAR']
         ##logger.info(f"Using JAR path: {jar_path}")
 
-        ##spark_session= SparkSession.builder.appName(app_name) \
-        ##   .config("spark.jars", jar_path) \
-        ##   .getOrCreate()
-        spark_session = SparkSession.builder.appName(app_name).getOrCreate()
+        # Configure PostgreSQL JDBC driver for EMR Serverless 7.9.0
+        # The driver JAR should be available via --jars parameter in EMR configuration
+        # Optimized configurations for EMR 7.9.0 (Spark 3.5.x, Java 17)
+        spark_session = SparkSession.builder \
+            .appName(app_name) \
+            .config("spark.sql.adaptive.enabled", "true") \
+            .config("spark.sql.adaptive.coalescePartitions.enabled", "true") \
+            .config("spark.sql.adaptive.skewJoin.enabled", "true") \
+            .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") \
+            .getOrCreate()
         
         # Set Spark logging level to reduce verbosity
         #set_spark_log_level("WARN")

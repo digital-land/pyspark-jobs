@@ -328,7 +328,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 For issues and questions:
 1. Check the [tests/README.md](tests/README.md) for testing guidance
 2. Review examples in the `examples/` directory
-3. Open an issue on GitHub
+3. Check documentation in the `docs/` directory:
+   - [PostgreSQL JDBC Configuration](docs/POSTGRESQL_JDBC_CONFIGURATION.md)
+   - [AWS Secrets Manager Troubleshooting](docs/TROUBLESHOOTING_SECRETS_MANAGER.md)
+   - [Logging Configuration](docs/LOGGING.md)
+4. Open an issue on GitHub
 
 ## 🔄 CI/CD
 

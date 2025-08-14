@@ -105,6 +105,7 @@ setup_build_dir() {
     mkdir -p "$BUILD_DIR/whl_pkg"
     mkdir -p "$BUILD_DIR/dependencies"
     mkdir -p "$BUILD_DIR/entry_script"
+    mkdir -p "$BUILD_DIR/jars"
     
     print_success "Build directory structure created at $BUILD_DIR"
 }
@@ -283,6 +284,37 @@ EOF
     print_success "Dependencies archive created using Docker: dependencies.zip"
 }
 
+# Download JDBC drivers (optional)
+download_jdbc_drivers() {
+    print_status "Downloading JDBC drivers for S3 hosting (optional)..."
+    
+    # PostgreSQL JDBC driver for EMR 7.9.0
+    POSTGRESQL_JAR_URL="https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.4/postgresql-42.7.4.jar"
+    POSTGRESQL_JAR_NAME="postgresql-42.7.4.jar"
+    
+    if command_exists curl; then
+        curl -L "$POSTGRESQL_JAR_URL" -o "$BUILD_DIR/jars/$POSTGRESQL_JAR_NAME" || {
+            print_warning "Failed to download PostgreSQL JDBC driver. Continuing without it."
+            print_warning "You can manually download and upload the JAR to S3 if needed."
+            return
+        }
+        print_success "PostgreSQL JDBC driver downloaded: $POSTGRESQL_JAR_NAME"
+    elif command_exists wget; then
+        wget "$POSTGRESQL_JAR_URL" -O "$BUILD_DIR/jars/$POSTGRESQL_JAR_NAME" || {
+            print_warning "Failed to download PostgreSQL JDBC driver. Continuing without it."
+            print_warning "You can manually download and upload the JAR to S3 if needed."
+            return
+        }
+        print_success "PostgreSQL JDBC driver downloaded: $POSTGRESQL_JAR_NAME"
+    else
+        print_warning "Neither curl nor wget available. Skipping JDBC driver download."
+        print_warning "You can manually download and upload the JAR to S3 if needed."
+        return
+    fi
+    
+    print_status "📦 JDBC drivers ready for S3 upload in build_output/jars/"
+}
+
 # Copy entry scripts
 copy_entry_scripts() {
     print_status "Copying entry scripts..."
@@ -329,7 +361,8 @@ generate_manifest() {
     },
     "emr_serverless_config": {
         "entryPoint": "s3://$S3_BUCKET/pkg/entry_script/run_main.py",
-        "sparkSubmitParameters": "--py-files s3://$S3_BUCKET/pkg/whl_pkg/$WHEEL_NAME,s3://$S3_BUCKET/pkg/dependencies/dependencies.zip"
+        "sparkSubmitParameters": "--py-files s3://$S3_BUCKET/pkg/whl_pkg/$WHEEL_NAME,s3://$S3_BUCKET/pkg/dependencies/dependencies.zip --jars https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.4/postgresql-42.7.4.jar",
+        "note": "PostgreSQL JDBC driver is loaded from Maven Central. For production, consider hosting the JAR in your own S3 bucket for better reliability."
     }
 }
 EOF
@@ -369,12 +402,24 @@ echo "Uploading entry script..."
 aws s3 cp "$SCRIPT_DIR/entry_script/run_main.py" "s3://$S3_BUCKET/pkg/entry_script/"
 aws s3 cp "$SCRIPT_DIR/entry_script/run_main.py" "s3://$S3_BUCKET/emr-data-processing/src0/entry_script/"
 
+# Upload JDBC drivers (if they exist)
+if [ -d "$SCRIPT_DIR/jars" ] && [ "$(ls -A $SCRIPT_DIR/jars)" ]; then
+    echo "Uploading JDBC drivers..."
+    aws s3 cp "$SCRIPT_DIR/jars/" "s3://$S3_BUCKET/pkg/jars/" --recursive
+    aws s3 cp "$SCRIPT_DIR/jars/" "s3://$S3_BUCKET/emr-data-processing/src0/jars/" --recursive
+else
+    echo "No JDBC drivers to upload (jars directory empty or doesn't exist)"
+fi
+
 echo "Upload completed successfully!"
 echo ""
 echo "Files uploaded to:"
 echo "  - s3://$S3_BUCKET/pkg/whl_pkg/"
 echo "  - s3://$S3_BUCKET/pkg/dependencies/"
 echo "  - s3://$S3_BUCKET/pkg/entry_script/"
+if [ -d "$SCRIPT_DIR/jars" ] && [ "$(ls -A $SCRIPT_DIR/jars)" ]; then
+    echo "  - s3://$S3_BUCKET/pkg/jars/"
+fi
 EOF
     
     chmod +x "$BUILD_DIR/upload_to_s3.sh"
@@ -411,6 +456,10 @@ show_summary() {
     echo "     └── dependencies.zip"
     echo "  📁 entry_script/"
     echo "     └── run_main.py"
+    if [ -d "$BUILD_DIR/jars" ] && [ "$(ls -A $BUILD_DIR/jars)" ]; then
+        echo "  📁 jars/"
+        echo "     └── postgresql-42.7.4.jar"
+    fi
     echo "  📄 deployment_manifest.json"
     echo "  📄 upload_to_s3.sh"
     echo ""
@@ -436,6 +485,7 @@ main() {
     setup_build_dir
     build_wheel
     build_dependencies "$1"
+    download_jdbc_drivers
     copy_entry_scripts
     generate_manifest
     generate_upload_script
