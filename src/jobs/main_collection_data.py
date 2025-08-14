@@ -379,6 +379,12 @@ def main(args):
                     write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}")
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")
 
+                    # Write to Postgres for Entity table
+                    if (table_name == 'entity'):
+                        write_to_postgres(processed_df, get_aws_secret())
+                        logger.info(f"Main: Writing to Postgres for {table_name} table completed")  
+
+
                 elif(table_name== 'issue'):
                     full_path = f"{s3_uri}"+"/issue/"+data_set+"/*.csv"
                     logger.info(f"Main: Dataset input path including csv file path: {full_path}")
@@ -397,11 +403,7 @@ def main(args):
 
                     # Write to S3 for Fact table
                     write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}")
-                    logger.info(f"Main: Writing to s3 for {table_name} table completed") 
-                    #create_table(get_aws_secret())
-                    write_to_postgres(processed_df, get_aws_secret())
-                    logger.info(f"Main: Invoking postgres table creation is completed")  
-
+                    logger.info(f"Main: Writing to s3 for {table_name} table completed")                                     
         else:
             logger.error(f"Main: Invalid load type specified: {load_type}")
             raise ValueError(f"Invalid load type: {load_type}")        
@@ -417,7 +419,3 @@ def main(args):
         # Duration
         duration = end_time - start_time
         logger.info(f"Total duration: {duration}")
-
-
-#if __name__ == "__main__":    
-    #main()
