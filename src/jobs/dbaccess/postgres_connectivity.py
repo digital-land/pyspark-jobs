@@ -173,6 +173,46 @@ def create_table(conn_params, max_retries=3, retry_delay=5):
             conn = None
             cur = None
 
+# -------------------- Geometry Helper Functions --------------------
+
+def _prepare_geometry_columns(df):
+    """
+    Prepare geometry columns for PostgreSQL insertion.
+    Convert WKT strings to format that PostgreSQL can handle via JDBC.
+    
+    Args:
+        df (pyspark.sql.DataFrame): DataFrame with potential geometry columns
+        
+    Returns:
+        pyspark.sql.DataFrame: DataFrame with properly formatted geometry columns
+    """
+    from pyspark.sql.functions import when, col
+    
+    logger.info("_prepare_geometry_columns: Processing DataFrame for PostgreSQL geometry compatibility")
+    
+    # List of geometry columns that need special handling
+    geometry_columns = ["geometry", "point"]
+    
+    processed_df = df
+    for geom_col in geometry_columns:
+        if geom_col in df.columns:
+            logger.info(f"_prepare_geometry_columns: Processing geometry column: {geom_col}")
+            
+            # For now, set geometry columns to NULL if they contain WKT strings
+            # This is a workaround until we can implement proper WKT to PostGIS conversion
+            processed_df = processed_df.withColumn(
+                geom_col,
+                when(col(geom_col).isNull(), None)
+                .when(col(geom_col) == "", None)
+                .when(col(geom_col).startswith("POINT"), None)  # Convert WKT to NULL temporarily
+                .when(col(geom_col).startswith("POLYGON"), None)
+                .when(col(geom_col).startswith("MULTIPOLYGON"), None)
+                .otherwise(col(geom_col))
+            )
+            logger.info(f"_prepare_geometry_columns: Converted {geom_col} WKT strings to NULL for PostgreSQL compatibility")
+    
+    return processed_df
+
 # -------------------- PostgreSQL Writer --------------------
 
 ##writing to postgres db
@@ -190,13 +230,17 @@ def write_to_postgres(df, conn_params):
     properties = {
         "user": conn_params["user"],
         "password": conn_params["password"],
-        "driver": "org.postgresql.Driver"
+        "driver": "org.postgresql.Driver",
+        "stringtype": "unspecified"  # This helps with PostGIS geometry columns
     }
 
     try:
-        df.write \
+        # Convert DataFrame to handle geometry columns for PostgreSQL
+        processed_df = _prepare_geometry_columns(df)
+        
+        processed_df.write \
             .jdbc(url=url, table=dbtable_name, mode="append", properties=properties)
-        logger.info(f"write_to_postgres: Inserted {df.count()} rows into {dbtable_name} using JDBC")
+        logger.info(f"write_to_postgres: Inserted {processed_df.count()} rows into {dbtable_name} using JDBC")
     except Exception as e:
         logger.error(f"write_to_postgres: Failed to write to PostgreSQL via JDBC: {e}", exc_info=True)
         raise

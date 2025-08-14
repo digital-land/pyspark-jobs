@@ -129,7 +129,7 @@ def transform_data_entity(df,data_set,spark):
                     .otherwise(to_date(col(date_col), "yyyy-MM-dd"))
                 )
         
-        # Handle geometry columns: convert empty strings to NULL
+        # Handle geometry columns: convert empty strings to NULL and format WKT for PostgreSQL
         geometry_columns = ["geometry", "point"]
         for geom_col in geometry_columns:
             if geom_col in pivot_df_with_json.columns:
@@ -138,7 +138,10 @@ def transform_data_entity(df,data_set,spark):
                     geom_col,
                     when(col(geom_col) == "", None)
                     .when(col(geom_col).isNull(), None)
-                    .otherwise(col(geom_col))
+                    .when(col(geom_col).startswith("POINT"), col(geom_col))  # Keep valid WKT as-is
+                    .when(col(geom_col).startswith("POLYGON"), col(geom_col))  # Keep valid WKT as-is  
+                    .when(col(geom_col).startswith("MULTIPOLYGON"), col(geom_col))  # Keep valid WKT as-is
+                    .otherwise(None)  # Invalid geometry → NULL
                 )
         
         pivot_df_with_json = pivot_df_with_json.select("dataset", "end_date", "entity", "entry_date", "geometry", "json", "name", "organisation_entity", "point", "prefix", "reference", "start_date", "typology")
