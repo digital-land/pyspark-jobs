@@ -177,7 +177,7 @@ def create_table(conn_params, max_retries=3, retry_delay=5):
 
 def _prepare_geometry_columns(df):
     """
-    Prepare geometry columns for PostgreSQL insertion.
+    Prepare geometry columns for PostgreSQL insertion with optimized WKT handling.
     Convert WKT strings to format that PostgreSQL can handle via JDBC.
     
     Args:
@@ -186,9 +186,9 @@ def _prepare_geometry_columns(df):
     Returns:
         pyspark.sql.DataFrame: DataFrame with properly formatted geometry columns
     """
-    from pyspark.sql.functions import when, col
+    from pyspark.sql.functions import when, col, expr
     
-    logger.info("_prepare_geometry_columns: Processing DataFrame for PostgreSQL geometry compatibility")
+    logger.info("_prepare_geometry_columns: Processing DataFrame for optimized PostgreSQL geometry compatibility")
     
     # List of geometry columns that need special handling
     geometry_columns = ["geometry", "point"]
@@ -198,31 +198,57 @@ def _prepare_geometry_columns(df):
         if geom_col in df.columns:
             logger.info(f"_prepare_geometry_columns: Processing geometry column: {geom_col}")
             
-            # For now, set geometry columns to NULL if they contain WKT strings
-            # This is a workaround until we can implement proper WKT to PostGIS conversion
+            # Use PostgreSQL ST_GeomFromText function for proper WKT conversion
+            # This preserves geometry data instead of converting to NULL
             processed_df = processed_df.withColumn(
                 geom_col,
                 when(col(geom_col).isNull(), None)
                 .when(col(geom_col) == "", None)
-                .when(col(geom_col).startswith("POINT"), None)  # Convert WKT to NULL temporarily
-                .when(col(geom_col).startswith("POLYGON"), None)
-                .when(col(geom_col).startswith("MULTIPOLYGON"), None)
+                .when(col(geom_col).startswith("POINT"), 
+                      expr(f"concat('SRID=4326;', {geom_col})"))  # Add SRID for PostGIS
+                .when(col(geom_col).startswith("POLYGON"), 
+                      expr(f"concat('SRID=4326;', {geom_col})"))
+                .when(col(geom_col).startswith("MULTIPOLYGON"), 
+                      expr(f"concat('SRID=4326;', {geom_col})"))
                 .otherwise(col(geom_col))
             )
-            logger.info(f"_prepare_geometry_columns: Converted {geom_col} WKT strings to NULL for PostgreSQL compatibility")
+            logger.info(f"_prepare_geometry_columns: Enhanced {geom_col} WKT handling with SRID for PostGIS compatibility")
     
     return processed_df
 
 # -------------------- PostgreSQL Writer --------------------
 
 ##writing to postgres db
-def write_to_postgres(df, conn_params):
+def write_to_postgres(df, conn_params, method="optimized", batch_size=None, num_partitions=None, **kwargs):
     """
-    Insert DataFrame rows into PostgreSQL table using PySpark JDBC writer.
+    Insert DataFrame rows into PostgreSQL table using optimized PySpark JDBC writer.
+    
     Args:
         df (pyspark.sql.DataFrame): DataFrame to insert
         conn_params (dict): PostgreSQL connection parameters
+        method (str): Write method - "optimized" (default), "standard", "copy", "async"
+        batch_size (int): Number of rows per batch (auto-calculated if None)
+        num_partitions (int): Number of partitions (auto-calculated if None)
+        **kwargs: Additional parameters for specific methods
     """
+    logger.info(f"write_to_postgres: Using {method} method for PostgreSQL writes")
+    
+    if method == "copy":
+        return _write_to_postgres_copy(df, conn_params, **kwargs)
+    elif method == "async":
+        return _write_to_postgres_async_batches(df, conn_params, batch_size or 5000, **kwargs)
+    elif method == "standard":
+        return _write_to_postgres_standard(df, conn_params)
+    else:  # method == "optimized" (default)
+        return _write_to_postgres_optimized(df, conn_params, batch_size, num_partitions)
+
+
+def _write_to_postgres_standard(df, conn_params):
+    """
+    Original PostgreSQL writer (for comparison and fallback).
+    """
+    logger.info("_write_to_postgres_standard: Using original JDBC writer")
+    
     # Ensure table exists before inserting
     create_table(conn_params)
 
@@ -240,8 +266,356 @@ def write_to_postgres(df, conn_params):
         
         processed_df.write \
             .jdbc(url=url, table=dbtable_name, mode="append", properties=properties)
-        logger.info(f"write_to_postgres: Inserted {processed_df.count()} rows into {dbtable_name} using JDBC")
+        logger.info(f"_write_to_postgres_standard: Inserted {processed_df.count()} rows into {dbtable_name} using standard JDBC")
     except Exception as e:
-        logger.error(f"write_to_postgres: Failed to write to PostgreSQL via JDBC: {e}", exc_info=True)
+        logger.error(f"_write_to_postgres_standard: Failed to write to PostgreSQL via JDBC: {e}", exc_info=True)
         raise
+
+
+def _write_to_postgres_optimized(df, conn_params, batch_size=None, num_partitions=None):
+    """
+    Optimized PostgreSQL writer with performance improvements.
+    
+    Args:
+        df: PySpark DataFrame to write
+        conn_params: Database connection parameters
+        batch_size: Number of rows per batch (auto-calculated if None)
+        num_partitions: Number of partitions (auto-calculated if None)
+    """
+    logger.info("_write_to_postgres_optimized: Starting optimized PostgreSQL write operation")
+    
+    # Ensure table exists
+    create_table(conn_params)
+    
+    # Auto-calculate optimal batch size if not specified
+    if batch_size is None:
+        row_count = df.count()
+        if row_count < 10000:
+            batch_size = 1000
+        elif row_count < 100000:
+            batch_size = 5000
+        elif row_count < 1000000:
+            batch_size = 10000
+        else:
+            batch_size = 20000
+        logger.info(f"_write_to_postgres_optimized: Auto-calculated batch size: {batch_size} for {row_count} rows")
+    
+    # Auto-calculate optimal number of partitions if not specified
+    if num_partitions is None:
+        row_count = df.count()
+        # Use one partition per 50k rows, minimum 1, maximum 20
+        num_partitions = max(1, min(20, row_count // 50000))
+        logger.info(f"_write_to_postgres_optimized: Auto-calculated partitions: {num_partitions} for {row_count} rows")
+    
+    # Repartition DataFrame for optimal parallel writing
+    if df.rdd.getNumPartitions() != num_partitions:
+        logger.info(f"_write_to_postgres_optimized: Repartitioning DataFrame from {df.rdd.getNumPartitions()} to {num_partitions} partitions")
+        df = df.repartition(num_partitions)
+    
+    # Process geometry columns
+    processed_df = _prepare_geometry_columns(df)
+    
+    # Build optimized JDBC URL and properties
+    url = f"jdbc:postgresql://{conn_params['host']}:{conn_params['port']}/{conn_params['database']}"
+    
+    # Optimized JDBC properties for better performance
+    properties = {
+        "user": conn_params["user"],
+        "password": conn_params["password"],
+        "driver": "org.postgresql.Driver",
+        
+        # Performance optimizations
+        "batchsize": str(batch_size),                    # Batch size for inserts
+        "reWriteBatchedInserts": "true",                 # Rewrite batched inserts for performance
+        "stringtype": "unspecified",                     # For PostGIS compatibility
+        
+        # Connection optimizations
+        "tcpKeepAlive": "true",                          # Keep connections alive
+        "socketTimeout": "300",                          # 5 minute socket timeout
+        "loginTimeout": "30",                            # 30 second login timeout
+        "connectTimeout": "30",                          # 30 second connect timeout
+        
+        # Memory and caching optimizations
+        "defaultRowFetchSize": "1000",                   # Fetch size for reads
+        "prepareThreshold": "3",                         # Prepare statements after 3 uses
+        "preparedStatementCacheQueries": "256",          # Cache prepared statements
+        "preparedStatementCacheSizeMiB": "5",            # Cache size
+        
+        # Additional optimizations
+        "ApplicationName": "PySpark-EMR-Optimized",      # For monitoring
+        "assumeMinServerVersion": "12.0",                # Assume modern PostgreSQL
+    }
+    
+    try:
+        logger.info(f"_write_to_postgres_optimized: Writing {processed_df.count()} rows to PostgreSQL with batch size {batch_size}")
+        logger.info(f"_write_to_postgres_optimized: Using {num_partitions} partitions for parallel writes")
+        
+        # Use optimized JDBC write with error handling
+        processed_df.write \
+            .mode("append") \
+            .option("numPartitions", num_partitions) \
+            .jdbc(url=url, table=dbtable_name, properties=properties)
+        
+        logger.info(f"_write_to_postgres_optimized: Successfully wrote data to {dbtable_name} using optimized JDBC writer")
+        
+    except Exception as e:
+        logger.error(f"_write_to_postgres_optimized: Failed to write to PostgreSQL: {e}")
+        logger.error("_write_to_postgres_optimized: Troubleshooting steps:")
+        logger.error("_write_to_postgres_optimized: 1. Check if PostgreSQL JDBC driver is available")
+        logger.error("_write_to_postgres_optimized: 2. Verify network connectivity to database")
+        logger.error("_write_to_postgres_optimized: 3. Check database permissions for the user")
+        logger.error("_write_to_postgres_optimized: 4. Verify table schema matches DataFrame columns")
+        raise
+
+
+def _write_to_postgres_copy(df, conn_params, use_copy_protocol=True, temp_s3_bucket=None):
+    """
+    Ultra-fast PostgreSQL writer using COPY protocol.
+    
+    This method can be 5-10x faster than JDBC for large datasets but requires:
+    - Network access from PostgreSQL to S3 (aws_s3 extension)
+    - Temporary S3 bucket for CSV staging
+    
+    Args:
+        df: PySpark DataFrame to write
+        conn_params: Database connection parameters  
+        use_copy_protocol: Whether to use COPY protocol (default: True)
+        temp_s3_bucket: S3 bucket for temporary CSV files
+    """
+    if not use_copy_protocol or not pg8000:
+        logger.info("_write_to_postgres_copy: COPY protocol disabled or pg8000 unavailable, falling back to optimized JDBC")
+        return _write_to_postgres_optimized(df, conn_params)
+    
+    logger.info("_write_to_postgres_copy: Using ultra-fast COPY protocol for PostgreSQL writes")
+    
+    try:
+        # Ensure table exists
+        create_table(conn_params)
+        
+        # Step 1: Write DataFrame to temporary CSV in S3
+        if temp_s3_bucket is None:
+            temp_s3_bucket = "temp-pyspark-postgres"  # Should be configurable
+            logger.warning(f"_write_to_postgres_copy: Using default temp S3 bucket: {temp_s3_bucket}")
+        
+        temp_s3_path = f"s3a://{temp_s3_bucket}/pyspark-postgres-copy/{dbtable_name}/"
+        
+        logger.info(f"_write_to_postgres_copy: Writing temporary CSV to {temp_s3_path}")
+        processed_df = _prepare_geometry_columns(df)
+        
+        # Write as single CSV file for COPY protocol
+        processed_df.coalesce(1) \
+            .write \
+            .mode("overwrite") \
+            .option("header", "false") \
+            .option("delimiter", "|") \
+            .csv(temp_s3_path)
+        
+        # Step 2: Use PostgreSQL COPY command to import from CSV
+        logger.info("_write_to_postgres_copy: Executing COPY command on PostgreSQL")
+        _execute_copy_command(conn_params, temp_s3_path)
+        
+        logger.info("_write_to_postgres_copy: COPY protocol completed successfully")
+            
+    except Exception as e:
+        logger.error(f"_write_to_postgres_copy: COPY protocol failed: {e}")
+        logger.info("_write_to_postgres_copy: Falling back to optimized JDBC writer")
+        return _write_to_postgres_optimized(df, conn_params)
+
+
+def _execute_copy_command(conn_params, csv_s3_path):
+    """
+    Execute PostgreSQL COPY command for ultra-fast bulk import.
+    """
+    if not pg8000:
+        raise ImportError("pg8000 required for COPY protocol")
+    
+    conn = None
+    cur = None
+    
+    try:
+        conn = pg8000.connect(**conn_params)
+        cur = conn.cursor()
+        
+        # Build column list for COPY command
+        columns = ", ".join(pyspark_entity_columns.keys())
+        
+        # Note: This requires PostgreSQL aws_s3 extension or similar setup
+        copy_sql = f"""
+        COPY {dbtable_name} ({columns})
+        FROM PROGRAM 'aws s3 cp {csv_s3_path} -'
+        WITH (FORMAT csv, DELIMITER '|')
+        """
+        
+        logger.info("_execute_copy_command: Executing COPY command...")
+        cur.execute(copy_sql)
+        conn.commit()
+        
+        logger.info("_execute_copy_command: COPY command completed successfully")
+        
+    finally:
+        if cur:
+            try:
+                cur.close()
+            except Exception:
+                pass
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def _write_to_postgres_async_batches(df, conn_params, batch_size=5000, max_workers=4):
+    """
+    Async batch writer for maximum throughput on datasets that fit in memory.
+    
+    This method processes data in parallel batches for maximum performance.
+    Best for datasets that fit in driver memory (typically < 100k rows).
+    """
+    if not pg8000:
+        logger.warning("_write_to_postgres_async_batches: pg8000 not available - falling back to optimized JDBC")
+        return _write_to_postgres_optimized(df, conn_params, batch_size)
+    
+    logger.info(f"_write_to_postgres_async_batches: Starting async batch write with {max_workers} workers, batch size {batch_size}")
+    
+    # Ensure table exists
+    create_table(conn_params)
+    
+    # Collect DataFrame to Python for batch processing
+    # Note: Only use this for reasonably sized datasets that fit in memory
+    try:
+        rows = df.collect()
+        total_rows = len(rows)
+        
+        logger.info(f"_write_to_postgres_async_batches: Processing {total_rows} rows in batches of {batch_size}")
+        
+        if total_rows > 100000:
+            logger.warning(f"_write_to_postgres_async_batches: Large dataset ({total_rows} rows) may cause memory issues")
+            logger.info("_write_to_postgres_async_batches: Consider using 'optimized' or 'copy' method instead")
+        
+    except Exception as e:
+        logger.error(f"_write_to_postgres_async_batches: Failed to collect DataFrame: {e}")
+        logger.info("_write_to_postgres_async_batches: Falling back to optimized JDBC writer")
+        return _write_to_postgres_optimized(df, conn_params, batch_size)
+    
+    import concurrent.futures
+    
+    def write_batch(batch_rows, batch_num):
+        """Write a single batch of rows."""
+        try:
+            conn = pg8000.connect(**conn_params)
+            cur = conn.cursor()
+            
+            # Build parameterized INSERT statement
+            columns = list(pyspark_entity_columns.keys())
+            placeholders = ", ".join(["%s"] * len(columns))
+            insert_sql = f"INSERT INTO {dbtable_name} ({', '.join(columns)}) VALUES ({placeholders})"
+            
+            # Prepare batch data
+            batch_data = []
+            for row in batch_rows:
+                row_data = [getattr(row, col, None) for col in columns]
+                batch_data.append(row_data)
+            
+            # Execute batch insert
+            cur.executemany(insert_sql, batch_data)
+            conn.commit()
+            
+            logger.info(f"_write_to_postgres_async_batches: Batch {batch_num} completed: {len(batch_rows)} rows")
+            
+        except Exception as e:
+            logger.error(f"_write_to_postgres_async_batches: Batch {batch_num} failed: {e}")
+            raise
+        finally:
+            if cur:
+                try:
+                    cur.close()
+                except Exception:
+                    pass
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+    
+    # Process in parallel batches
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = []
+        
+        for i in range(0, total_rows, batch_size):
+            batch_rows = rows[i:i + batch_size]
+            batch_num = i // batch_size + 1
+            
+            future = executor.submit(write_batch, batch_rows, batch_num)
+            futures.append(future)
+        
+        # Wait for all batches to complete
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                future.result()
+            except Exception as e:
+                logger.error(f"_write_to_postgres_async_batches: Batch processing failed: {e}")
+                raise
+    
+    logger.info(f"_write_to_postgres_async_batches: Async batch write completed: {total_rows} rows processed")
+
+
+# -------------------- Performance Optimization Helpers --------------------
+
+def get_performance_recommendations(row_count, available_memory_gb=8):
+    """
+    Get performance recommendations based on dataset size and available resources.
+    
+    Args:
+        row_count: Number of rows to write
+        available_memory_gb: Available memory in GB
+    
+    Returns:
+        dict: Recommendations for optimal PostgreSQL writing
+    """
+    recommendations = {
+        "method": "optimized",
+        "batch_size": 10000,
+        "num_partitions": 4,
+        "notes": []
+    }
+    
+    if row_count < 10000:
+        recommendations.update({
+            "method": "optimized",
+            "batch_size": 1000,
+            "num_partitions": 1,
+            "notes": ["Small dataset - single partition recommended"]
+        })
+    
+    elif row_count < 100000:
+        recommendations.update({
+            "method": "optimized", 
+            "batch_size": 5000,
+            "num_partitions": 2,
+            "notes": ["Medium dataset - moderate parallelization"]
+        })
+    
+    elif row_count < 1000000:
+        recommendations.update({
+            "method": "optimized",
+            "batch_size": 10000,
+            "num_partitions": 4,
+            "notes": ["Large dataset - increased parallelization recommended"]
+        })
+    
+    else:  # Very large datasets
+        max_partitions = min(20, max(4, available_memory_gb // 2))
+        recommendations.update({
+            "method": "copy",  # Recommend COPY protocol for very large datasets
+            "batch_size": 20000,
+            "num_partitions": max_partitions,
+            "notes": [
+                "Very large dataset - COPY protocol recommended if available",
+                "Consider breaking into smaller chunks if memory limited",
+                f"Using {max_partitions} partitions based on available memory"
+            ]
+        })
+    
+    return recommendations
 

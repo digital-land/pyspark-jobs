@@ -315,10 +315,24 @@ def main(args):
                     write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}")
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")
 
-                      # Write to Postgres for Entity table
+                      # Write to Postgres for Entity table using optimized method
                     if (table_name == 'entity'):
-                        write_to_postgres(processed_df, get_aws_secret())
-                        logger.info(f"Main: Writing to Postgres for {table_name} table completed")  
+                        from jobs.dbaccess.postgres_connectivity import get_performance_recommendations
+                        
+                        # Get performance recommendations based on dataset size
+                        row_count = processed_df.count()
+                        recommendations = get_performance_recommendations(row_count)
+                        logger.info(f"Main: Performance recommendations for {row_count} rows: {recommendations}")
+                        
+                        # Use enhanced write_to_postgres with recommendations
+                        write_to_postgres(
+                            processed_df, 
+                            get_aws_secret(),
+                            method=recommendations["method"],
+                            batch_size=recommendations["batch_size"],
+                            num_partitions=recommendations["num_partitions"]
+                        )
+                        logger.info(f"Main: Writing to Postgres for {table_name} table completed using {recommendations['method']} method")  
 
                 elif(table_name== 'issue'):
                     full_path = f"{s3_uri}"+"/issue/"+data_set+"/*.csv"
