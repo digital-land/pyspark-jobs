@@ -327,8 +327,6 @@ build_output/
 build_venv/
 temp_venv/
 dependencies.tar.gz
-deployment_manifest.json
-upload_to_s3.sh
 
 # Database files
 *.db
@@ -345,6 +343,3 @@ spark-defaults.conf
 # OS and Editor specific
 *.Zone.Identifier
 *:PG$Secure
-build_output/deployment_manifest.json
-build_output/upload_to_s3.sh
-build_output/deployment_manifest.json

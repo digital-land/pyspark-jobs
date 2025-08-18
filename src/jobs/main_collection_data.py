@@ -23,11 +23,13 @@ from jobs.utils.logger_config import setup_logging, get_logger, log_execution_ti
 #from utils.path_utils import load_json_from_repo
 
 # -------------------- Logging Setup --------------------
-# Setup logging with environment-specific configuration
+# Setup logging for EMR Serverless (console output goes to CloudWatch automatically)
 setup_logging(
     log_level=os.getenv("LOG_LEVEL", "INFO"),
-    log_file="logs/emr_transform_job.log",
-    environment=os.getenv("ENVIRONMENT", "development")
+    # Note: In EMR Serverless, console logs are automatically captured by CloudWatch
+    # File logging is optional for local debugging
+    log_file=os.getenv("LOG_FILE") if os.getenv("LOG_FILE") else None,
+    environment=os.getenv("ENVIRONMENT", "production")
 )
 
 logger = get_logger(__name__)
