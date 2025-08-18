@@ -264,6 +264,10 @@ Thumbs.db
 logs/
 temp/
 
+# Test logs - ignore all log files generated during testing
+tests/logs/
+tests/**/*.log
+
 # PySpark and Big Data
 spark-warehouse/
 derby.log
