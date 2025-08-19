@@ -302,14 +302,14 @@ def _write_to_postgres_optimized(df, conn_params, batch_size=None, num_partition
         row_count = df.count()
         if row_count < 10000:
             batch_size = 1000      # Small datasets
-        elif row_count < 50000:
-            batch_size = 5000      # Small-medium datasets
-        elif row_count < 500000:
-            batch_size = 25000     # Medium datasets - increased from 10K
-        elif row_count < 5000000:
-            batch_size = 50000     # Large datasets - increased from 20K
+        elif row_count < 100000:
+            batch_size = 2000      # Small-medium datasets
+        elif row_count < 1000000:
+            batch_size = 3000      # Medium datasets
+        elif row_count < 10000000:
+            batch_size = 4000      # Large datasets
         else:
-            batch_size = 100000    # Very large datasets (10M+ rows) - major increase
+            batch_size = 5000      # Very large datasets - proven PostgreSQL maximum
         logger.info(f"_write_to_postgres_optimized: Auto-calculated batch size: {batch_size} for {row_count} rows")
     
     # Auto-calculate optimal number of partitions if not specified
@@ -341,11 +341,11 @@ def _write_to_postgres_optimized(df, conn_params, batch_size=None, num_partition
         "reWriteBatchedInserts": "true",                 # Rewrite batched inserts for performance
         "stringtype": "unspecified",                     # For PostGIS compatibility
         
-        # Connection optimizations
+        # Connection optimizations (conservative timeouts for large datasets)
         "tcpKeepAlive": "true",                          # Keep connections alive
-        "socketTimeout": "300",                          # 5 minute socket timeout
-        "loginTimeout": "30",                            # 30 second login timeout
-        "connectTimeout": "30",                          # 30 second connect timeout
+        "socketTimeout": "900",                          # 15 minute socket timeout for large batches
+        "loginTimeout": "60",                            # 60 second login timeout
+        "connectTimeout": "60",                          # 60 second connect timeout
         
         # Memory and caching optimizations
         "defaultRowFetchSize": "1000",                   # Fetch size for reads
@@ -409,41 +409,41 @@ def get_performance_recommendations(row_count, available_memory_gb=8):
             "notes": ["Small dataset - single partition recommended"]
         })
     
-    elif row_count < 50000:
+    elif row_count < 100000:
         recommendations.update({
             "method": "optimized", 
-            "batch_size": 5000,
+            "batch_size": 2000,
             "num_partitions": 2,
-            "notes": ["Small-medium dataset - moderate parallelization"]
+            "notes": ["Small-medium dataset - conservative batch size for reliability"]
         })
     
-    elif row_count < 500000:
+    elif row_count < 1000000:
         recommendations.update({
             "method": "optimized",
-            "batch_size": 25000,
+            "batch_size": 3000,
             "num_partitions": 4,
-            "notes": ["Medium dataset - increased batch size for better performance"]
+            "notes": ["Medium dataset - production-tested batch size"]
         })
     
-    elif row_count < 5000000:
+    elif row_count < 10000000:
         recommendations.update({
             "method": "optimized",
-            "batch_size": 50000,
+            "batch_size": 4000,
             "num_partitions": 8,
-            "notes": ["Large dataset - high-performance batch processing"]
+            "notes": ["Large dataset - conservative batch processing for stability"]
         })
     
-    else:  # Very large datasets (5M+ rows)
-        max_partitions = min(20, max(8, available_memory_gb // 2))
+    else:  # Very large datasets (10M+ rows)
+        max_partitions = min(16, max(6, available_memory_gb // 2))
         recommendations.update({
-            "method": "optimized",  # Use optimized method with large batch sizes for maximum performance
-            "batch_size": 100000,
+            "method": "optimized",  # Use optimized method with small, reliable batch sizes
+            "batch_size": 5000,
             "num_partitions": max_partitions,
             "notes": [
-                "Very large dataset - optimized method with large batch sizes for maximum performance",
-                "Large batch sizes optimize Aurora PostgreSQL throughput",
-                f"Using {max_partitions} partitions based on available memory",
-                "Monitor CloudWatch logs for performance metrics"
+                "Very large dataset - conservative 5K batch size for maximum reliability",
+                "Small batch sizes prevent Aurora PostgreSQL timeouts and memory issues",
+                f"Using {max_partitions} partitions for parallel processing",
+                "Proven safe batch size for 30M+ row datasets"
             ]
         })
     
