@@ -362,108 +362,22 @@ def _write_to_postgres_optimized(df, conn_params, batch_size=None, num_partition
         logger.info(f"_write_to_postgres_optimized: Writing {processed_df.count()} rows to PostgreSQL with batch size {batch_size}")
         logger.info(f"_write_to_postgres_optimized: Using {num_partitions} partitions for parallel writes")
         
-        # Test connection first with a small sample
-        logger.info("_write_to_postgres_optimized: Testing connection with small sample first...")
-        test_df = processed_df.limit(10)
+        # Use optimized JDBC write with error handling
+        processed_df.write \
+            .mode("append") \
+            .option("numPartitions", num_partitions) \
+            .jdbc(url=url, table=dbtable_name, properties=properties)
         
-        try:
-            test_df.write \
-                .mode("append") \
-                .jdbc(url=url, table=dbtable_name, properties=properties)
-            logger.info("_write_to_postgres_optimized: ✅ Connection test successful - 10 test rows inserted")
-        except Exception as test_error:
-            logger.error(f"_write_to_postgres_optimized: ❌ Connection test failed: {test_error}")
-            raise Exception(f"Connection test failed - cannot proceed with full write: {test_error}")
-        
-        # If test passed, proceed with full write in smaller chunks for visibility
-        total_rows = processed_df.count()
-        chunk_size = 50000  # Write in 50K chunks for progress visibility
-        
-        if total_rows <= chunk_size:
-            # Small dataset - write all at once
-            logger.info(f"_write_to_postgres_optimized: Writing all {total_rows} rows in single operation...")
-            processed_df.write \
-                .mode("append") \
-                .option("numPartitions", num_partitions) \
-                .jdbc(url=url, table=dbtable_name, properties=properties)
-            logger.info(f"_write_to_postgres_optimized: ✅ Successfully wrote {total_rows} rows")
-        else:
-            # Large dataset - write in chunks with progress updates
-            logger.info(f"_write_to_postgres_optimized: Large dataset ({total_rows} rows) - writing in {chunk_size} row chunks for progress visibility...")
-            
-            # Add row numbers for chunking
-            from pyspark.sql.functions import monotonically_increasing_id
-            from pyspark.sql.window import Window
-            from pyspark.sql.functions import row_number
-            
-            # Create window for row numbering
-            window = Window.orderBy(monotonically_increasing_id())
-            df_with_row_num = processed_df.withColumn("row_num", row_number().over(window))
-            
-            rows_written = 0
-            chunk_num = 0
-            
-            while rows_written < total_rows:
-                chunk_num += 1
-                start_row = rows_written + 1
-                end_row = min(rows_written + chunk_size, total_rows)
-                
-                logger.info(f"_write_to_postgres_optimized: Writing chunk {chunk_num}: rows {start_row}-{end_row} ({end_row - start_row + 1} rows)")
-                
-                # Get chunk
-                chunk_df = df_with_row_num.filter(
-                    (df_with_row_num.row_num >= start_row) & 
-                    (df_with_row_num.row_num <= end_row)
-                ).drop("row_num")  # Remove the row number column before writing
-                
-                # Write chunk
-                chunk_df.write \
-                    .mode("append") \
-                    .option("numPartitions", max(1, num_partitions // 4)) \
-                    .jdbc(url=url, table=dbtable_name, properties=properties)
-                
-                rows_written = end_row
-                progress_pct = (rows_written / total_rows) * 100
-                
-                logger.info(f"_write_to_postgres_optimized: ✅ Chunk {chunk_num} complete - {rows_written}/{total_rows} rows written ({progress_pct:.1f}%)")
-        
-        logger.info(f"_write_to_postgres_optimized: 🎉 Successfully wrote all data to {dbtable_name} using optimized JDBC writer")
+        logger.info(f"_write_to_postgres_optimized: Successfully wrote data to {dbtable_name} using optimized JDBC writer")
         
     except Exception as e:
         logger.error(f"_write_to_postgres_optimized: Failed to write to PostgreSQL: {e}")
-        logger.error("_write_to_postgres_optimized: Attempting fallback to ultra-conservative approach...")
-        
-        try:
-            # Ultra-conservative fallback: Write 1000 rows at a time with minimal partitions
-            logger.info("_write_to_postgres_optimized: 🔄 Fallback mode - writing in 1000-row micro-batches...")
-            
-            # Use a much simpler approach
-            conservative_properties = {
-                "user": conn_params["user"],
-                "password": conn_params["password"],
-                "driver": "org.postgresql.Driver",
-                "batchsize": "1000",  # Very small batches
-                "stringtype": "unspecified"
-            }
-            
-            # Write with minimal configuration
-            processed_df.write \
-                .mode("append") \
-                .option("numPartitions", 1) \
-                .jdbc(url=url, table=dbtable_name, properties=conservative_properties)
-            
-            logger.info("_write_to_postgres_optimized: ✅ Fallback method succeeded!")
-            
-        except Exception as fallback_error:
-            logger.error(f"_write_to_postgres_optimized: ❌ Fallback method also failed: {fallback_error}")
-            logger.error("_write_to_postgres_optimized: Troubleshooting steps:")
-            logger.error("_write_to_postgres_optimized: 1. Check if PostgreSQL JDBC driver is available")
-            logger.error("_write_to_postgres_optimized: 2. Verify network connectivity to database")
-            logger.error("_write_to_postgres_optimized: 3. Check database permissions for the user")
-            logger.error("_write_to_postgres_optimized: 4. Verify table schema matches DataFrame columns")
-            logger.error("_write_to_postgres_optimized: 5. Check Aurora PostgreSQL connection limits")
-            logger.error("_write_to_postgres_optimized: 6. Verify PostGIS geometry column compatibility")
-            raise Exception(f"Both optimized and fallback methods failed. Original error: {e}, Fallback error: {fallback_error}")
+        logger.error("_write_to_postgres_optimized: Troubleshooting steps:")
+        logger.error("_write_to_postgres_optimized: 1. Check if PostgreSQL JDBC driver is available")
+        logger.error("_write_to_postgres_optimized: 2. Verify network connectivity to database")
+        logger.error("_write_to_postgres_optimized: 3. Check database permissions for the user")
+        logger.error("_write_to_postgres_optimized: 4. Verify table schema matches DataFrame columns")
+        raise
 
 
 
