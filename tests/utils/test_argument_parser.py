@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Test script for argument parser configuration, especially the S3 bucket default.
+Test script for argument parser configuration.
 
 This utility script verifies that the argument parser in run_main.py works correctly
-with default values and handles missing Airflow variables gracefully.
+with all required arguments for optimized JDBC PostgreSQL writes.
 
 Usage:
     python3 tests/utils/test_argument_parser.py
@@ -31,21 +31,19 @@ def create_test_parser():
                         help="Path to the dataset")
     parser.add_argument("--env", type=str, required=True,
                         help="Environment (e.g., development, staging, production, local)")
-    parser.add_argument("--s3_bucket", type=str, required=False, 
-                        default="development-pyspark-jobs-codepackage",
-                        help="S3 bucket name for temporary staging (default: development-pyspark-jobs-codepackage)")
+    
     
     return parser
 
 def main():
     """Test the argument parser configuration"""
-    print("🧪 Testing Argument Parser with S3 Bucket Default")
+    print("🧪 Testing Argument Parser for Optimized JDBC")
     print("=" * 50)
     
     parser = create_test_parser()
     
-    # Test 1: Minimal args (should use default s3_bucket)
-    print("\n1. Testing with minimal arguments (s3_bucket should default):")
+    # Test 1: Standard arguments
+    print("\n1. Testing with standard arguments:")
     test_args = ['--load_type', 'full', '--data_set', 'test', '--path', 's3://test/', '--env', 'development']
     args = parser.parse_args(test_args)
     
@@ -53,41 +51,32 @@ def main():
     print(f"   data_set: {args.data_set}")
     print(f"   path: {args.path}")
     print(f"   env: {args.env}")
-    print(f"   s3_bucket: {args.s3_bucket} ✅ (default applied)")
+    print("   ✅ All required arguments parsed successfully")
     
-    # Test 2: With explicit s3_bucket
-    print("\n2. Testing with explicit s3_bucket:")
-    test_args = ['--load_type', 'full', '--data_set', 'test', '--path', 's3://test/', '--env', 'development', '--s3_bucket', 'custom-staging-bucket']
-    args = parser.parse_args(test_args)
-    
-    print(f"   s3_bucket: {args.s3_bucket} ✅ (explicit value)")
-    
-    # Test 3: Verify default is always present
-    print("\n3. Testing s3_bucket is never None:")
+    # Test 2: Different environment
+    print("\n2. Testing with production environment:")
     test_args = ['--load_type', 'sample', '--data_set', 'entity', '--path', 's3://bucket/data/', '--env', 'production']
     args = parser.parse_args(test_args)
     
-    if args.s3_bucket is not None:
-        print(f"   s3_bucket: {args.s3_bucket} ✅ (never None)")
+    print(f"   env: {args.env} ✅ (production environment)")
+    
+    # Test 3: Verify all required arguments work
+    print("\n3. Testing argument completeness:")
+    required_attrs = ['load_type', 'data_set', 'path', 'env']
+    all_present = all(hasattr(args, attr) for attr in required_attrs)
+    
+    if all_present:
+        print("   ✅ All required arguments present")
     else:
-        print(f"   ❌ s3_bucket is None - this should not happen!")
+        print("   ❌ Missing required arguments!")
         return False
     
-    # Test 4: Show help text includes default
-    print("\n4. Verify help text shows default:")
-    help_text = parser.format_help()
-    if "default: development-pyspark-jobs-codepackage" in help_text:
-        print("   ✅ Help text correctly shows default value")
-    else:
-        print("   ⚠️  Help text may not show default correctly")
-    
     print("\n✅ All argument parser tests passed!")
-    print("\n🎯 Benefits of the default value:")
-    print("   • Job never fails due to missing S3 bucket argument")
-    print("   • Works out of the box for development/testing")
-    print("   • Airflow can still override the bucket as needed")
-    print("   • Environment variable can still override if required")
-    print("   • Defensive programming - handles missing configuration gracefully")
+    print("\n🎯 Simplified argument structure:")
+    print("   • All required arguments work correctly")
+    print("   • Clean and focused argument set")
+    print("   • No unnecessary complexity")
+    print("   • Optimized for JDBC-only PostgreSQL writes")
     
     print("\n📝 Related tests:")
     print("   python3 tests/utils/test_logging_quick.py")

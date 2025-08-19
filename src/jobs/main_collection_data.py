@@ -319,23 +319,18 @@ def main(args):
                     if (table_name == 'entity'):
                         from jobs.dbaccess.postgres_connectivity import get_performance_recommendations
                         
-                        # Get S3 bucket for COPY protocol from arguments (passed from Airflow or default)
-                        temp_s3_bucket = args.s3_bucket  # Always has a value due to default
-                        logger.info(f"Main: Using S3 bucket for COPY protocol staging: {temp_s3_bucket}")
-                        
                         # Get performance recommendations based on dataset size
                         row_count = processed_df.count()
                         recommendations = get_performance_recommendations(row_count)
                         logger.info(f"Main: Performance recommendations for {row_count} rows: {recommendations}")
                         
-                        # Write to PostgreSQL using enhanced writer with recommendations
+                        # Write to PostgreSQL using optimized JDBC writer with recommendations
                         write_to_postgres(
                             processed_df, 
                             get_aws_secret(),
                             method=recommendations["method"],
                             batch_size=recommendations["batch_size"],
-                            num_partitions=recommendations["num_partitions"],
-                            temp_s3_bucket=temp_s3_bucket  # Pass S3 bucket from Airflow
+                            num_partitions=recommendations["num_partitions"]
                         )
                         logger.info(f"Main: Writing to Postgres for {table_name} table completed using {recommendations['method']} method")
                         

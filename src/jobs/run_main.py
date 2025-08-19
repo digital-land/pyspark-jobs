@@ -44,9 +44,6 @@ def parse_args():
                             help="Path to the dataset")
         parser.add_argument("--env", type=str, required=True,
                             help="Environment (e.g., development, staging, production, local)")
-        parser.add_argument("--s3_bucket", type=str, required=False, 
-                            default="development-pyspark-jobs-codepackage",
-                            help="S3 bucket name for temporary staging (default: development-pyspark-jobs-codepackage)")
         args = parser.parse_args()
         print(f"parse_args:Adding arguments for dataset: {args}")
         return args

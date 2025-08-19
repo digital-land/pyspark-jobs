@@ -5,8 +5,13 @@ import json
 from jobs.utils.logger_config import get_logger
 
 logger = get_logger(__name__)
-import pg8000
-from pg8000.exceptions import DatabaseError
+# Optional import for direct database connections (table creation)
+try:
+    import pg8000
+    from pg8000.exceptions import DatabaseError
+except ImportError:
+    pg8000 = None
+    DatabaseError = Exception
 
 from jobs.utils.aws_secrets_manager import get_secret_emr_compatible
 import os
@@ -111,7 +116,11 @@ def create_table(conn_params, max_retries=3, retry_delay=5):
         retry_delay (int): Delay between retries in seconds
     """
     import time
-    from pg8000.exceptions import InterfaceError, DatabaseError
+    if pg8000:
+        from pg8000.exceptions import InterfaceError, DatabaseError
+    else:
+        logger.warning("create_table: pg8000 not available, table creation may not work properly")
+        InterfaceError = DatabaseError = Exception
     
     conn = None
     cur = None
@@ -121,6 +130,8 @@ def create_table(conn_params, max_retries=3, retry_delay=5):
             logger.info(f"create_table: Attempting database connection (attempt {attempt + 1}/{max_retries})")
             logger.info(f"create_table: Connecting to {conn_params['host']}:{conn_params['port']}")
             
+            if not pg8000:
+                raise ImportError("pg8000 required for direct database connections")
             conn = pg8000.connect(**conn_params)
             cur = conn.cursor()
             
@@ -222,28 +233,25 @@ def _prepare_geometry_columns(df):
 # -------------------- PostgreSQL Writer --------------------
 
 ##writing to postgres db
-def write_to_postgres(df, conn_params, method="optimized", batch_size=None, num_partitions=None, temp_s3_bucket=None, **kwargs):
+def write_to_postgres(df, conn_params, method="optimized", batch_size=None, num_partitions=None, **kwargs):
     """
     Insert DataFrame rows into PostgreSQL table using optimized PySpark JDBC writer.
     
     Args:
         df (pyspark.sql.DataFrame): DataFrame to insert
         conn_params (dict): PostgreSQL connection parameters
-        method (str): Write method - "optimized" (default), "standard", "copy", "async"
+        method (str): Write method - "optimized" (default), "standard", "async"
         batch_size (int): Number of rows per batch (auto-calculated if None)
         num_partitions (int): Number of partitions (auto-calculated if None)
-        temp_s3_bucket (str): S3 bucket for COPY protocol staging (from Airflow args)
         **kwargs: Additional parameters for specific methods
     """
     logger.info(f"write_to_postgres: Using {method} method for PostgreSQL writes")
     
-    if method == "copy":
-        return _write_to_postgres_copy(df, conn_params, temp_s3_bucket=temp_s3_bucket, **kwargs)
-    elif method == "async":
+    if method == "async":
         return _write_to_postgres_async_batches(df, conn_params, batch_size or 5000, **kwargs)
     elif method == "standard":
         return _write_to_postgres_standard(df, conn_params)
-    else:  # method == "optimized" (default)
+    else:  # method == "optimized" (default) - handles any invalid method as optimized
         return _write_to_postgres_optimized(df, conn_params, batch_size, num_partitions)
 
 
@@ -372,342 +380,6 @@ def _write_to_postgres_optimized(df, conn_params, batch_size=None, num_partition
         raise
 
 
-def _write_to_postgres_copy(df, conn_params, use_copy_protocol=True, temp_s3_bucket=None):
-    """
-    Ultra-fast PostgreSQL writer using COPY protocol with automatic temporary S3 staging.
-    
-    This method can be 5-10x faster than JDBC for large datasets and automatically:
-    - Uses the project's development S3 bucket for temporary staging
-    - Creates a unique temporary path with timestamp
-    - Cleans up temporary files after successful import
-    
-    Args:
-        df: PySpark DataFrame to write
-        conn_params: Database connection parameters  
-        use_copy_protocol: Whether to use COPY protocol (default: True)
-        temp_s3_bucket: S3 bucket for temporary CSV files (defaults to project bucket)
-    """
-    if not use_copy_protocol or not pg8000:
-        logger.info("_write_to_postgres_copy: COPY protocol disabled or pg8000 unavailable, falling back to optimized JDBC")
-        return _write_to_postgres_optimized(df, conn_params)
-    
-    logger.info("_write_to_postgres_copy: Using ultra-fast COPY protocol for PostgreSQL writes")
-    
-    # Determine S3 bucket for temporary staging (priority order):
-    # 1. Argument passed from main (from Airflow or default)
-    # 2. Environment variable PYSPARK_TEMP_S3_BUCKET (override if needed)
-    # 3. Final fallback (development-pyspark-jobs-codepackage)
-    
-    if temp_s3_bucket is None:
-        # Should rarely happen now that argument has default, but maintain compatibility
-        temp_s3_bucket = os.environ.get('PYSPARK_TEMP_S3_BUCKET', 'development-pyspark-jobs-codepackage')
-        logger.info(f"_write_to_postgres_copy: Using fallback S3 bucket: {temp_s3_bucket}")
-    else:
-        # Check if environment variable override is set
-        env_override = os.environ.get('PYSPARK_TEMP_S3_BUCKET')
-        if env_override and env_override != temp_s3_bucket:
-            logger.info(f"_write_to_postgres_copy: Environment variable override detected: {env_override}")
-            temp_s3_bucket = env_override
-        else:
-            logger.info(f"_write_to_postgres_copy: Using S3 bucket from arguments: {temp_s3_bucket}")
-    
-    # Create unique temporary path with timestamp
-    import uuid
-    temp_session_id = str(uuid.uuid4())[:8]
-    temp_timestamp = int(time.time())
-    temp_s3_path = f"s3a://{temp_s3_bucket}/tmp/postgres-copy/{dbtable_name}-{temp_timestamp}-{temp_session_id}/"
-    
-    try:
-        # Ensure table exists
-        create_table(conn_params)
-        
-        # Validate S3 bucket exists before proceeding
-        if not _validate_s3_bucket(temp_s3_bucket):
-            logger.warning(f"_write_to_postgres_copy: S3 bucket {temp_s3_bucket} not accessible, falling back to optimized JDBC")
-            return _write_to_postgres_optimized(df, conn_params)
-        
-        logger.info(f"_write_to_postgres_copy: Writing temporary CSV to {temp_s3_path}")
-        processed_df = _prepare_geometry_columns(df)
-        
-        # Write as single CSV file for COPY protocol
-        processed_df.coalesce(1) \
-            .write \
-            .mode("overwrite") \
-            .option("header", "false") \
-            .option("delimiter", "|") \
-            .csv(temp_s3_path)
-        
-        # Step 2: Use PostgreSQL COPY command to import from CSV
-        logger.info("_write_to_postgres_copy: Executing COPY command on PostgreSQL")
-        _execute_copy_command(conn_params, temp_s3_path)
-        
-        logger.info("_write_to_postgres_copy: COPY protocol completed successfully")
-        
-        # Step 3: Clean up temporary files
-        try:
-            _cleanup_temp_s3_files(temp_s3_path)
-            logger.info("_write_to_postgres_copy: Temporary files cleaned up successfully")
-        except Exception as cleanup_error:
-            logger.warning(f"_write_to_postgres_copy: Failed to clean up temporary files (non-critical): {cleanup_error}")
-            
-    except Exception as e:
-        logger.error(f"_write_to_postgres_copy: COPY protocol failed: {e}")
-        if "NoSuchBucket" in str(e) or "does not exist" in str(e):
-            logger.error("_write_to_postgres_copy: S3 bucket configuration issue detected")
-            logger.error(f"_write_to_postgres_copy: Using bucket: {temp_s3_bucket}")
-            logger.error("_write_to_postgres_copy: To use COPY protocol, ensure:")
-            logger.error("_write_to_postgres_copy: 1. S3 bucket exists and is accessible")
-            logger.error("_write_to_postgres_copy: 2. PostgreSQL has aws_s3 extension installed")
-            logger.error("_write_to_postgres_copy: 3. PostgreSQL has network access to S3")
-        
-        # Attempt cleanup even on failure
-        try:
-            _cleanup_temp_s3_files(temp_s3_path)
-            logger.info("_write_to_postgres_copy: Temporary files cleaned up after failure")
-        except Exception:
-            pass  # Ignore cleanup errors if main operation failed
-        
-        logger.info("_write_to_postgres_copy: Falling back to optimized JDBC writer")
-        return _write_to_postgres_optimized(df, conn_params)
-
-
-def _cleanup_temp_s3_files(temp_s3_path):
-    """
-    Clean up temporary S3 files created during COPY protocol operation.
-    
-    Args:
-        temp_s3_path: S3 path to temporary files that need to be deleted
-    """
-    try:
-        import boto3
-        from botocore.exceptions import ClientError
-        
-        # Parse S3 path
-        if temp_s3_path.startswith('s3a://'):
-            s3_path = temp_s3_path[6:]  # Remove s3a:// prefix
-        elif temp_s3_path.startswith('s3://'):
-            s3_path = temp_s3_path[5:]  # Remove s3:// prefix
-        else:
-            s3_path = temp_s3_path
-        
-        bucket, prefix = s3_path.split('/', 1)
-        
-        s3_client = boto3.client('s3')
-        
-        # List all objects with the temporary prefix
-        logger.info(f"_cleanup_temp_s3_files: Cleaning up temporary files in s3://{bucket}/{prefix}")
-        
-        paginator = s3_client.get_paginator('list_objects_v2')
-        pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
-        
-        objects_deleted = 0
-        for page in pages:
-            if 'Contents' in page:
-                # Prepare list of objects to delete
-                objects_to_delete = [{'Key': obj['Key']} for obj in page['Contents']]
-                
-                if objects_to_delete:
-                    # Delete objects in batch
-                    response = s3_client.delete_objects(
-                        Bucket=bucket,
-                        Delete={'Objects': objects_to_delete}
-                    )
-                    
-                    # Count successful deletions
-                    if 'Deleted' in response:
-                        objects_deleted += len(response['Deleted'])
-                    
-                    # Log any deletion errors
-                    if 'Errors' in response:
-                        for error in response['Errors']:
-                            logger.warning(f"_cleanup_temp_s3_files: Failed to delete {error['Key']}: {error['Message']}")
-        
-        logger.info(f"_cleanup_temp_s3_files: Successfully deleted {objects_deleted} temporary files from S3")
-        
-    except ImportError:
-        logger.warning("_cleanup_temp_s3_files: boto3 not available, cannot clean up temporary S3 files")
-    except Exception as e:
-        # Handle both ClientError and other exceptions
-        if hasattr(e, 'response') and 'Error' in getattr(e, 'response', {}):
-            logger.warning(f"_cleanup_temp_s3_files: S3 client error during cleanup: {e}")
-        else:
-            logger.warning(f"_cleanup_temp_s3_files: Unexpected error during S3 cleanup: {e}")
-
-
-def _validate_s3_bucket(bucket_name):
-    """
-    Validate that an S3 bucket exists and is accessible.
-    
-    Args:
-        bucket_name: Name of the S3 bucket to validate
-        
-    Returns:
-        bool: True if bucket is accessible, False otherwise
-    """
-    try:
-        import boto3
-        from botocore.exceptions import ClientError
-        
-        s3_client = boto3.client('s3')
-        s3_client.head_bucket(Bucket=bucket_name)
-        logger.info(f"_validate_s3_bucket: S3 bucket {bucket_name} is accessible")
-        return True
-        
-    except ImportError:
-        logger.warning("_validate_s3_bucket: boto3 not available, skipping S3 bucket validation")
-        return True  # Assume it exists if we can't validate
-    except Exception as e:
-        # Handle both ClientError and other boto3 exceptions
-        if hasattr(e, 'response') and 'Error' in e.response:
-            error_code = e.response['Error']['Code']
-            if error_code == '404':
-                logger.error(f"_validate_s3_bucket: S3 bucket {bucket_name} does not exist")
-            elif error_code == '403':
-                logger.error(f"_validate_s3_bucket: Access denied to S3 bucket {bucket_name}")
-            else:
-                logger.error(f"_validate_s3_bucket: S3 bucket validation failed: {e}")
-        else:
-            logger.warning(f"_validate_s3_bucket: S3 bucket validation failed: {e}")
-        return False
-
-
-def _execute_copy_command(conn_params, csv_s3_path):
-    """
-    Execute PostgreSQL COPY command for ultra-fast bulk import.
-    """
-    if not pg8000:
-        raise ImportError("pg8000 required for COPY protocol")
-    
-    conn = None
-    cur = None
-    
-    try:
-        conn = pg8000.connect(**conn_params)
-        cur = conn.cursor()
-        
-        # Build column list for COPY command
-        columns = ", ".join(pyspark_entity_columns.keys())
-        
-        # Note: This requires PostgreSQL aws_s3 extension or similar setup
-        copy_sql = f"""
-        COPY {dbtable_name} ({columns})
-        FROM PROGRAM 'aws s3 cp {csv_s3_path} -'
-        WITH (FORMAT csv, DELIMITER '|')
-        """
-        
-        logger.info("_execute_copy_command: Executing COPY command...")
-        cur.execute(copy_sql)
-        conn.commit()
-        
-        logger.info("_execute_copy_command: COPY command completed successfully")
-        
-    finally:
-        if cur:
-            try:
-                cur.close()
-            except Exception:
-                pass
-        if conn:
-            try:
-                conn.close()
-            except Exception:
-                pass
-
-
-def _write_to_postgres_async_batches(df, conn_params, batch_size=5000, max_workers=4):
-    """
-    Async batch writer for maximum throughput on datasets that fit in memory.
-    
-    This method processes data in parallel batches for maximum performance.
-    Best for datasets that fit in driver memory (typically < 100k rows).
-    """
-    if not pg8000:
-        logger.warning("_write_to_postgres_async_batches: pg8000 not available - falling back to optimized JDBC")
-        return _write_to_postgres_optimized(df, conn_params, batch_size)
-    
-    logger.info(f"_write_to_postgres_async_batches: Starting async batch write with {max_workers} workers, batch size {batch_size}")
-    
-    # Ensure table exists
-    create_table(conn_params)
-    
-    # Collect DataFrame to Python for batch processing
-    # Note: Only use this for reasonably sized datasets that fit in memory
-    try:
-        rows = df.collect()
-        total_rows = len(rows)
-        
-        logger.info(f"_write_to_postgres_async_batches: Processing {total_rows} rows in batches of {batch_size}")
-        
-        if total_rows > 100000:
-            logger.warning(f"_write_to_postgres_async_batches: Large dataset ({total_rows} rows) may cause memory issues")
-            logger.info("_write_to_postgres_async_batches: Consider using 'optimized' or 'copy' method instead")
-        
-    except Exception as e:
-        logger.error(f"_write_to_postgres_async_batches: Failed to collect DataFrame: {e}")
-        logger.info("_write_to_postgres_async_batches: Falling back to optimized JDBC writer")
-        return _write_to_postgres_optimized(df, conn_params, batch_size)
-    
-    import concurrent.futures
-    
-    def write_batch(batch_rows, batch_num):
-        """Write a single batch of rows."""
-        try:
-            conn = pg8000.connect(**conn_params)
-            cur = conn.cursor()
-            
-            # Build parameterized INSERT statement
-            columns = list(pyspark_entity_columns.keys())
-            placeholders = ", ".join(["%s"] * len(columns))
-            insert_sql = f"INSERT INTO {dbtable_name} ({', '.join(columns)}) VALUES ({placeholders})"
-            
-            # Prepare batch data
-            batch_data = []
-            for row in batch_rows:
-                row_data = [getattr(row, col, None) for col in columns]
-                batch_data.append(row_data)
-            
-            # Execute batch insert
-            cur.executemany(insert_sql, batch_data)
-            conn.commit()
-            
-            logger.info(f"_write_to_postgres_async_batches: Batch {batch_num} completed: {len(batch_rows)} rows")
-            
-        except Exception as e:
-            logger.error(f"_write_to_postgres_async_batches: Batch {batch_num} failed: {e}")
-            raise
-        finally:
-            if cur:
-                try:
-                    cur.close()
-                except Exception:
-                    pass
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
-    
-    # Process in parallel batches
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = []
-        
-        for i in range(0, total_rows, batch_size):
-            batch_rows = rows[i:i + batch_size]
-            batch_num = i // batch_size + 1
-            
-            future = executor.submit(write_batch, batch_rows, batch_num)
-            futures.append(future)
-        
-        # Wait for all batches to complete
-        for future in concurrent.futures.as_completed(futures):
-            try:
-                future.result()
-            except Exception as e:
-                logger.error(f"_write_to_postgres_async_batches: Batch processing failed: {e}")
-                raise
-    
-    logger.info(f"_write_to_postgres_async_batches: Async batch write completed: {total_rows} rows processed")
-
 
 # -------------------- Performance Optimization Helpers --------------------
 
@@ -768,56 +440,5 @@ def get_performance_recommendations(row_count, available_memory_gb=8):
         })
     
     return recommendations
-
-
-def get_copy_protocol_recommendation(s3_bucket=None):
-    """
-    Get recommendation for using COPY protocol with automatic S3 configuration.
-    
-    Args:
-        s3_bucket: S3 bucket name for temporary CSV staging (defaults to project bucket)
-        
-    Returns:
-        dict: Configuration for COPY protocol usage
-    """
-    if s3_bucket is None:
-        s3_bucket = os.environ.get('PYSPARK_TEMP_S3_BUCKET', 'development-pyspark-jobs-codepackage')
-    
-    if _validate_s3_bucket(s3_bucket):
-        return {
-            "method": "copy",
-            "temp_s3_bucket": s3_bucket,
-            "reason": f"COPY protocol ready with S3 bucket: {s3_bucket}",
-            "expected_performance": "5-10x faster than JDBC for large datasets",
-            "automatic_features": [
-                "Uses project's development S3 bucket by default",
-                "Creates unique temporary paths with timestamp and UUID",
-                "Automatically cleans up temporary files after completion",
-                "Falls back to optimized JDBC if any issues occur"
-            ]
-        }
-    else:
-        return {
-            "method": "optimized", 
-            "reason": f"S3 bucket {s3_bucket} not accessible",
-            "fallback_info": "Will use optimized JDBC instead (still 3-5x faster than standard)",
-            "troubleshooting": [
-                "Check if S3 bucket exists (should be development-pyspark-jobs-codepackage)",
-                "Verify AWS credentials and permissions",
-                "Ensure bucket is in the correct region",
-                "PostgreSQL must have aws_s3 extension for COPY protocol"
-            ]
-        }
-
-
-# -------------------- SQLite Output Functions --------------------
-# NOTE: SQLite functionality has been moved to dedicated script:
-# src/jobs/parquet_to_sqlite.py
-#
-# This provides better separation of concerns and allows SQLite conversion
-# to run independently from the main data processing pipeline.
-#
-# Usage:
-#   python src/jobs/parquet_to_sqlite.py --input s3://bucket/parquet/ --output ./data.sqlite
 
 
