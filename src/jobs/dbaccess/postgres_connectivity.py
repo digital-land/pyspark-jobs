@@ -303,13 +303,15 @@ def _write_to_postgres_optimized(df, conn_params, batch_size=None, num_partition
     if batch_size is None:
         row_count = df.count()
         if row_count < 10000:
-            batch_size = 1000
-        elif row_count < 100000:
-            batch_size = 5000
-        elif row_count < 1000000:
-            batch_size = 10000
+            batch_size = 1000      # Small datasets
+        elif row_count < 50000:
+            batch_size = 5000      # Small-medium datasets
+        elif row_count < 500000:
+            batch_size = 25000     # Medium datasets - increased from 10K
+        elif row_count < 5000000:
+            batch_size = 50000     # Large datasets - increased from 20K
         else:
-            batch_size = 20000
+            batch_size = 100000    # Very large datasets (10M+ rows) - major increase
         logger.info(f"_write_to_postgres_optimized: Auto-calculated batch size: {batch_size} for {row_count} rows")
     
     # Auto-calculate optimal number of partitions if not specified
@@ -409,33 +411,41 @@ def get_performance_recommendations(row_count, available_memory_gb=8):
             "notes": ["Small dataset - single partition recommended"]
         })
     
-    elif row_count < 100000:
+    elif row_count < 50000:
         recommendations.update({
             "method": "optimized", 
             "batch_size": 5000,
             "num_partitions": 2,
-            "notes": ["Medium dataset - moderate parallelization"]
+            "notes": ["Small-medium dataset - moderate parallelization"]
         })
     
-    elif row_count < 1000000:
+    elif row_count < 500000:
         recommendations.update({
             "method": "optimized",
-            "batch_size": 10000,
+            "batch_size": 25000,
             "num_partitions": 4,
-            "notes": ["Large dataset - increased parallelization recommended"]
+            "notes": ["Medium dataset - increased batch size for better performance"]
         })
     
-    else:  # Very large datasets
-        max_partitions = min(20, max(4, available_memory_gb // 2))
+    elif row_count < 5000000:
         recommendations.update({
-            "method": "copy",  # Use COPY protocol for maximum speed with auto S3 staging
-            "batch_size": 20000,
+            "method": "optimized",
+            "batch_size": 50000,
+            "num_partitions": 8,
+            "notes": ["Large dataset - high-performance batch processing"]
+        })
+    
+    else:  # Very large datasets (5M+ rows)
+        max_partitions = min(20, max(8, available_memory_gb // 2))
+        recommendations.update({
+            "method": "async",     # Use async for maximum performance on very large datasets
+            "batch_size": 100000,
             "num_partitions": max_partitions,
             "notes": [
-                "Very large dataset - COPY protocol recommended for maximum speed",
-                "Automatic S3 staging using project bucket (development-pyspark-jobs-codepackage)",
-                "Falls back to optimized JDBC if COPY protocol fails",
-                f"Using {max_partitions} partitions based on available memory"
+                "Very large dataset - async batching recommended for maximum performance",
+                "Large batch sizes optimize Aurora PostgreSQL throughput",
+                f"Using {max_partitions} partitions based on available memory",
+                "Monitor CloudWatch logs for performance metrics"
             ]
         })
     

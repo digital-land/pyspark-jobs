@@ -22,7 +22,7 @@ This document explains the database write performance optimizations implemented 
 
 **Key Improvements**:
 - **Intelligent Partitioning**: Auto-calculates optimal partition count
-- **Batch Size Optimization**: Configurable batch sizes (default: 10,000 rows)
+- **Batch Size Optimization**: Auto-calculated batch sizes (up to 100,000 rows for large datasets)
 - **Connection Pooling**: Reuses prepared statements and connections
 - **JDBC Parameter Tuning**: 15+ optimized connection parameters
 
@@ -178,9 +178,10 @@ recommendations = get_performance_recommendations(row_count=50000)
 | Dataset Size | Recommended Method | Batch Size | Partitions | Notes |
 |--------------|-------------------|------------|------------|-------|
 | < 10k rows | optimized | 1,000 | 1 | Single partition |
-| 10k - 100k | optimized | 5,000 | 2 | Moderate parallelization |
-| 100k - 1M | optimized | 10,000 | 4 | Increased parallelization |
-| > 1M rows | copy | 20,000 | 8-20 | COPY protocol recommended |
+| 10k - 50k | optimized | 5,000 | 2 | Small-medium datasets |
+| 50k - 500k | optimized | 25,000 | 4 | Medium datasets - increased batch size |
+| 500k - 5M | optimized | 50,000 | 8 | Large datasets - high-performance batching |
+| > 5M rows | async | 100,000 | 8-20 | Very large datasets - async recommended |
 
 ## JDBC Connection Optimizations
 
@@ -189,7 +190,7 @@ The optimized writer includes 15+ JDBC parameter optimizations:
 ```python
 properties = {
     # Performance optimizations
-    "batchsize": "10000",                    # Larger batch sizes
+    "batchsize": "auto_calculated",          # Auto-calculated batch sizes (1K-100K)
     "reWriteBatchedInserts": "true",         # Rewrite for performance
     
     # Connection optimizations  
