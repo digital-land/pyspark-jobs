@@ -18,7 +18,9 @@ tests/
 ├── docs/                    # Test documentation (this directory)
 ├── utils/                   # Test utilities and helper scripts
 │   ├── test_utils.py       # Test utility functions
-│   └── test_logging_quick.py # Quick logging verification script
+│   ├── test_logging_quick.py # Quick logging verification script
+│   ├── test_argument_parser.py # Argument parser testing with defaults
+│   └── test_copy_protocol_setup.py # COPY protocol S3 configuration testing
 ├── unit/                   # Unit tests
 │   ├── simple_logging_test.py # Simple logging tests (no external deps)
 │   ├── test_simple_logging.py # Pytest-based unit tests
@@ -35,6 +37,7 @@ tests/
 ```bash
 # Quick verification
 python3 tests/utils/test_logging_quick.py
+python3 tests/utils/test_argument_parser.py
 
 # Unit tests
 python3 tests/unit/simple_logging_test.py

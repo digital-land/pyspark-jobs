@@ -1,17 +1,18 @@
-# PostgreSQL Performance Optimization Guide
+# Database Output Performance Optimization Guide
 
 ## Overview
 
-This document explains the PostgreSQL write performance optimizations implemented in the PySpark Jobs project. The optimized writer can provide **3-10x performance improvements** over the standard JDBC writer.
+This document explains the database write performance optimizations implemented in the PySpark Jobs project, supporting both **PostgreSQL** and **SQLite** output formats. The optimized writers can provide **3-10x performance improvements** over standard methods.
 
 ## Performance Improvements Summary
 
-| Method | Use Case | Expected Performance | Complexity |
-|--------|----------|---------------------|------------|
-| **Standard JDBC** | Small datasets (<10k rows) | Baseline | Low |
-| **Optimized JDBC** | Most datasets (10k-1M rows) | 3-5x faster | Low |
-| **COPY Protocol** | Large datasets (>1M rows) | 5-10x faster | Medium |
-| **Async Batches** | Memory-fit datasets | 4-8x faster | Medium |
+| Method | Use Case | Expected Performance | Setup Required |
+|--------|----------|---------------------|----------------|
+| **Standard JDBC** | Small datasets (<10k rows) | Baseline | None |
+| **Optimized JDBC** | Most datasets (10k-1M rows) | 3-5x faster | None |
+| **COPY Protocol** | Large datasets (>1M rows) | 5-10x faster | **Zero-config!** |
+| **Async Batches** | Memory-fit datasets | 4-8x faster | None |
+| **SQLite Output** | Local/backup storage | Fast & portable | None |
 
 ## Key Optimizations Implemented
 
@@ -43,25 +44,55 @@ write_to_postgres(
 
 **Performance Gains**: 3-5x faster than standard JDBC
 
-### 2. **COPY Protocol Writer** (For Large Datasets)
+### 2. **COPY Protocol Writer** (For Large Datasets with Automatic S3 Staging)
 
-**Best For**: Datasets > 1M rows
+**Best For**: Datasets > 1M rows where maximum speed is critical
 
 **How It Works**:
-1. Writes DataFrame to temporary CSV in S3
-2. Uses PostgreSQL's native COPY command
-3. Bypasses JDBC overhead entirely
+1. **Dynamic S3 staging**: Uses S3 bucket from Airflow arguments (configurable per environment)
+2. **Unique temporary paths**: Creates timestamped, UUID-based paths to avoid conflicts
+3. **PostgreSQL COPY command**: Bypasses JDBC overhead entirely for maximum speed
+4. **Automatic cleanup**: Removes temporary files after successful import
+5. **Intelligent fallback**: Switches to optimized JDBC if any issues occur
 
-**Example Usage**:
+**Zero-Configuration Usage**:
 ```python
+# Just specify copy method - everything else is automatic!
 write_to_postgres(df, conn_params, method="copy")
+
+# The system automatically:
+# - Uses S3 bucket from Airflow configuration (environment-specific)
+# - Creates unique temp path: tmp/postgres-copy/entity-1234567890-abc12345/
+# - Stages CSV files temporarily
+# - Executes COPY command
+# - Cleans up temp files
+# - Falls back to optimized JDBC if needed
+```
+
+**Advanced Configuration** (Optional):
+```python
+# Override S3 bucket if needed
+write_to_postgres(df, conn_params, method="copy", temp_s3_bucket="my-custom-bucket")
+
+# Check COPY protocol readiness
+from jobs.dbaccess.postgres_connectivity import get_copy_protocol_recommendation
+copy_config = get_copy_protocol_recommendation()
+print(f"COPY protocol status: {copy_config['reason']}")
 ```
 
 **Performance Gains**: 5-10x faster than standard JDBC
 
 **Requirements**:
-- PostgreSQL server must have S3 access (aws_s3 extension)
+- PostgreSQL server must have `aws_s3` extension installed
 - Network connectivity from PostgreSQL to S3
+- Access to S3 staging bucket (configured in Airflow variables)
+
+**Key Benefits**:
+- ✅ **Zero configuration required** - works out of the box
+- ✅ **Automatic cleanup** - no temporary file buildup
+- ✅ **Safe operation** - unique paths prevent conflicts
+- ✅ **Intelligent fallback** - never blocks your pipeline
+- ✅ **Production ready** - now recommended for large datasets
 
 ### 3. **Async Batch Writer** (For Memory-Fit Datasets)
 
@@ -83,6 +114,48 @@ write_to_postgres(
 ```
 
 **Performance Gains**: 4-8x faster than standard JDBC
+
+### 4. **SQLite Output Writer** (For Local/Backup Storage)
+
+**Best For**: Local analysis, backups, development, and portable data files
+
+**How It Works**:
+1. Converts DataFrame to SQLite-compatible format
+2. Handles data type mapping (PostgreSQL → SQLite)
+3. Creates optimally-sized SQLite files
+4. Supports S3 upload for backup storage
+
+**Example Usage**:
+```python
+from jobs.dbaccess.postgres_connectivity import write_to_sqlite
+
+# Single SQLite file (< 500k rows)
+write_to_sqlite(df, "/path/to/output.sqlite", method="single_file")
+
+# Optimized approach (auto-selects single vs partitioned)
+write_to_sqlite(df, "/path/to/output/", method="optimized")
+
+# Multiple SQLite files for large datasets
+write_to_sqlite(df, "/path/to/output/", method="partitioned", num_partitions=5)
+
+# Upload to S3
+write_to_sqlite(df, "s3://bucket/sqlite-output/", method="optimized")
+```
+
+**Benefits**:
+- **Portable**: SQLite files work on any system
+- **No Server Required**: Self-contained database files
+- **Fast Queries**: Excellent for analytics and reporting
+- **Backup/Archive**: Perfect for data preservation
+- **Development**: Easy local testing and development
+
+**SQLite Output Methods**:
+
+| Method | Description | Best For |
+|---------|-------------|----------|
+| `single_file` | One SQLite file | < 500k rows |
+| `optimized` | Auto-select approach | Any size dataset |
+| `partitioned` | Multiple SQLite files | > 500k rows |
 
 ## Automatic Performance Recommendations
 
@@ -291,13 +364,25 @@ All optimized writers include detailed logging:
 
 ## Summary
 
-The PostgreSQL performance optimizations provide significant improvements:
+The database output optimizations provide significant improvements:
 
+**PostgreSQL Optimizations:**
 - ✅ **3-5x faster** writes with optimized JDBC
 - ✅ **5-10x faster** writes with COPY protocol  
-- ✅ **Automatic recommendations** based on dataset size
 - ✅ **Better geometry handling** preserving spatial data
 - ✅ **Comprehensive error handling** and retry logic
+
+**SQLite Output Features:**
+- ✅ **Separate dedicated script** (`parquet_to_sqlite.py`) for clean architecture
+- ✅ **Reads from parquet files** rather than inline processing
+- ✅ **Portable database files** for any system
+- ✅ **Automatic file size management** (single vs partitioned)
+- ✅ **S3 upload support** for backup storage
+- ✅ **Local development friendly** with no server required
+
+**Universal Benefits:**
+- ✅ **Automatic recommendations** based on dataset size
 - ✅ **Drop-in replacement** for existing code
+- ✅ **Clean architecture** with separate tools for different purposes
 
 The optimizations are production-ready and have been integrated into the main data processing pipeline.
