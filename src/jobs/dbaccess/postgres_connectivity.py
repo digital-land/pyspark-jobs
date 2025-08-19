@@ -240,16 +240,14 @@ def write_to_postgres(df, conn_params, method="optimized", batch_size=None, num_
     Args:
         df (pyspark.sql.DataFrame): DataFrame to insert
         conn_params (dict): PostgreSQL connection parameters
-        method (str): Write method - "optimized" (default), "standard", "async"
+        method (str): Write method - "optimized" (default), "standard"
         batch_size (int): Number of rows per batch (auto-calculated if None)
         num_partitions (int): Number of partitions (auto-calculated if None)
         **kwargs: Additional parameters for specific methods
     """
     logger.info(f"write_to_postgres: Using {method} method for PostgreSQL writes")
     
-    if method == "async":
-        return _write_to_postgres_async_batches(df, conn_params, batch_size or 5000, **kwargs)
-    elif method == "standard":
+    if method == "standard":
         return _write_to_postgres_standard(df, conn_params)
     else:  # method == "optimized" (default) - handles any invalid method as optimized
         return _write_to_postgres_optimized(df, conn_params, batch_size, num_partitions)
@@ -438,11 +436,11 @@ def get_performance_recommendations(row_count, available_memory_gb=8):
     else:  # Very large datasets (5M+ rows)
         max_partitions = min(20, max(8, available_memory_gb // 2))
         recommendations.update({
-            "method": "async",     # Use async for maximum performance on very large datasets
+            "method": "optimized",  # Use optimized method with large batch sizes for maximum performance
             "batch_size": 100000,
             "num_partitions": max_partitions,
             "notes": [
-                "Very large dataset - async batching recommended for maximum performance",
+                "Very large dataset - optimized method with large batch sizes for maximum performance",
                 "Large batch sizes optimize Aurora PostgreSQL throughput",
                 f"Using {max_partitions} partitions based on available memory",
                 "Monitor CloudWatch logs for performance metrics"
