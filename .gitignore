@@ -205,3 +205,141 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+.vscode/launch.json
+emr_venv/lib64
+emr_venv/bin/activate
+emr_venv/bin/activate.csh
+emr_venv/bin/activate.fish
+emr_venv/bin/pip
+emr_venv/bin/pip3
+emr_venv/bin/pip3.12
+emr_venv/bin/python3
+emr_venv/bin/python
+emr_venv/bin/python3.12
+emr_venv/bin/Activate.ps1
+emr_venv/pyvenv.cfg
+
+# Security - Sensitive files (PUBLIC REPOSITORY)
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+secrets/
+credentials/
+.aws/
+.secrets
+secret_*
+*_secret.*
+*_secrets.*
+*.secret
+config_local.json
+config_prod.json
+config_dev.json
+*config_private*
+terraform.tfstate*
+terraform.tfvars
+.terraform/
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDEs and editors
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs and temporary files
+*.log
+*.tmp
+logs/
+temp/
+
+# Test logs - ignore all log files generated during testing
+tests/logs/
+tests/**/*.log
+
+# PySpark and Big Data
+spark-warehouse/
+derby.log
+metastore_db/
+*.crc
+*.parquet
+*.orc
+*.avro
+checkpoint/
+_SUCCESS
+
+# Airflow specific
+airflow-webserver.pid
+airflow-scheduler.pid
+airflow.db
+dags/__pycache__/
+plugins/__pycache__/
+airflow_home/
+unittests.cfg
+
+# Jupyter Notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+# Data files (add specific patterns based on your needs)
+*.csv
+*.tsv
+*.xlsx
+*.xls
+*.json.gz
+*.csv.gz
+data/
+datasets/
+output/
+results/
+*.pickle
+*.pkl
+
+# AWS and EMR
+*.zip
+*.tar.gz
+*.jar
+bootstrap-actions/
+step-logs/
+emr_venv/
+lambda_layer*.zip
+
+# Build artifacts and packaging
+build/
+dist/
+*.whl
+*.egg-info/
+pyspark_jobs_with_deps.zip
+
+# AWS deployment build outputs
+build_output/
+build_venv/
+temp_venv/
+dependencies.tar.gz
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Configuration files with potentially sensitive data
+*config*.json
+*config*.yaml
+*config*.yml
+application.properties
+spark-defaults.conf
+
+# OS and Editor specific
+*.Zone.Identifier
+*:PG$Secure

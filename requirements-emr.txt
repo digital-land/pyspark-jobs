@@ -1,0 +1,17 @@
+# EMR Serverless Dependencies
+# This file excludes packages that are pre-installed in EMR Serverless:
+# - PySpark (pre-installed)
+# - boto3 (pre-installed, use native AWS SDK)
+# - botocore (pre-installed, use native AWS SDK)
+
+# Database connectivity (pure Python - no binary dependencies)
+pg8000>=1.30.0
+
+# Configuration and data handling
+PyYAML>=6.0
+
+# Python standard library extensions
+typing-extensions>=4.0.0
+
+# Package metadata
+setuptools>=65.0.0

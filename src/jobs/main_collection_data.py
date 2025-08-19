@@ -1,5 +1,4 @@
 import configparser
-import logging
 import os
 import boto3
 import pkgutil
@@ -8,54 +7,35 @@ import sys
 import argparse
 from jobs.transform_collection_data import (transform_data_fact, transform_data_fact_res,
                                        transform_data_issue, transform_data_entity) 
+from jobs.dbaccess.postgres_connectivity import create_table,write_to_postgres, get_aws_secret
 #import sqlite3
 from datetime import datetime
 from dataclasses import fields
-from logging import config
-from logging.config import dictConfig
 #from jobs import transform_collection_data
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (coalesce,collect_list,concat_ws,dayofmonth,expr,first,month,to_date,year,row_number)
 from pyspark.sql.types import (StringType,StructField,StructType,TimestampType)
 from pyspark.sql.window import Window
 
+# Import the new logging module
+from jobs.utils.logger_config import setup_logging, get_logger, log_execution_time, set_spark_log_level
+
 #from utils.path_utils import load_json_from_repo
 
-# -------------------- Logging Configuration --------------------
-LOGGING_CONFIG = {
-    "version": 1,
-    "formatters": {
-        "default": {
-            "format": "[%(asctime)s] %(levelname)s - %(message)s",
-        },
-    },
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-            "formatter": "default",
-            "level": "INFO",
-        },
-    },
-    
-    "file": {
-                "class": "logging.FileHandler",
-                "formatter": "default",
-                "level": "INFO",
-                "filename": "logs/emr_transform_job.log",  # You can customize the path
-                "mode": "a",  # Append mode
-            },
+# -------------------- Logging Setup --------------------
+# Setup logging for EMR Serverless (console output goes to CloudWatch automatically)
+setup_logging(
+    log_level=os.getenv("LOG_LEVEL", "INFO"),
+    # Note: In EMR Serverless, console logs are automatically captured by CloudWatch
+    # File logging is optional for local debugging
+    log_file=os.getenv("LOG_FILE") if os.getenv("LOG_FILE") else None,
+    environment=os.getenv("ENVIRONMENT", "production")
+)
 
-    "root": {
-        "handlers": ["console"],
-        "level": "INFO",
-    },
-}
-
-dictConfig(LOGGING_CONFIG)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # -------------------- Spark Session --------------------
-#def create_spark_session(config,app_name="EMR Transform Job"):
+@log_execution_time
 def create_spark_session(app_name="EMR Transform Job"):
 
     try:
@@ -66,10 +46,20 @@ def create_spark_session(app_name="EMR Transform Job"):
         ##jar_path = config['AWS']['S3_SQLITE_JDBC_JAR']
         ##logger.info(f"Using JAR path: {jar_path}")
 
-        ##spark_session= SparkSession.builder.appName(app_name) \
-        ##   .config("spark.jars", jar_path) \
-        ##   .getOrCreate()
-        spark_session = SparkSession.builder.appName(app_name).getOrCreate()
+        # Configure PostgreSQL JDBC driver for EMR Serverless 7.9.0
+        # The driver JAR should be available via --jars parameter in EMR configuration
+        # Optimized configurations for EMR 7.9.0 (Spark 3.5.x, Java 17)
+        spark_session = SparkSession.builder \
+            .appName(app_name) \
+            .config("spark.sql.adaptive.enabled", "true") \
+            .config("spark.sql.adaptive.coalescePartitions.enabled", "true") \
+            .config("spark.sql.adaptive.skewJoin.enabled", "true") \
+            .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") \
+            .getOrCreate()
+        
+        # Set Spark logging level to reduce verbosity
+        #set_spark_log_level("WARN")
+        
         return spark_session
 
     except Exception as e:
@@ -77,7 +67,7 @@ def create_spark_session(app_name="EMR Transform Job"):
         return None
 
 # -------------------- Metadata Loader --------------------
-
+@log_execution_time
 def load_metadata(uri: str) -> dict:
     """
     Load a JSON configuration file from either an S3 URI or a local file path.
@@ -150,6 +140,7 @@ def read_data(spark, input_path):
         raise
 
 # -------------------- Data Transformer --------------------
+@log_execution_time
 def transform_data(df, schema_name, data_set,spark):      
     try:
         dataset_json_transformed_path = "config/transformed_source.json"
@@ -204,6 +195,7 @@ def transform_data(df, schema_name, data_set,spark):
         raise
 
 # -------------------- S3 Writer --------------------
+@log_execution_time
 def write_to_s3(df, output_path):
     try:   
         logger.info(f"Writing data to S3 at {output_path}") 
@@ -254,28 +246,10 @@ def generate_sqlite(df):
         logger.error(f"Failed to write to SQLite: {e}", exc_info=True)
         raise
 
-# -------------------- PostgreSQL Writer --------------------
-
-##writing to postgres db
-def write_to_postgres(df, config):
-    try:
-        logger.info(f"Writing data to PostgreSQL table {config['TABLE_NAME']}")
-        df.write \
-            .format(config['PG_JDBC']) \
-            .option("url", config['PG_URL']) \
-            .option("dbtable", config['TABLE_NAME']) \
-            .option("user", config['USER_NAME']) \
-            .option("password", config['PASSWORD']) \
-            .option("driver", config['DRIVER']) \
-            .mode("overwrite") \
-            .save()
-    except Exception as e:
-        logger.error(f"Failed to write to PostgreSQL: {e}", exc_info=True)
-        raise
-
 
 
 # -------------------- Main --------------------
+@log_execution_time
 def main(args):
     logger.info(f"Main: Starting ETL process for Collection Data {args.load_type} and dataset {args.data_set}")
     try: 
@@ -287,7 +261,9 @@ def main(args):
         load_type = args.load_type
         data_set = args.data_set
         s3_uri = args.path
-       
+        env=args.env
+        logger.info(f"Main: env variable for the dataset: {env}")
+
         s3_uri=s3_uri+data_set+"-collection"
 
         table_names=["fact","fact_res","entity","issue"]
@@ -301,19 +277,7 @@ def main(args):
             logger.info(f"Main: Full load type specified: {load_type}")
             logger.info(f"Main: Load type is {load_type} and dataset is {data_set} and path is {s3_uri}")             
             
-            # Define paths to JSON configuration files
-            #dataset_json_path = "config/datasets.json"  
-            # Relative path within the package
-            #logger.info(f"Main: JSON configuration files path for datasets: {s3_uri}")              
-            # Load AWS configuration
-            #config_json_datasets = load_metadata(s3_uri)
-            #logger.info(f"Main: JSON configuration files for config files: {config_json_datasets}")
-
-            #for dataset, path_info in config_json_datasets.items():
-            #if not path_info.get("enabled", False):
-                #logger.info(f"Main: Skipping dataset with false as enabled flag: {dataset}")
-                #continue
-            #ogger.info(f"Main: Started Processing enabled dataset : {dataset}")
+       
             logger.info(f"Main: Processing dataset with path information : {s3_uri}")            
 
             # todo: for coming sprint
@@ -322,7 +286,7 @@ def main(args):
             ##generate_sqlite(processed_df)
 
             logger.info("Main: Set target s3 output path")
-            output_path = f"s3://development-collection-data/emr-data-processing/assemble-parquet/{data_set}/"
+            output_path = f"s3://{env}-pyspark-assemble-parquet/{data_set}/"
             logger.info(f" Main: Target output path: {output_path}")
                          
             df = None  # Initialise df to avoid UnboundLocalError
@@ -351,6 +315,28 @@ def main(args):
                     write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}")
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")
 
+                      # Write to Postgres for Entity table using optimized method
+                    if (table_name == 'entity'):
+                        from jobs.dbaccess.postgres_connectivity import get_performance_recommendations
+                        
+                        # Get performance recommendations based on dataset size
+                        row_count = processed_df.count()
+                        recommendations = get_performance_recommendations(row_count)
+                        logger.info(f"Main: Performance recommendations for {row_count} rows: {recommendations}")
+                        
+                        # Write to PostgreSQL using optimized JDBC writer with recommendations
+                        write_to_postgres(
+                            processed_df, 
+                            get_aws_secret(),
+                            method=recommendations["method"],
+                            batch_size=recommendations["batch_size"],
+                            num_partitions=recommendations["num_partitions"]
+                        )
+                        logger.info(f"Main: Writing to Postgres for {table_name} table completed using {recommendations['method']} method")
+                        
+                        # Note: For SQLite conversion, use the separate parquet_to_sqlite.py script:
+                        # python src/jobs/parquet_to_sqlite.py --input s3://bucket/output-parquet-entity --output ./entity.sqlite  
+
                 elif(table_name== 'issue'):
                     full_path = f"{s3_uri}"+"/issue/"+data_set+"/*.csv"
                     logger.info(f"Main: Dataset input path including csv file path: {full_path}")
@@ -375,6 +361,73 @@ def main(args):
         elif(load_type == 'delta'):
             #invoke delta load logic
             logger.info(f"Main: Delta load type specified: {load_type}")
+
+
+            
+        elif(load_type == 'sample'):
+            #invoke sample load logic
+            logger.info(f"Main: Sample load type specified: {load_type}")
+            logger.info(f"Main: Load type is {load_type} and dataset is {data_set} and path is {s3_uri}")    
+                       
+
+                     
+            logger.info(f"Main: Processing dataset with path information : {s3_uri}")         
+
+            logger.info("Main: Set target s3 output path")
+            output_path = f"s3://{env}-pyspark-assemble-parquet/sample-{data_set}/"
+            logger.info(f" Main: Target output path: {output_path}")
+                         
+            df = None  # Initialise df to avoid UnboundLocalError
+            
+            for table_name in table_names:
+                if(table_name== 'fact' or table_name== 'fact_res' or table_name== 'entity'):
+                    full_path = f"{s3_uri}"+"/transformed/sample-"+data_set+"/*.csv"
+                    logger.info(f"Main: Dataset input path including csv file path: {full_path}")
+                    
+                    
+                    if df is None or df.rdd.isEmpty():
+                        # Read CSV using the dynamic schema
+                        logger.info("Main: dataframe is empty")
+                        df = spark.read.option("header", "true").csv(full_path)
+                        df.cache()  # Cache the DataFrame for performance
+                    
+                    # Show schema and sample data 
+                    df.printSchema() 
+                    logger.info(f"Main: Schema information for the loaded dataframe")
+                    df.show()
+                    #revise this code and for converting spark session as singleton in future
+                    processed_df = transform_data(df,table_name,data_set,spark)
+                    logger.info(f"Main: Transforming data for {table_name} table completed")
+
+                    # Write to S3 for Fact Resource table
+                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}")
+                    logger.info(f"Main: Writing to s3 for {table_name} table completed")
+
+                    # Write to Postgres for Entity table
+                    if (table_name == 'entity'):
+                        write_to_postgres(processed_df, get_aws_secret())
+                        logger.info(f"Main: Writing to Postgres for {table_name} table completed")  
+
+
+                elif(table_name== 'issue'):
+                    full_path = f"{s3_uri}"+"/issue/"+data_set+"/*.csv"
+                    logger.info(f"Main: Dataset input path including csv file path: {full_path}")
+                    
+                    # Read CSV using the dynamic schema
+                    df = spark.read.option("header", "true").csv(full_path)
+                    df.cache()  # Cache the DataFrame for performance
+
+                    # Show schema and sample data 
+                    df.printSchema() 
+                    logger.info(f"Main: Schema information for the loaded dataframe")
+                    df.show()
+                    processed_df = transform_data(df,table_name,data_set,spark)                                      
+
+                    logger.info(f"Main: Transforming data for {table_name} table completed")
+
+                    # Write to S3 for Fact table
+                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}")
+                    logger.info(f"Main: Writing to s3 for {table_name} table completed")                                     
         else:
             logger.error(f"Main: Invalid load type specified: {load_type}")
             raise ValueError(f"Invalid load type: {load_type}")        
@@ -390,7 +443,3 @@ def main(args):
         # Duration
         duration = end_time - start_time
         logger.info(f"Total duration: {duration}")
-
-
-#if __name__ == "__main__":    
-    #main()
