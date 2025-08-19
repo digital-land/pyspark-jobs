@@ -140,7 +140,7 @@ build_wheel() {
         exit 1
     fi
     
-    # Clean up build environment
+    # Clean up build environment (keep dist/ and build/ for development)
     rm -rf build_venv/
 }
 
