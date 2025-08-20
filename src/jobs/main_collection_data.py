@@ -327,6 +327,7 @@ def main(args):
                         # Write to PostgreSQL using optimized JDBC writer with recommendations
                         write_to_postgres(
                             processed_df, 
+                            data_set,
                             get_aws_secret(),
                             method=recommendations["method"],
                             batch_size=recommendations["batch_size"],
@@ -405,7 +406,7 @@ def main(args):
 
                     # Write to Postgres for Entity table
                     if (table_name == 'entity'):
-                        write_to_postgres(processed_df, get_aws_secret())
+                        write_to_postgres(processed_df, data_set,get_aws_secret())
                         logger.info(f"Main: Writing to Postgres for {table_name} table completed")  
 
 

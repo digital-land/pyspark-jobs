@@ -106,7 +106,7 @@ def get_aws_secret():
 
 
 # Create table if not exists
-def create_table(conn_params, max_retries=3, retry_delay=5):
+def create_table(conn_params, dataset_value,max_retries=3, retry_delay=5):
     """
     Create table with retry logic and better error handling.
     
@@ -143,6 +143,15 @@ def create_table(conn_params, max_retries=3, retry_delay=5):
             cur.execute(create_query)
             conn.commit()
             logger.info(f"create_table: Table '{dbtable_name}' created successfully (if it didn't exist).")
+
+            # Select and delete records by dataset value if provided
+            if dataset_value:
+                delete_query = f"DELETE FROM {dbtable_name} WHERE dataset = %s;"
+                logger.info(f"create_table: Selecting records to delete from {dbtable_name} where dataset = {dataset_value}")
+                cur.execute(delete_query, (dataset_value,))
+                conn.commit()
+                logger.info(f"create_table: Deleted records from {dbtable_name} where dataset = {dataset_value}")
+
             return  # Success, exit function
             
         except InterfaceError as e:
@@ -233,7 +242,7 @@ def _prepare_geometry_columns(df):
 # -------------------- PostgreSQL Writer --------------------
 
 ##writing to postgres db
-def write_to_postgres(df, conn_params, method="optimized", batch_size=None, num_partitions=None, **kwargs):
+def write_to_postgres(df, dataset,conn_params, method="optimized", batch_size=None, num_partitions=None, **kwargs):
     """
     Insert DataFrame rows into PostgreSQL table using optimized PySpark JDBC writer.
     
@@ -248,19 +257,19 @@ def write_to_postgres(df, conn_params, method="optimized", batch_size=None, num_
     logger.info(f"write_to_postgres: Using {method} method for PostgreSQL writes")
     
     if method == "standard":
-        return _write_to_postgres_standard(df, conn_params)
+        return _write_to_postgres_standard(df, dataset,conn_params)
     else:  # method == "optimized" (default) - handles any invalid method as optimized
-        return _write_to_postgres_optimized(df, conn_params, batch_size, num_partitions)
+        return _write_to_postgres_optimized(df, dataset,conn_params, batch_size, num_partitions)
 
 
-def _write_to_postgres_standard(df, conn_params):
+def _write_to_postgres_standard(df, dataset, conn_params):
     """
     Original PostgreSQL writer (for comparison and fallback).
     """
     logger.info("_write_to_postgres_standard: Using original JDBC writer")
     
     # Ensure table exists before inserting
-    create_table(conn_params)
+    create_table(conn_params, dataset)
 
     url = f"jdbc:postgresql://{conn_params['host']}:{conn_params['port']}/{conn_params['database']}"
     properties = {
@@ -282,7 +291,7 @@ def _write_to_postgres_standard(df, conn_params):
         raise
 
 
-def _write_to_postgres_optimized(df, conn_params, batch_size=None, num_partitions=None):
+def _write_to_postgres_optimized(df, dataset, conn_params, batch_size=None, num_partitions=None):
     """
     Optimized PostgreSQL writer with performance improvements.
     
@@ -295,8 +304,8 @@ def _write_to_postgres_optimized(df, conn_params, batch_size=None, num_partition
     logger.info("_write_to_postgres_optimized: Starting optimized PostgreSQL write operation")
     
     # Ensure table exists
-    create_table(conn_params)
-    
+    create_table(conn_params, dataset)
+
     # Auto-calculate optimal batch size if not specified
     if batch_size is None:
         row_count = df.count()
