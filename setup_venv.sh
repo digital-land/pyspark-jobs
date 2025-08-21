@@ -122,25 +122,14 @@ install_dependencies() {
     local env_type=$1
     
     case $env_type in
-        "production")
-            print_status "Installing production dependencies..."
-            pip install -r "$PROJECT_DIR/requirements.txt"
-            ;;
-        "development"|"dev")
-            print_status "Installing development dependencies..."
-            pip install -r "$PROJECT_DIR/requirements-dev.txt"
-            ;;
-        "emr")
-            print_status "Installing EMR-compatible dependencies..."
-            pip install -r "$PROJECT_DIR/requirements-emr.txt"
-            ;;
         "local"|"testing")
             print_status "Installing local testing dependencies..."
             pip install -r "$PROJECT_DIR/requirements-local.txt"
             ;;
+
         *)
             print_error "Unknown environment type: $env_type"
-            print_status "Available options: production, development, emr, local"
+            print_status "Available options: local"
             exit 1
             ;;
     esac

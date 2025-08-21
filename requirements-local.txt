@@ -1,8 +1,13 @@
 # Local Testing Requirements
 # Optimized for easy local testing and development on any platform
 
-# Include all production dependencies
+# Include EMR dependencies 
 -r requirements.txt
+
+# Additional dependencies needed for local development (pre-installed in EMR)
+pyspark>=3.3.0,<4.0.0
+boto3>=1.26.0
+botocore>=1.29.0
 
 # Essential testing framework
 pytest>=7.0.0

@@ -76,7 +76,7 @@ source venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 # OR install specific packages
-pip install boto3 pyspark psycopg2-binary PyYAML
+pip install boto3 pyspark pg8000 PyYAML
 ```
 
 ### 3. Verify logging works in your actual PySpark jobs
