@@ -1,27 +1,42 @@
-# Fixing psycopg2 Binary Compatibility Issues in EMR Serverless
+# Database Connectivity: Why We Don't Use psycopg2-binary
 
-## Problem Description
+## Current Solution (Recommended)
 
-When running PySpark jobs on EMR Serverless, you may encounter the following error:
+**We have eliminated `psycopg2-binary` entirely** and use `pg8000>=1.30.0` for all environments.
+
+See [DATABASE_CONNECTIVITY.md](./DATABASE_CONNECTIVITY.md) for complete details.
+
+## Historical Context: The psycopg2-binary Problem
+
+This document explains why we moved away from `psycopg2-binary` for EMR Serverless compatibility.
+
+### The Problem
+
+When using `psycopg2-binary` in EMR Serverless, you encounter this error:
 
 ```
 ModuleNotFoundError: No module named 'psycopg2._psycopg'
 ```
 
-This error occurs because `psycopg2-binary` contains platform-specific compiled C extensions. When you build dependencies on macOS (development environment), the macOS wheel is downloaded, but EMR Serverless runs on Linux and requires Linux-compatible binaries.
+### Root Cause
 
-## Root Cause
-
-- `psycopg2-binary` includes compiled C extensions that are platform-specific
-- Development builds on macOS download macOS wheels
+- `psycopg2-binary` contains platform-specific compiled C extensions
+- Development builds on macOS download macOS wheels  
 - EMR Serverless runs on Amazon Linux and expects Linux x86_64 binaries
-- The binary incompatibility causes the module loading to fail
+- Binary incompatibility causes module loading failures
 
-## Solutions
+### Why This Was Problematic
 
-### Solution 1: Updated Build Script (Recommended)
+1. **Platform Dependency**: Required different builds for different platforms
+2. **Build Complexity**: Needed Docker or Linux environment for EMR builds
+3. **Maintenance Overhead**: Had to manage platform-specific dependency resolution
+4. **Deployment Issues**: Different behavior between local and production
 
-The `build_aws_package.sh` script has been updated to automatically download Linux-compatible wheels:
+## Legacy Solutions (No Longer Used)
+
+### Historical Solution 1: Docker Build (Deprecated)
+
+Previously, we used Docker to build Linux-compatible wheels:
 
 ```bash
 # Build with Linux-compatible dependencies

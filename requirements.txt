@@ -7,9 +7,11 @@ pyspark>=3.3.0,<4.0.0
 boto3>=1.26.0
 botocore>=1.29.0
 
-# Database connectivity
-psycopg2-binary>=2.9.0
+# Database connectivity (pure Python - EMR Serverless compatible)
 pg8000>=1.30.0
+# NOTE: DO NOT use psycopg2-binary>=2.9.0 - contains platform-specific compiled C extensions
+# that cause "ModuleNotFoundError: No module named 'psycopg2._psycopg'" in EMR Serverless.
+# See docs/DATABASE_CONNECTIVITY.md for detailed explanation.
 
 # Configuration and data handling
 PyYAML>=6.0

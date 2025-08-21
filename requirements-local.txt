@@ -3,6 +3,7 @@
 
 # Include all production dependencies
 -r requirements.txt
+# NOTE: We use pg8000 (not psycopg2-binary) for EMR Serverless compatibility
 
 # Essential testing framework
 pytest>=7.0.0

@@ -21,7 +21,7 @@ The `build_aws_package.sh` script automates the entire build process:
 1. **Validates Environment** - Checks for Python 3, pip, and required files
 2. **Cleans Previous Builds** - Removes old build artifacts and cache files
 3. **Builds Wheel Package** - Creates your application wheel using `setup.py`
-4. **Creates Dependencies Archive** - Packages external dependencies (psycopg2-binary, PyYAML, typing-extensions)
+4. **Creates Dependencies Archive** - Packages external dependencies (pg8000, PyYAML, typing-extensions)
 5. **Copies Entry Scripts** - Prepares your job entry points
 6. **Generates Deployment Manifest** - Creates configuration for EMR Serverless
 7. **Creates Upload Script** - Generates S3 upload commands
