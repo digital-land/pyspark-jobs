@@ -30,27 +30,14 @@ help: ## Show this help message
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  $(BLUE)%-20s$(NC) %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 # Virtual Environment Setup
-init: ## Initialize development environment with all dependencies
-	@echo "$(BLUE)Setting up development environment...$(NC)"
-	./setup_venv.sh --type development
-	@echo "$(GREEN)Development environment ready!$(NC)"
-
-init-dev: init ## Alias for init (development environment)
-
-init-prod: ## Initialize production environment
-	@echo "$(BLUE)Setting up production environment...$(NC)"
-	./setup_venv.sh --type production
-	@echo "$(GREEN)Production environment ready!$(NC)"
-
-init-emr: ## Initialize EMR-compatible environment
-	@echo "$(BLUE)Setting up EMR-compatible environment...$(NC)"
-	./setup_venv.sh --type emr
-	@echo "$(GREEN)EMR environment ready!$(NC)"
+init: init-local ## Default: Initialize local testing environment
 
 init-local: ## Initialize local testing environment (lightweight)
 	@echo "$(BLUE)Setting up local testing environment...$(NC)"
 	./setup_venv.sh --type local
 	@echo "$(GREEN)Local testing environment ready!$(NC)"
+
+
 
 # Testing
 test: ## Run all tests

@@ -49,7 +49,7 @@ pyspark-jobs/
 │   └── conftest.py              # Shared test configuration
 ├── examples/                     # Usage examples
 ├── requirements.txt              # Production dependencies
-├── requirements-test.txt         # Testing dependencies
+├── requirements-local.txt        # Local testing dependencies
 ├── pytest.ini                   # Pytest configuration
 ├── setup.py                     # Package configuration
 └── README.md                    # This file
@@ -74,11 +74,11 @@ The easiest way to get started is using our automated setup script:
 git clone <repository-url>
 cd pyspark-jobs
 
-# Create development environment with all dependencies
+# Create local testing environment (default)
 make init
 
-# Or use the setup script directly
-./setup_venv.sh --type development
+# Or use the setup script directly  
+./setup_venv.sh --type local
 ```
 
 This will automatically:
@@ -112,14 +112,11 @@ pip install --upgrade pip setuptools wheel
 
 3. **Install dependencies:**
 ```bash
-# For development (includes all testing and linting tools)
-pip install -r requirements-dev.txt
+# For local testing and development
+pip install -r requirements-local.txt
 
-# OR for production only
+# OR for production only (minimal)
 pip install -r requirements.txt
-
-# For EMR Serverless deployment
-pip install -r requirements-emr.txt
 ```
 
 4. **Install the package in development mode:**
@@ -138,10 +135,8 @@ Choose the appropriate environment for your use case:
 
 | Environment Type | Command | Use Case |
 |-----------------|---------|----------|
-| **Local Testing** | `make init-local` or `./setup_venv.sh --type local` | Lightweight testing on any platform (Windows, Mac, Linux) |
-| **Development** | `make init` or `./setup_venv.sh --type development` | Full development with testing, linting, and documentation tools |
-| **Production** | `./setup_venv.sh --type production` | Production deployment with minimal dependencies |
-| **EMR Serverless** | `./setup_venv.sh --type emr` | EMR-compatible dependencies (excludes pre-installed packages) |
+| **Local Testing** | `make init` | Local development and testing (default) |
+| **Production Deployment** | `./build_aws_package.sh` | Create deployment package for EMR Serverless |
 
 ### Verification
 

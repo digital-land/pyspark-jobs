@@ -172,16 +172,20 @@ build_dependencies() {
     print_warning "consider building this package in a Linux environment or Docker container."
     print_warning "To use Docker for Linux-compatible build, run: ./build_aws_package.sh --docker"
     
-    # Install dependencies from EMR requirements file
-    if [[ -f "$PROJECT_DIR/requirements-emr.txt" ]]; then
-        pip install --quiet -r "$PROJECT_DIR/requirements-emr.txt" || {
-            print_error "Failed to install EMR dependencies."
-            exit 1
-        }
-    else
-        print_error "requirements-emr.txt not found. Please create it or use regular requirements.txt"
+    # Install dependencies from requirements.txt, excluding EMR pre-installed packages
+    print_status "Installing dependencies (excluding EMR pre-installed packages)..."
+    
+    # Create temporary requirements file excluding EMR pre-installed packages
+    temp_requirements=$(mktemp)
+    grep -v -E "^(pyspark|boto3|botocore)" "$PROJECT_DIR/requirements.txt" > "$temp_requirements"
+    
+    pip install --quiet -r "$temp_requirements" || {
+        print_error "Failed to install dependencies."
+        rm -f "$temp_requirements"
         exit 1
-    fi
+    }
+    
+    rm -f "$temp_requirements"
     
     # Create dependencies archive
     cd temp_venv/lib/python*/site-packages/
@@ -203,7 +207,7 @@ build_dependencies() {
         print_error "AWS SDK packages found in dependencies: ${found_aws_packages[*]}"
         print_error "These packages should NOT be included as they are pre-installed in EMR Serverless."
         print_error "This can cause the 'DataNotFoundError: Unable to load data for: endpoints' error."
-        print_error "Remove boto3/botocore from requirements-emr.txt and rebuild."
+        print_error "This should not happen with the current filtering logic."
         exit 1
     fi
     
@@ -221,7 +225,7 @@ build_dependencies() {
     
     if [[ ${#missing_deps[@]} -gt 0 ]]; then
         print_error "Required dependencies missing: ${missing_deps[*]}"
-        print_error "Please check requirements-emr.txt"
+        print_error "Please check requirements.txt"
         exit 1
     fi
     
@@ -246,8 +250,9 @@ build_dependencies_docker() {
 FROM python:3.9-slim
 RUN apt-get update && apt-get install -y zip && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
-COPY requirements-emr.txt /build/
-RUN pip install --no-cache-dir --target /build/deps -r requirements-emr.txt && \
+COPY requirements.txt /build/
+RUN grep -v -E "^(pyspark|boto3|botocore)" requirements.txt > requirements-filtered.txt && \
+    pip install --no-cache-dir --target /build/deps -r requirements-filtered.txt && \
     cd /build/deps && \
     zip -r /build/dependencies.zip .
 EOF
