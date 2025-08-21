@@ -172,20 +172,13 @@ build_dependencies() {
     print_warning "consider building this package in a Linux environment or Docker container."
     print_warning "To use Docker for Linux-compatible build, run: ./build_aws_package.sh --docker"
     
-    # Install dependencies from requirements.txt, excluding EMR pre-installed packages
-    print_status "Installing dependencies (excluding EMR pre-installed packages)..."
+    # Install dependencies from requirements.txt (EMR-specific dependencies only)
+    print_status "Installing EMR dependencies..."
     
-    # Create temporary requirements file excluding EMR pre-installed packages
-    temp_requirements=$(mktemp)
-    grep -v -E "^(pyspark|boto3|botocore)" "$PROJECT_DIR/requirements.txt" > "$temp_requirements"
-    
-    pip install --quiet -r "$temp_requirements" || {
-        print_error "Failed to install dependencies."
-        rm -f "$temp_requirements"
+    pip install --quiet -r "$PROJECT_DIR/requirements.txt" || {
+        print_error "Failed to install EMR dependencies."
         exit 1
     }
-    
-    rm -f "$temp_requirements"
     
     # Create dependencies archive
     cd temp_venv/lib/python*/site-packages/
@@ -251,8 +244,7 @@ FROM python:3.9-slim
 RUN apt-get update && apt-get install -y zip && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY requirements.txt /build/
-RUN grep -v -E "^(pyspark|boto3|botocore)" requirements.txt > requirements-filtered.txt && \
-    pip install --no-cache-dir --target /build/deps -r requirements-filtered.txt && \
+RUN pip install --no-cache-dir --target /build/deps -r requirements.txt && \
     cd /build/deps && \
     zip -r /build/dependencies.zip .
 EOF

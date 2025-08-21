@@ -1,13 +1,10 @@
-# Production dependencies for PySpark Jobs
+# Production dependencies for PySpark Jobs for EMR Serverless
+# This file excludes packages that are pre-installed in EMR Serverless:
+# - PySpark (pre-installed)
+# - boto3 (pre-installed, use native AWS SDK)
+# - botocore (pre-installed, use native AWS SDK)
 
-# Core PySpark framework
-pyspark>=3.3.0,<4.0.0
-
-# AWS SDK and services
-boto3>=1.26.0
-botocore>=1.29.0
-
-# Database connectivity (pure Python - EMR Serverless compatible)
+# Database connectivity (pure Python - no binary dependencies)
 pg8000>=1.30.0
 # NOTE: DO NOT use psycopg2-binary>=2.9.0 - contains platform-specific compiled C extensions
 # that cause "ModuleNotFoundError: No module named 'psycopg2._psycopg'" in EMR Serverless.
@@ -16,10 +13,7 @@ pg8000>=1.30.0
 # Configuration and data handling
 PyYAML>=6.0
 
-# Python standard library extensions (if needed)
-# Note: Most imports (json, os, logging, argparse, etc.) are part of Python standard library
-
-# Optional: Data validation and typing
+# Python standard library extensions
 typing-extensions>=4.0.0
 
 # Package metadata

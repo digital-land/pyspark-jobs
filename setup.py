@@ -11,6 +11,7 @@ setup(
         'jobs.config': ['*.json'],  # Include all JSON files in src/config
     },
     install_requires=[
+        # Full dependencies for local development and wheel building
         'pyspark>=3.3.0,<4.0.0',
         'boto3>=1.26.0',
         'botocore>=1.29.0',

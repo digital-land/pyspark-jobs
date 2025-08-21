@@ -48,8 +48,8 @@ pyspark-jobs/
 │   ├── acceptance/               # End-to-end workflow tests
 │   └── conftest.py              # Shared test configuration
 ├── examples/                     # Usage examples
-├── requirements.txt              # Production dependencies
-├── requirements-local.txt        # Local testing dependencies
+├── requirements.txt              # EMR Serverless dependencies (excludes pre-installed packages)
+├── requirements-local.txt        # Local testing dependencies (includes requirements.txt + dev tools)
 ├── pytest.ini                   # Pytest configuration
 ├── setup.py                     # Package configuration
 └── README.md                    # This file
@@ -112,10 +112,10 @@ pip install --upgrade pip setuptools wheel
 
 3. **Install dependencies:**
 ```bash
-# For local testing and development
+# For local testing and development (recommended)
 pip install -r requirements-local.txt
 
-# OR for production only (minimal)
+# OR for EMR deployment dependencies only
 pip install -r requirements.txt
 ```
 
