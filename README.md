@@ -138,6 +138,7 @@ Choose the appropriate environment for your use case:
 
 | Environment Type | Command | Use Case |
 |-----------------|---------|----------|
+| **Local Testing** | `make init-local` or `./setup_venv.sh --type local` | Lightweight testing on any platform (Windows, Mac, Linux) |
 | **Development** | `make init` or `./setup_venv.sh --type development` | Full development with testing, linting, and documentation tools |
 | **Production** | `./setup_venv.sh --type production` | Production deployment with minimal dependencies |
 | **EMR Serverless** | `./setup_venv.sh --type emr` | EMR-compatible dependencies (excludes pre-installed packages) |
