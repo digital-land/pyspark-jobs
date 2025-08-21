@@ -256,39 +256,39 @@ def write_to_postgres(df, dataset,conn_params, method="optimized", batch_size=No
     """
     logger.info(f"write_to_postgres: Using {method} method for PostgreSQL writes")
     
-    if method == "standard":
-        return _write_to_postgres_standard(df, dataset,conn_params)
-    else:  # method == "optimized" (default) - handles any invalid method as optimized
-        return _write_to_postgres_optimized(df, dataset,conn_params, batch_size, num_partitions)
+    #if method == "standard":
+       # return _write_to_postgres_standard(df, dataset,conn_params)
+    #else:  # method == "optimized" (default) - handles any invalid method as optimized
+    return _write_to_postgres_optimized(df, dataset,conn_params, batch_size, num_partitions)
 
 
-def _write_to_postgres_standard(df, dataset, conn_params):
-    """
-    Original PostgreSQL writer (for comparison and fallback).
-    """
-    logger.info("_write_to_postgres_standard: Using original JDBC writer")
+# def _write_to_postgres_standard(df, dataset, conn_params):
+#     """
+#     Original PostgreSQL writer (for comparison and fallback).
+#     """
+#     logger.info("_write_to_postgres_standard: Using original JDBC writer")
     
-    # Ensure table exists before inserting
-    create_table(conn_params, dataset)
+#     # Ensure table exists before inserting
+#     create_table(conn_params, dataset)
 
-    url = f"jdbc:postgresql://{conn_params['host']}:{conn_params['port']}/{conn_params['database']}"
-    properties = {
-        "user": conn_params["user"],
-        "password": conn_params["password"],
-        "driver": "org.postgresql.Driver",
-        "stringtype": "unspecified"  # This helps with PostGIS geometry columns
-    }
+#     url = f"jdbc:postgresql://{conn_params['host']}:{conn_params['port']}/{conn_params['database']}"
+#     properties = {
+#         "user": conn_params["user"],
+#         "password": conn_params["password"],
+#         "driver": "org.postgresql.Driver",
+#         "stringtype": "unspecified"  # This helps with PostGIS geometry columns
+#     }
 
-    try:
-        # Convert DataFrame to handle geometry columns for PostgreSQL
-        processed_df = _prepare_geometry_columns(df)
+#     try:
+#         # Convert DataFrame to handle geometry columns for PostgreSQL
+#         processed_df = _prepare_geometry_columns(df)
         
-        processed_df.write \
-            .jdbc(url=url, table=dbtable_name, mode="append", properties=properties)
-        logger.info(f"_write_to_postgres_standard: Inserted {processed_df.count()} rows into {dbtable_name} using standard JDBC")
-    except Exception as e:
-        logger.error(f"_write_to_postgres_standard: Failed to write to PostgreSQL via JDBC: {e}", exc_info=True)
-        raise
+#         processed_df.write \
+#             .jdbc(url=url, table=dbtable_name, mode="append", properties=properties)
+#         logger.info(f"_write_to_postgres_standard: Inserted {processed_df.count()} rows into {dbtable_name} using standard JDBC")
+#     except Exception as e:
+#         logger.error(f"_write_to_postgres_standard: Failed to write to PostgreSQL via JDBC: {e}", exc_info=True)
+#         raise
 
 
 def _write_to_postgres_optimized(df, dataset, conn_params, batch_size=None, num_partitions=None):
