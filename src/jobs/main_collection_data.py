@@ -300,7 +300,7 @@ def main(args):
             ##generate_sqlite(processed_df)
 
             logger.info("Main: Set target s3 output path")
-            output_path = f"s3://{env}-pyspark-assemble-parquet/{data_set}/"
+            output_path = f"s3://{env}-pyspark-assemble-parquet/"
             logger.info(f" Main: Target output path: {output_path}")
                          
             df = None  # Initialise df to avoid UnboundLocalError
@@ -389,7 +389,7 @@ def main(args):
             logger.info(f"Main: Processing dataset with path information : {s3_uri}")         
 
             logger.info("Main: Set target s3 output path")
-            output_path = f"s3://{env}-pyspark-assemble-parquet/sample-{data_set}/"
+            output_path = f"s3://{env}-pyspark-assemble-parquet/"
             logger.info(f" Main: Target output path: {output_path}")
                          
             df = None  # Initialise df to avoid UnboundLocalError
@@ -414,8 +414,9 @@ def main(args):
                     processed_df = transform_data(df,table_name,data_set,spark)
                     logger.info(f"Main: Transforming data for {table_name} table completed")
 
-                    # Write to S3 for Fact Resource table
-                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}", data_set)
+                    # Write to S3 for Fact Resource table  
+                    sample_dataset_name = f"sample-{data_set}"
+                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}", sample_dataset_name)
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")
 
                     # Write to Postgres for Entity table
@@ -441,7 +442,8 @@ def main(args):
                     logger.info(f"Main: Transforming data for {table_name} table completed")
 
                     # Write to S3 for Fact table
-                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}", data_set)
+                    sample_dataset_name = f"sample-{data_set}"
+                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}", sample_dataset_name)
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")                                     
         else:
             logger.error(f"Main: Invalid load type specified: {load_type}")
