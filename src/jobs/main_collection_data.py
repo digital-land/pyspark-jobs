@@ -13,7 +13,7 @@ from datetime import datetime
 from dataclasses import fields
 #from jobs import transform_collection_data
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import (coalesce,collect_list,concat_ws,dayofmonth,expr,first,month,to_date,year,row_number)
+from pyspark.sql.functions import (coalesce,collect_list,concat_ws,dayofmonth,expr,first,month,to_date,year,row_number,lit)
 from pyspark.sql.types import (StringType,StructField,StructType,TimestampType)
 from pyspark.sql.window import Window
 
@@ -196,12 +196,14 @@ def transform_data(df, schema_name, data_set,spark):
 
 # -------------------- S3 Writer --------------------
 @log_execution_time
-def write_to_s3(df, output_path):
+def write_to_s3(df, output_path, dataset_name):
     try:   
-        logger.info(f"Writing data to S3 at {output_path}") 
+        logger.info(f"Writing data to S3 at {output_path} for dataset {dataset_name}") 
+        
+        # Add dataset as partition column
+        df = df.withColumn("dataset", lit(dataset_name))
                 
         # Convert entry-date to date type and use it for partitioning
-        #if df.entry_date!= 'NONE' or df.entry_date !='':
         df = df.withColumn("entry_date_parsed", to_date("entry_date", "yyyy-MM-dd"))
         df = df.withColumn("year", year("entry_date_parsed")) \
             .withColumn("month", month("entry_date_parsed")) \
@@ -209,15 +211,21 @@ def write_to_s3(df, output_path):
         
         # Drop the temporary parsing column
         df = df.drop("entry_date_parsed")
-            
-        # Write to S3 partitioned by year, month, day
-        df.write \
-          .partitionBy("year", "month", "day") \
+        
+        # Calculate optimal partitions based on data size
+        row_count = df.count()
+        optimal_partitions = max(1, min(200, row_count // 1000000))  # ~1M records per partition
+        
+        # Write to S3 with multilevel partitioning
+        df.coalesce(optimal_partitions) \
+          .write \
+          .partitionBy("dataset", "year", "month", "day") \
           .mode("overwrite") \
-          .option("header", "true") \
+          .option("maxRecordsPerFile", 1000000) \
+          .option("compression", "snappy") \
           .parquet(output_path)
         
-        logger.info(f"Successfully wrote data to {output_path}")
+        logger.info(f"Successfully wrote {row_count} rows to {output_path} with {optimal_partitions} partitions")
         
     except Exception as e:
         logger.error(f"Failed to write to S3: {e}", exc_info=True)
@@ -312,7 +320,7 @@ def main(args):
                     logger.info(f"Main: Transforming data for {table_name} table completed")
 
                     # Write to S3 for Fact Resource table
-                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}")
+                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}", data_set)
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")
 
                       # Write to Postgres for Entity table using optimized method
@@ -355,7 +363,7 @@ def main(args):
                     logger.info(f"Main: Transforming data for {table_name} table completed")
 
                     # Write to S3 for Fact table
-                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}")
+                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}", data_set)
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")  
 
             logger.info("Main: Writing to target s3 output path: process completed")           
@@ -401,7 +409,7 @@ def main(args):
                     logger.info(f"Main: Transforming data for {table_name} table completed")
 
                     # Write to S3 for Fact Resource table
-                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}")
+                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}", data_set)
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")
 
                     # Write to Postgres for Entity table
@@ -427,7 +435,7 @@ def main(args):
                     logger.info(f"Main: Transforming data for {table_name} table completed")
 
                     # Write to S3 for Fact table
-                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}")
+                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}", data_set)
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")                                     
         else:
             logger.error(f"Main: Invalid load type specified: {load_type}")
