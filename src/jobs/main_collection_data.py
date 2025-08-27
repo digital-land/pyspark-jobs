@@ -8,6 +8,7 @@ import argparse
 from jobs.transform_collection_data import (transform_data_fact, transform_data_fact_res,
                                        transform_data_issue, transform_data_entity) 
 from jobs.dbaccess.postgres_connectivity import create_table,write_to_postgres, get_aws_secret
+from jobs.utils.s3_utils import cleanup_dataset_data
 #import sqlite3
 from datetime import datetime
 from dataclasses import fields
@@ -194,11 +195,16 @@ def transform_data(df, schema_name, data_set,spark):
         logger.error(f"Error transforming data: {e}")
         raise
 
+
 # -------------------- S3 Writer --------------------
 @log_execution_time
 def write_to_s3(df, output_path, dataset_name):
     try:   
         logger.info(f"Writing data to S3 at {output_path} for dataset {dataset_name}") 
+        
+        # Check and clean up existing data for this dataset before writing
+        cleanup_summary = cleanup_dataset_data(output_path, dataset_name)
+        logger.debug(f"S3 cleanup summary: {cleanup_summary}")
         
         # Add dataset as partition column
         df = df.withColumn("dataset", lit(dataset_name))
