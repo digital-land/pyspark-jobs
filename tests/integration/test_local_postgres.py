@@ -34,7 +34,7 @@ TEST_CONN_PARAMS = {
 # Sample data
 sample_entity_data = [
     {
-        "dataset": "planning-applications",
+        "dataset": "title-boundary",
         "end_date": date(2025, 12, 31),
         "entity": "entity-001",
         "entry_date": date(2025, 8, 6),
@@ -50,7 +50,7 @@ sample_entity_data = [
         "typology": "residential"
     },
     {
-        "dataset": "planning-applications",
+        "dataset": "title-boundary",
         "end_date": date(2025, 11, 30),
         "entity": "entity-002",
         "entry_date": date(2025, 8, 6),

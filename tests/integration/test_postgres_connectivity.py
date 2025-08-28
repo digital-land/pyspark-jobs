@@ -36,10 +36,10 @@ class TestPostgresConnectivity:
             "password": "postgres"
         }
 
-        create_table(conn_params, dataset_value="planning-applications")
+        create_table(conn_params, dataset_value="transport-access-node")
         mock_cursor.execute.assert_any_call(
             f"DELETE FROM pyspark_entity WHERE dataset = %s;",
-            ("planning-applications",)
+            ("transport-access-node",)
         )
         mock_conn.commit.assert_called()
 
@@ -77,7 +77,7 @@ class TestPostgresConnectivity:
         mock_processed_df.write.option.return_value = mock_processed_df.write
         mock_processed_df.write.jdbc = MagicMock()
 
-        write_to_postgres(mock_df, "planning-applications", conn_params, method="optimized")
+        write_to_postgres(mock_df, "transport-access-node", conn_params, method="optimized")
         
         # Verify that _prepare_geometry_columns was called with the original DataFrame
         mock_prepare_geom.assert_called_once_with(mock_df)
