@@ -222,6 +222,11 @@ def write_to_s3(df, output_path, dataset_name):
         row_count = df.count()
         optimal_partitions = max(1, min(200, row_count // 1000000))  # ~1M records per partition
         
+        #adding time stamp to the dataframe for parquet file
+        df = df.withColumn("processed_timestamp", lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()))
+        logger.info(f"DataFrame after adding processed_timestamp column")
+        df.show(5)
+        
         # Write to S3 with multilevel partitioning
         df.coalesce(optimal_partitions) \
           .write \

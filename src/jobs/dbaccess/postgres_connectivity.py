@@ -37,6 +37,7 @@ pyspark_entity_columns = {
     "reference": "TEXT",
     "start_date": "DATE", 
     "typology": "TEXT",
+    "processed_timestamp": "TIMESTAMP"  # New column for processing timestamp
 }
 
 # PostgreSQL connection parameters
