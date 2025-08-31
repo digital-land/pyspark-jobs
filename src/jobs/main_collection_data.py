@@ -265,6 +265,35 @@ def generate_sqlite(df):
         logger.error(f"Failed to write to SQLite: {e}", exc_info=True)
         raise
 
+# -------------------- Postgres Writer --------------------
+
+def write_to_postgres(df, table_name, data_set):
+    try:
+        logger.info("Write_PG: Writing to Postgres")
+        # Write to Postgres for Entity table using optimized method
+        if (table_name == 'entity'):
+            from jobs.dbaccess.postgres_connectivity import get_performance_recommendations
+            
+            # Get performance recommendations based on dataset size
+            row_count = df.count()
+            recommendations = get_performance_recommendations(row_count)
+            logger.info(f"Write_PG: Performance recommendations for {row_count} rows: {recommendations}")
+            
+            # Write to PostgreSQL using optimized JDBC writer with recommendations
+            write_to_postgres(
+                df, 
+                data_set,
+                get_aws_secret(),
+                method=recommendations["method"],
+                batch_size=recommendations["batch_size"],
+                num_partitions=recommendations["num_partitions"]
+            )
+            logger.info(f"Write_PG: Writing to Postgres for {table_name} table completed using {recommendations['method']} method")
+             
+    except Exception as e:
+        logger.error(f"Write_PG: Failed to write to Postgres: {e}", exc_info=True)
+        raise
+
 
 
 # -------------------- Main --------------------
@@ -272,7 +301,6 @@ def generate_sqlite(df):
 def main(args):
     logger.info(f"Main: Starting ETL process for Collection Data {args.load_type} and dataset {args.data_set}")
     try: 
-
         logger.info("Main: Starting main ETL process for collection Data")          
         start_time = datetime.now()
         logger.info(f"Main: Spark session started at: {start_time}")    
@@ -291,31 +319,20 @@ def main(args):
         logger.info(f"Main: Spark session created successfully for dataset: {data_set}")
 
         if(load_type == 'full'):
-            
             #invoke full load logic
-            logger.info(f"Main: Full load type specified: {load_type}")
-            logger.info(f"Main: Load type is {load_type} and dataset is {data_set} and path is {s3_uri}")             
-            
-       
-            logger.info(f"Main: Processing dataset with path information : {s3_uri}")            
+            logger.info(f"Main: Load type is {load_type} and dataset is {data_set} and path is {s3_uri}")
 
-            # todo: for coming sprint
-            #write_to_postgres(processed_df, config)
-            #logger.info(f"writing data to postgress")
-            ##generate_sqlite(processed_df)
-
-            logger.info("Main: Set target s3 output path")
             output_path = f"s3://{env}-pyspark-assemble-parquet/"
             logger.info(f" Main: Target output path: {output_path}")
                          
             df = None  # Initialise df to avoid UnboundLocalError
+            df_entity = None  # Initialise df_entity to avoid UnboundLocalError
             
             for table_name in table_names:
                 if(table_name== 'fact' or table_name== 'fact_res' or table_name== 'entity'):
                     full_path = f"{s3_uri}"+"/transformed/"+data_set+"/*.csv"
                     logger.info(f"Main: Dataset input path including csv file path: {full_path}")
-                    
-                    
+                
                     if df is None or df.rdd.isEmpty():
                         # Read CSV using the dynamic schema
                         logger.info("Main: dataframe is empty")
@@ -326,6 +343,7 @@ def main(args):
                     df.printSchema() 
                     logger.info(f"Main: Schema information for the loaded dataframe")
                     df.show()
+
                     #revise this code and for converting spark session as singleton in future
                     processed_df = transform_data(df,table_name,data_set,spark)
                     logger.info(f"Main: Transforming data for {table_name} table completed")
@@ -334,28 +352,8 @@ def main(args):
                     write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}", data_set)
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")
 
-                      # Write to Postgres for Entity table using optimized method
-                    if (table_name == 'entity'):
-                        from jobs.dbaccess.postgres_connectivity import get_performance_recommendations
-                        
-                        # Get performance recommendations based on dataset size
-                        row_count = processed_df.count()
-                        recommendations = get_performance_recommendations(row_count)
-                        logger.info(f"Main: Performance recommendations for {row_count} rows: {recommendations}")
-                        
-                        # Write to PostgreSQL using optimized JDBC writer with recommendations
-                        write_to_postgres(
-                            processed_df, 
-                            data_set,
-                            get_aws_secret(),
-                            method=recommendations["method"],
-                            batch_size=recommendations["batch_size"],
-                            num_partitions=recommendations["num_partitions"]
-                        )
-                        logger.info(f"Main: Writing to Postgres for {table_name} table completed using {recommendations['method']} method")
-                        
-                        # Note: For SQLite conversion, use the separate parquet_to_sqlite.py script:
-                        # python src/jobs/parquet_to_sqlite.py --input s3://bucket/output-parquet-entity --output ./entity.sqlite  
+                    if table_name == 'entity':
+                        df_entity = df
 
                 elif(table_name== 'issue'):
                     full_path = f"{s3_uri}"+"/issue/"+data_set+"/*.csv"
@@ -375,22 +373,22 @@ def main(args):
 
                     # Write to S3 for Fact table
                     write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}", data_set)
-                    logger.info(f"Main: Writing to s3 for {table_name} table completed")  
+                    logger.info(f"Main: Writing to s3 for {table_name} table completed")              
 
-            logger.info("Main: Writing to target s3 output path: process completed")           
+            logger.info("Main: Writing to target s3 output path: process completed")
+
+            # Write to Postgres for Entity table
+            table_name='entity'
+            write_to_postgres(df_entity, table_name, data_set)
+
         elif(load_type == 'delta'):
             #invoke delta load logic
             logger.info(f"Main: Delta load type specified: {load_type}")
-
-
             
         elif(load_type == 'sample'):
             #invoke sample load logic
-            logger.info(f"Main: Sample load type specified: {load_type}")
-            logger.info(f"Main: Load type is {load_type} and dataset is {data_set} and path is {s3_uri}")    
+            logger.info(f"Main: Sample load type is {load_type} and dataset is {data_set} and path is {s3_uri}")    
                        
-
-                     
             logger.info(f"Main: Processing dataset with path information : {s3_uri}")         
 
             logger.info("Main: Set target s3 output path")
