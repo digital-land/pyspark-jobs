@@ -267,7 +267,7 @@ def generate_sqlite(df):
 
 # -------------------- Postgres Writer --------------------
 
-def write_to_postgres(df, table_name, data_set):
+def write_dataframe_to_postgres(df, table_name, data_set):
     try:
         logger.info("Write_PG: Writing to Postgres")
         # Write to Postgres for Entity table using optimized method
@@ -377,9 +377,9 @@ def main(args):
 
             logger.info("Main: Writing to target s3 output path: process completed")
 
-            # Write to Postgres for Entity table
+            # Write dataframe to Postgres for Entity table
             table_name='entity'
-            write_to_postgres(df_entity, table_name, data_set)
+            write_dataframe_to_postgres(df_entity, table_name, data_set)
 
         elif(load_type == 'delta'):
             #invoke delta load logic
