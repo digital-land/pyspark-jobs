@@ -243,7 +243,7 @@ def write_to_s3(df, output_path, dataset_name):
         raise
 
 # -------------------- SQLite Writer --------------------
-
+@log_execution_time
 def generate_sqlite(df):
     # Step 4: Write to SQLite
     # Write to SQLite using JDBC
@@ -266,7 +266,7 @@ def generate_sqlite(df):
         raise
 
 # -------------------- Postgres Writer --------------------
-
+@log_execution_time
 def write_dataframe_to_postgres(df, table_name, data_set):
     try:
         logger.info("Write_PG: Writing to Postgres")
@@ -293,8 +293,6 @@ def write_dataframe_to_postgres(df, table_name, data_set):
     except Exception as e:
         logger.error(f"Write_PG: Failed to write to Postgres: {e}", exc_info=True)
         raise
-
-
 
 # -------------------- Main --------------------
 @log_execution_time
@@ -349,7 +347,7 @@ def main(args):
                     logger.info(f"Main: Transforming data for {table_name} table completed")
 
                     # Write to S3 for Fact Resource table
-                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}", data_set)
+                    write_to_s3(processed_df, f"{output_path}{table_name}", data_set)
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")
 
                     if table_name == 'entity':
@@ -372,7 +370,7 @@ def main(args):
                     logger.info(f"Main: Transforming data for {table_name} table completed")
 
                     # Write to S3 for Fact table
-                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}", data_set)
+                    write_to_s3(processed_df, f"{output_path}{table_name}", data_set)
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")              
 
             logger.info("Main: Writing to target s3 output path: process completed")
@@ -419,7 +417,7 @@ def main(args):
 
                     # Write to S3 for Fact Resource table  
                     sample_dataset_name = f"sample-{data_set}"
-                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}", sample_dataset_name)
+                    write_to_s3(processed_df, f"{output_path}{table_name}", sample_dataset_name)
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")
 
                     # Write to Postgres for Entity table
@@ -446,7 +444,7 @@ def main(args):
 
                     # Write to S3 for Fact table
                     sample_dataset_name = f"sample-{data_set}"
-                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}", sample_dataset_name)
+                    write_to_s3(processed_df, f"{output_path}{table_name}", sample_dataset_name)
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")                                     
         else:
             logger.error(f"Main: Invalid load type specified: {load_type}")
