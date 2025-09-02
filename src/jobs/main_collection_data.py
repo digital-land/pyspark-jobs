@@ -351,7 +351,7 @@ def main(args):
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")
 
                     if table_name == 'entity':
-                        df_entity = df
+                        df_entity = processed_df
 
                 elif(table_name== 'issue'):
                     full_path = f"{s3_uri}"+"/issue/"+data_set+"/*.csv"
