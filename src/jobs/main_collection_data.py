@@ -197,8 +197,9 @@ def transform_data(df, schema_name, data_set,spark):
 
 
 # -------------------- S3 Writer --------------------
+df_entity = None
 @log_execution_time
-def write_to_s3(df, output_path, dataset_name):
+def write_to_s3(df, output_path, dataset_name, table_name):
     try:   
         logger.info(f"Writing data to S3 at {output_path} for dataset {dataset_name}") 
         
@@ -226,7 +227,11 @@ def write_to_s3(df, output_path, dataset_name):
         df = df.withColumn("processed_timestamp", lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()))
         logger.info(f"DataFrame after adding processed_timestamp column")
         df.show(5)
-        
+
+        if table_name == 'entity':
+            global df_entity
+            df_entity = df
+
         # Write to S3 with multilevel partitioning
         df.coalesce(optimal_partitions) \
           .write \
@@ -347,12 +352,9 @@ def main(args):
                     logger.info(f"Main: Transforming data for {table_name} table completed")
 
                     # Write to S3 for Fact Resource table
-                    write_to_s3(processed_df, f"{output_path}{table_name}", data_set)
+                    write_to_s3(processed_df, f"{output_path}{table_name}", data_set,table_name)
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")
-
-                    if table_name == 'entity':
-                        df_entity = processed_df
-
+                    
                 elif(table_name== 'issue'):
                     full_path = f"{s3_uri}"+"/issue/"+data_set+"/*.csv"
                     logger.info(f"Main: Dataset input path including csv file path: {full_path}")
@@ -376,7 +378,8 @@ def main(args):
             logger.info("Main: Writing to target s3 output path: process completed")
 
             # Write dataframe to Postgres for Entity table
-            table_name='entity'
+            # TODO : df_entity = df_entity.drop("processed_timestamp")
+            table_name = 'entity'
             write_dataframe_to_postgres(df_entity, table_name, data_set)
 
         elif(load_type == 'delta'):
