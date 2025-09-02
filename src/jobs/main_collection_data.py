@@ -201,11 +201,11 @@ df_entity = None
 @log_execution_time
 def write_to_s3(df, output_path, dataset_name, table_name):
     try:   
-        logger.info(f"Writing data to S3 at {output_path} for dataset {dataset_name}") 
+        logger.info(f"write_to_s3: Writing data to S3 at {output_path} for dataset {dataset_name}") 
         
         # Check and clean up existing data for this dataset before writing
         cleanup_summary = cleanup_dataset_data(output_path, dataset_name)
-        logger.debug(f"S3 cleanup summary: {cleanup_summary}")
+        logger.debug(f"write_to_s3: S3 cleanup summary: {cleanup_summary}")
         
         # Add dataset as partition column
         df = df.withColumn("dataset", lit(dataset_name))
@@ -225,8 +225,9 @@ def write_to_s3(df, output_path, dataset_name, table_name):
         
         #adding time stamp to the dataframe for parquet file
         df = df.withColumn("processed_timestamp", lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()))
-        logger.info(f"DataFrame after adding processed_timestamp column")
+        logger.info(f"write_to_s3: DataFrame after adding processed_timestamp column")
         df.show(5)
+    
 
         if table_name == 'entity':
             global df_entity
@@ -241,10 +242,10 @@ def write_to_s3(df, output_path, dataset_name, table_name):
           .option("compression", "snappy") \
           .parquet(output_path)
         
-        logger.info(f"Successfully wrote {row_count} rows to {output_path} with {optimal_partitions} partitions")
+        logger.info(f"write_to_s3: Successfully wrote {row_count} rows to {output_path} with {optimal_partitions} partitions")
         
     except Exception as e:
-        logger.error(f"Failed to write to S3: {e}", exc_info=True)
+        logger.error(f"write_to_s3: Failed to write to S3: {e}", exc_info=True)
         raise
 
 # -------------------- SQLite Writer --------------------
@@ -329,7 +330,6 @@ def main(args):
             logger.info(f" Main: Target output path: {output_path}")
                          
             df = None  # Initialise df to avoid UnboundLocalError
-            df_entity = None  # Initialise df_entity to avoid UnboundLocalError
             
             for table_name in table_names:
                 if(table_name== 'fact' or table_name== 'fact_res' or table_name== 'entity'):
@@ -380,6 +380,8 @@ def main(args):
             # Write dataframe to Postgres for Entity table
             # TODO : df_entity = df_entity.drop("processed_timestamp")
             table_name = 'entity'
+            logger.info(f"Main: before writing to postgres, df_entity dataframe is below")
+            df_entity.show(5)
             write_dataframe_to_postgres(df_entity, table_name, data_set)
 
         elif(load_type == 'delta'):
