@@ -379,6 +379,8 @@ def main(args):
 
             # Write dataframe to Postgres for Entity table
             # TODO : df_entity = df_entity.drop("processed_timestamp")
+
+            df_entity = df_entity.drop(columns=["year","month", "day"])
             table_name = 'entity'
             logger.info(f"Main: before writing to postgres, df_entity dataframe is below")
             df_entity.show(5)
