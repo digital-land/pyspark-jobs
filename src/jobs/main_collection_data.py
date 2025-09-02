@@ -372,7 +372,7 @@ def main(args):
                     logger.info(f"Main: Transforming data for {table_name} table completed")
 
                     # Write to S3 for Fact table
-                    write_to_s3(processed_df, f"{output_path}{table_name}", data_set)
+                    write_to_s3(processed_df, f"{output_path}{table_name}", data_set, table_name)
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")              
 
             logger.info("Main: Writing to target s3 output path: process completed")
