@@ -12,14 +12,18 @@ botocore>=1.29.0
 # Essential testing framework
 pytest>=7.0.0
 pytest-cov>=4.0.0
+pytest-xdist>=3.0.0  # Parallel test execution
+pytest-mock>=3.10.0
 
 # Local development utilities
 ipython>=8.10.0
 jupyter>=1.0.0
 
-# Code formatting (optional but helpful)
+# Code formatting and linting
 black>=23.0.0
 isort>=5.12.0
+flake8>=6.0.0
+pylint>=2.17.0
 
 # Environment configuration
 python-dotenv>=1.0.0
@@ -28,8 +32,15 @@ python-dotenv>=1.0.0
 pandas>=1.5.0
 
 # Mock utilities for testing
-pytest-mock>=3.10.0
 responses>=0.23.0
+unittest-mock>=1.0.1
 
 # AWS testing (mocked services)
-moto[s3,secretsmanager]>=4.0.0
+moto[s3,secretsmanager,ec2]>=4.0.0
+
+# Security scanning
+bandit>=1.7.0
+safety>=2.3.0
+
+# Type checking (optional)
+mypy>=1.0.0

@@ -9,6 +9,10 @@ from pyspark.sql import SparkSession
 # Add src directory to Python path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
+# Import fixtures from fixtures module
+from tests.fixtures.sample_data import *
+from tests.fixtures.mock_services import *
+
 
 @pytest.fixture(scope="session")
 def spark():

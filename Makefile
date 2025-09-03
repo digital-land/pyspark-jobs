@@ -43,7 +43,7 @@ init-local: ## Initialize local testing environment (lightweight)
 test: ## Run all tests
 	@echo "$(BLUE)Running all tests...$(NC)"
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && pytest $(TESTS_DIR) -v; \
+		source $(VENV_ACTIVATE) && ./tests/utils/test_runner --all; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
@@ -52,7 +52,7 @@ test: ## Run all tests
 test-unit: ## Run unit tests only
 	@echo "$(BLUE)Running unit tests...$(NC)"
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && pytest $(TESTS_DIR)/unit -v -m "not slow"; \
+		source $(VENV_ACTIVATE) && ./tests/utils/test_runner --unit; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
@@ -61,7 +61,7 @@ test-unit: ## Run unit tests only
 test-integration: ## Run integration tests
 	@echo "$(BLUE)Running integration tests...$(NC)"
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && pytest $(TESTS_DIR)/integration -v -m "integration"; \
+		source $(VENV_ACTIVATE) && ./tests/utils/test_runner --integration; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
@@ -70,7 +70,7 @@ test-integration: ## Run integration tests
 test-acceptance: ## Run acceptance tests
 	@echo "$(BLUE)Running acceptance tests...$(NC)"
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && pytest $(TESTS_DIR)/acceptance -v -m "acceptance"; \
+		source $(VENV_ACTIVATE) && ./tests/utils/test_runner --acceptance; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
@@ -79,7 +79,16 @@ test-acceptance: ## Run acceptance tests
 test-coverage: ## Run tests with coverage report
 	@echo "$(BLUE)Running tests with coverage...$(NC)"
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && pytest $(TESTS_DIR) --cov=$(SRC_DIR) --cov-report=html --cov-report=term-missing --cov-fail-under=80; \
+		source $(VENV_ACTIVATE) && ./tests/utils/test_runner --all --coverage; \
+	else \
+		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
+		exit 1; \
+	fi
+
+test-smoke: ## Run smoke tests (quick validation)
+	@echo "$(BLUE)Running smoke tests...$(NC)"
+	@if [ -f $(VENV_ACTIVATE) ]; then \
+		source $(VENV_ACTIVATE) && ./tests/utils/test_runner --smoke; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
@@ -89,10 +98,7 @@ test-coverage: ## Run tests with coverage report
 lint: ## Run all linting checks
 	@echo "$(BLUE)Running linting checks...$(NC)"
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && \
-		flake8 $(SRC_DIR) $(TESTS_DIR) && \
-		pylint $(SRC_DIR) && \
-		bandit -r $(SRC_DIR); \
+		source $(VENV_ACTIVATE) && ./tests/utils/test_runner --lint; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
@@ -101,9 +107,7 @@ lint: ## Run all linting checks
 format: ## Format code with black and isort
 	@echo "$(BLUE)Formatting code...$(NC)"
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && \
-		black $(SRC_DIR) $(TESTS_DIR) && \
-		isort $(SRC_DIR) $(TESTS_DIR); \
+		source $(VENV_ACTIVATE) && ./tests/utils/test_runner --format; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
