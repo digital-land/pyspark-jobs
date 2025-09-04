@@ -48,8 +48,8 @@ pyspark-jobs/
 │   ├── acceptance/               # End-to-end workflow tests
 │   └── conftest.py              # Shared test configuration
 ├── examples/                     # Usage examples
-├── requirements.txt              # Production dependencies
-├── requirements-test.txt         # Testing dependencies
+├── requirements.txt              # EMR Serverless dependencies (excludes pre-installed packages)
+├── requirements-local.txt        # Local testing dependencies (includes requirements.txt + dev tools)
 ├── pytest.ini                   # Pytest configuration
 ├── setup.py                     # Package configuration
 └── README.md                    # This file
@@ -59,12 +59,38 @@ pyspark-jobs/
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.8+ (Python 3.9+ recommended)
 - Java 11+ (for PySpark)
 - Apache Spark 3.3+
 - AWS CLI configured (for deployment)
+- Git (for version control)
 
-### Installation
+### Automated Setup (Recommended)
+
+The easiest way to get started is using our automated setup script:
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd pyspark-jobs
+
+# Create local testing environment (default)
+make init
+
+# Or use the setup script directly  
+./setup_venv.sh --type local
+```
+
+This will automatically:
+- ✅ Create a Python virtual environment
+- ✅ Install all development dependencies
+- ✅ Set up pre-commit hooks
+- ✅ Install the package in development mode
+- ✅ Create a .env configuration template
+
+### Manual Installation
+
+If you prefer manual setup:
 
 1. **Clone the repository:**
 ```bash
@@ -72,18 +98,62 @@ git clone <repository-url>
 cd pyspark-jobs
 ```
 
-2. **Install dependencies:**
+2. **Create and activate virtual environment:**
 ```bash
-# Production dependencies
-pip install -r requirements.txt
+# Create virtual environment
+python3 -m venv pyspark-jobs-venv
 
-# Development and testing dependencies
-pip install -r requirements-test.txt
+# Activate virtual environment
+source pyspark-jobs-venv/bin/activate
+
+# Upgrade pip
+pip install --upgrade pip setuptools wheel
 ```
 
-3. **Install the package in development mode:**
+3. **Install dependencies:**
+```bash
+# For local testing and development (recommended)
+pip install -r requirements-local.txt
+
+# OR for EMR deployment dependencies only
+pip install -r requirements.txt
+```
+
+4. **Install the package in development mode:**
 ```bash
 pip install -e .
+```
+
+5. **Set up pre-commit hooks (optional but recommended):**
+```bash
+pre-commit install
+```
+
+### Environment Types
+
+Choose the appropriate environment for your use case:
+
+| Environment Type | Command | Use Case |
+|-----------------|---------|----------|
+| **Local Testing** | `make init` | Local development and testing (default) |
+| **Production Deployment** | `./build_aws_package.sh` | Create deployment package for EMR Serverless |
+
+### Verification
+
+After setup, verify your installation:
+
+```bash
+# Check Python version
+python --version
+
+# Check installed packages
+pip list | grep -E "(pyspark|boto3|pytest)"
+
+# Run quick test
+pytest tests/unit/simple_logging_test.py -v
+
+# Check code formatting
+make format && make lint
 ```
 
 ### Running Locally
@@ -310,14 +380,50 @@ See the `examples/` directory for:
 ### Development Setup
 
 ```bash
-# Install development dependencies
-pip install -r requirements-test.txt
+# Automated setup (recommended)
+make init
 
-# Install pre-commit hooks
+# Or manual setup
+pip install -r requirements-dev.txt
 pre-commit install
+pip install -e .
+```
 
-# Run tests before committing
-pytest
+### Available Make Commands
+
+Once your environment is set up, you can use these convenient Make commands:
+
+```bash
+# Environment Setup
+make init              # Initialize development environment
+make init-prod         # Initialize production environment  
+make init-emr          # Initialize EMR-compatible environment
+
+# Development
+make test              # Run all tests
+make test-unit         # Run unit tests only
+make test-integration  # Run integration tests
+make test-coverage     # Run tests with coverage report
+make lint              # Run all linting checks
+make format            # Format code with black and isort
+make type-check        # Run type checking with mypy
+make security          # Run security scans
+
+# Code Quality
+make pre-commit        # Run pre-commit hooks on all files
+make install-hooks     # Install pre-commit hooks
+
+# Building and Packaging
+make build             # Build Python package
+make package           # Create AWS deployment package
+make upload-s3         # Build and upload to S3
+
+# Utilities
+make clean             # Clean cache and log files
+make clean-all         # Clean everything including venv
+make run-notebook      # Start Jupyter Lab
+make docs              # Generate documentation
+make help              # Show all available commands
 ```
 
 ## 📄 License

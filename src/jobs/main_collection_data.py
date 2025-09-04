@@ -8,12 +8,13 @@ import argparse
 from jobs.transform_collection_data import (transform_data_fact, transform_data_fact_res,
                                        transform_data_issue, transform_data_entity) 
 from jobs.dbaccess.postgres_connectivity import create_table,write_to_postgres, get_aws_secret
+from jobs.utils.s3_utils import cleanup_dataset_data
 #import sqlite3
 from datetime import datetime
 from dataclasses import fields
 #from jobs import transform_collection_data
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import (coalesce,collect_list,concat_ws,dayofmonth,expr,first,month,to_date,year,row_number)
+from pyspark.sql.functions import (coalesce,collect_list,concat_ws,dayofmonth,expr,first,month,to_date,year,row_number,lit)
 from pyspark.sql.types import (StringType,StructField,StructType,TimestampType)
 from pyspark.sql.window import Window
 
@@ -194,14 +195,22 @@ def transform_data(df, schema_name, data_set,spark):
         logger.error(f"Error transforming data: {e}")
         raise
 
+
 # -------------------- S3 Writer --------------------
+df_entity = None
 @log_execution_time
-def write_to_s3(df, output_path):
+def write_to_s3(df, output_path, dataset_name, table_name):
     try:   
-        logger.info(f"Writing data to S3 at {output_path}") 
+        logger.info(f"write_to_s3: Writing data to S3 at {output_path} for dataset {dataset_name}") 
+        
+        # Check and clean up existing data for this dataset before writing
+        cleanup_summary = cleanup_dataset_data(output_path, dataset_name)
+        logger.debug(f"write_to_s3: S3 cleanup summary: {cleanup_summary}")
+        
+        # Add dataset as partition column
+        df = df.withColumn("dataset", lit(dataset_name))
                 
         # Convert entry-date to date type and use it for partitioning
-        #if df.entry_date!= 'NONE' or df.entry_date !='':
         df = df.withColumn("entry_date_parsed", to_date("entry_date", "yyyy-MM-dd"))
         df = df.withColumn("year", year("entry_date_parsed")) \
             .withColumn("month", month("entry_date_parsed")) \
@@ -209,22 +218,39 @@ def write_to_s3(df, output_path):
         
         # Drop the temporary parsing column
         df = df.drop("entry_date_parsed")
-            
-        # Write to S3 partitioned by year, month, day
-        df.write \
-          .partitionBy("year", "month", "day") \
+        
+        # Calculate optimal partitions based on data size
+        row_count = df.count()
+        optimal_partitions = max(1, min(200, row_count // 1000000))  # ~1M records per partition
+        
+        #adding time stamp to the dataframe for parquet file
+        df = df.withColumn("processed_timestamp", lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()))
+        logger.info(f"write_to_s3: DataFrame after adding processed_timestamp column")
+        df.show(5)
+    
+
+        if table_name == 'entity':
+            global df_entity
+            df_entity.show(5) if df_entity else logger.info("write_to_s3: df_entity is None")
+            df_entity = df
+
+        # Write to S3 with multilevel partitioning
+        df.coalesce(optimal_partitions) \
+          .write \
+          .partitionBy("dataset", "year", "month", "day") \
           .mode("overwrite") \
-          .option("header", "true") \
+          .option("maxRecordsPerFile", 1000000) \
+          .option("compression", "snappy") \
           .parquet(output_path)
         
-        logger.info(f"Successfully wrote data to {output_path}")
+        logger.info(f"write_to_s3: Successfully wrote {row_count} rows to {output_path} with {optimal_partitions} partitions")
         
     except Exception as e:
-        logger.error(f"Failed to write to S3: {e}", exc_info=True)
+        logger.error(f"write_to_s3: Failed to write to S3: {e}", exc_info=True)
         raise
 
 # -------------------- SQLite Writer --------------------
-
+@log_execution_time
 def generate_sqlite(df):
     # Step 4: Write to SQLite
     # Write to SQLite using JDBC
@@ -246,14 +272,40 @@ def generate_sqlite(df):
         logger.error(f"Failed to write to SQLite: {e}", exc_info=True)
         raise
 
-
+# -------------------- Postgres Writer --------------------
+@log_execution_time
+def write_dataframe_to_postgres(df, table_name, data_set):
+    try:
+        logger.info("Write_PG: Writing to Postgres")
+        # Write to Postgres for Entity table using optimized method
+        if (table_name == 'entity'):
+            from jobs.dbaccess.postgres_connectivity import get_performance_recommendations
+            
+            # Get performance recommendations based on dataset size
+            row_count = df.count()
+            recommendations = get_performance_recommendations(row_count)
+            logger.info(f"Write_PG: Performance recommendations for {row_count} rows: {recommendations}")
+            
+            # Write to PostgreSQL using optimized JDBC writer with recommendations
+            write_to_postgres(
+                df, 
+                data_set,
+                get_aws_secret(),
+                method=recommendations["method"],
+                batch_size=recommendations["batch_size"],
+                num_partitions=recommendations["num_partitions"]
+            )
+            logger.info(f"Write_PG: Writing to Postgres for {table_name} table completed using {recommendations['method']} method")
+             
+    except Exception as e:
+        logger.error(f"Write_PG: Failed to write to Postgres: {e}", exc_info=True)
+        raise
 
 # -------------------- Main --------------------
 @log_execution_time
 def main(args):
     logger.info(f"Main: Starting ETL process for Collection Data {args.load_type} and dataset {args.data_set}")
     try: 
-
         logger.info("Main: Starting main ETL process for collection Data")          
         start_time = datetime.now()
         logger.info(f"Main: Spark session started at: {start_time}")    
@@ -272,21 +324,10 @@ def main(args):
         logger.info(f"Main: Spark session created successfully for dataset: {data_set}")
 
         if(load_type == 'full'):
-            
             #invoke full load logic
-            logger.info(f"Main: Full load type specified: {load_type}")
-            logger.info(f"Main: Load type is {load_type} and dataset is {data_set} and path is {s3_uri}")             
-            
-       
-            logger.info(f"Main: Processing dataset with path information : {s3_uri}")            
+            logger.info(f"Main: Load type is {load_type} and dataset is {data_set} and path is {s3_uri}")
 
-            # todo: for coming sprint
-            #write_to_postgres(processed_df, config)
-            #logger.info(f"writing data to postgress")
-            ##generate_sqlite(processed_df)
-
-            logger.info("Main: Set target s3 output path")
-            output_path = f"s3://{env}-pyspark-assemble-parquet/{data_set}/"
+            output_path = f"s3://{env}-pyspark-assemble-parquet/"
             logger.info(f" Main: Target output path: {output_path}")
                          
             df = None  # Initialise df to avoid UnboundLocalError
@@ -295,8 +336,7 @@ def main(args):
                 if(table_name== 'fact' or table_name== 'fact_res' or table_name== 'entity'):
                     full_path = f"{s3_uri}"+"/transformed/"+data_set+"/*.csv"
                     logger.info(f"Main: Dataset input path including csv file path: {full_path}")
-                    
-                    
+                
                     if df is None or df.rdd.isEmpty():
                         # Read CSV using the dynamic schema
                         logger.info("Main: dataframe is empty")
@@ -307,36 +347,15 @@ def main(args):
                     df.printSchema() 
                     logger.info(f"Main: Schema information for the loaded dataframe")
                     df.show()
+
                     #revise this code and for converting spark session as singleton in future
                     processed_df = transform_data(df,table_name,data_set,spark)
                     logger.info(f"Main: Transforming data for {table_name} table completed")
 
                     # Write to S3 for Fact Resource table
-                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}")
+                    write_to_s3(processed_df, f"{output_path}{table_name}", data_set,table_name)
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")
-
-                      # Write to Postgres for Entity table using optimized method
-                    if (table_name == 'entity'):
-                        from jobs.dbaccess.postgres_connectivity import get_performance_recommendations
-                        
-                        # Get performance recommendations based on dataset size
-                        row_count = processed_df.count()
-                        recommendations = get_performance_recommendations(row_count)
-                        logger.info(f"Main: Performance recommendations for {row_count} rows: {recommendations}")
-                        
-                        # Write to PostgreSQL using optimized JDBC writer with recommendations
-                        write_to_postgres(
-                            processed_df, 
-                            get_aws_secret(),
-                            method=recommendations["method"],
-                            batch_size=recommendations["batch_size"],
-                            num_partitions=recommendations["num_partitions"]
-                        )
-                        logger.info(f"Main: Writing to Postgres for {table_name} table completed using {recommendations['method']} method")
-                        
-                        # Note: For SQLite conversion, use the separate parquet_to_sqlite.py script:
-                        # python src/jobs/parquet_to_sqlite.py --input s3://bucket/output-parquet-entity --output ./entity.sqlite  
-
+                    
                 elif(table_name== 'issue'):
                     full_path = f"{s3_uri}"+"/issue/"+data_set+"/*.csv"
                     logger.info(f"Main: Dataset input path including csv file path: {full_path}")
@@ -354,27 +373,32 @@ def main(args):
                     logger.info(f"Main: Transforming data for {table_name} table completed")
 
                     # Write to S3 for Fact table
-                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}")
-                    logger.info(f"Main: Writing to s3 for {table_name} table completed")  
+                    write_to_s3(processed_df, f"{output_path}{table_name}", data_set, table_name)
+                    logger.info(f"Main: Writing to s3 for {table_name} table completed")              
 
-            logger.info("Main: Writing to target s3 output path: process completed")           
+            logger.info("Main: Writing to target s3 output path: process completed")
+
+            # Write dataframe to Postgres for Entity table
+            global df_entity 
+            df_entity.show(5) if df_entity else logger.info("Main: df_entity is None")
+            df_entity = df_entity.drop("processed_timestamp","year","month", "day")    
+            table_name = 'entity'
+            logger.info(f"Main: before writing to postgres, df_entity dataframe is below")
+            df_entity.show(5)
+            write_dataframe_to_postgres(df_entity, table_name, data_set)
+
         elif(load_type == 'delta'):
             #invoke delta load logic
             logger.info(f"Main: Delta load type specified: {load_type}")
-
-
             
         elif(load_type == 'sample'):
             #invoke sample load logic
-            logger.info(f"Main: Sample load type specified: {load_type}")
-            logger.info(f"Main: Load type is {load_type} and dataset is {data_set} and path is {s3_uri}")    
+            logger.info(f"Main: Sample load type is {load_type} and dataset is {data_set} and path is {s3_uri}")    
                        
-
-                     
             logger.info(f"Main: Processing dataset with path information : {s3_uri}")         
 
             logger.info("Main: Set target s3 output path")
-            output_path = f"s3://{env}-pyspark-assemble-parquet/sample-{data_set}/"
+            output_path = f"s3://{env}-pyspark-assemble-parquet/"
             logger.info(f" Main: Target output path: {output_path}")
                          
             df = None  # Initialise df to avoid UnboundLocalError
@@ -399,13 +423,14 @@ def main(args):
                     processed_df = transform_data(df,table_name,data_set,spark)
                     logger.info(f"Main: Transforming data for {table_name} table completed")
 
-                    # Write to S3 for Fact Resource table
-                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}")
+                    # Write to S3 for Fact Resource table  
+                    sample_dataset_name = f"sample-{data_set}"
+                    write_to_s3(processed_df, f"{output_path}{table_name}", sample_dataset_name)
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")
 
                     # Write to Postgres for Entity table
                     if (table_name == 'entity'):
-                        write_to_postgres(processed_df, get_aws_secret())
+                        write_to_postgres(processed_df, data_set,get_aws_secret())
                         logger.info(f"Main: Writing to Postgres for {table_name} table completed")  
 
 
@@ -426,7 +451,8 @@ def main(args):
                     logger.info(f"Main: Transforming data for {table_name} table completed")
 
                     # Write to S3 for Fact table
-                    write_to_s3(processed_df, f"{output_path}output-parquet-{table_name}")
+                    sample_dataset_name = f"sample-{data_set}"
+                    write_to_s3(processed_df, f"{output_path}{table_name}", sample_dataset_name)
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")                                     
         else:
             logger.error(f"Main: Invalid load type specified: {load_type}")

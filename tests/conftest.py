@@ -9,6 +9,10 @@ from pyspark.sql import SparkSession
 # Add src directory to Python path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
+# Import fixtures from fixtures module
+from tests.fixtures.sample_data import *
+from tests.fixtures.mock_services import *
+
 
 @pytest.fixture(scope="session")
 def spark():
@@ -75,8 +79,8 @@ def pytest_configure(config):
 def pytest_collection_modifyitems(config, items):
     """Automatically mark tests based on their location."""
     for item in items:
-        # Get the test file path relative to the tests directory
-        test_file = str(item.fspath.relative_to(item.fspath.dirname.dirname))
+        # Get the test file path
+        test_file = str(item.fspath)
         
         # Add markers based on directory structure
         if "unit" in test_file:

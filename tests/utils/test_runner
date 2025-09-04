@@ -1,0 +1,402 @@
+#!/usr/bin/env python3
+"""
+Local Test Runner for PySpark Jobs
+
+This script provides a convenient way to run various types of tests locally
+with proper environment setup and reporting.
+
+Usage:
+    python test_runner.py [options]
+    
+Examples:
+    python test_runner.py --unit                    # Run unit tests only
+    python test_runner.py --integration            # Run integration tests only
+    python test_runner.py --all                    # Run all tests
+    python test_runner.py --coverage               # Run with coverage
+    python test_runner.py --specific test_main     # Run specific test
+    python test_runner.py --smoke                  # Run smoke tests (fast subset)
+"""
+
+import argparse
+import os
+import sys
+import subprocess
+import logging
+from pathlib import Path
+
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+
+class TestRunner:
+    """Manages test execution for PySpark jobs."""
+    
+    def __init__(self):
+        self.project_root = Path(__file__).parent.parent.parent  # Go up from tests/utils/
+        self.venv_path = self.project_root / "pyspark-jobs-venv"
+        self.python_path = self.venv_path / "bin" / "python"
+        self.tests_dir = self.project_root / "tests"
+        
+    def check_environment(self):
+        """Check if the testing environment is properly set up."""
+        logger.info("Checking test environment...")
+        
+        # Check if virtual environment exists
+        if not self.venv_path.exists():
+            logger.error(f"Virtual environment not found at {self.venv_path}")
+            logger.error("Please run 'make init' to set up the environment")
+            return False
+        
+        # Check if Python exists in venv
+        if not self.python_path.exists():
+            logger.error(f"Python not found at {self.python_path}")
+            return False
+        
+        # Check if tests directory exists
+        if not self.tests_dir.exists():
+            logger.error(f"Tests directory not found at {self.tests_dir}")
+            return False
+        
+        logger.info("✓ Environment check passed")
+        return True
+    
+    def run_command(self, command, description=None):
+        """Run a command in the virtual environment."""
+        if description:
+            logger.info(f"Running: {description}")
+        
+        # Prepare environment
+        env = os.environ.copy()
+        env["VIRTUAL_ENV"] = str(self.venv_path)
+        env["PATH"] = f"{self.venv_path}/bin:{env.get('PATH', '')}"
+        env["PYTHONPATH"] = f"{self.project_root}/src:{env.get('PYTHONPATH', '')}"
+        
+        # Set test-specific environment variables
+        env["PYSPARK_PYTHON"] = str(self.python_path)
+        env["PYSPARK_DRIVER_PYTHON"] = str(self.python_path)
+        env["SPARK_LOCAL_IP"] = "127.0.0.1"
+        env["TEST_MODE"] = "true"
+        
+        try:
+            result = subprocess.run(
+                command,
+                cwd=self.project_root,
+                env=env,
+                shell=True,
+                capture_output=False,  # Let output go to console
+                text=True
+            )
+            return result.returncode == 0
+        except Exception as e:
+            logger.error(f"Command failed: {e}")
+            return False
+    
+    def run_unit_tests(self, coverage=False, specific_test=None):
+        """Run unit tests."""
+        logger.info("🧪 Running unit tests...")
+        
+        cmd_parts = [str(self.python_path), "-m", "pytest"]
+        
+        if specific_test:
+            cmd_parts.append(f"tests/unit/*{specific_test}*")
+        else:
+            cmd_parts.extend(["tests/unit", "-m", "unit"])
+        
+        cmd_parts.extend([
+            "-v",
+            "--tb=short",
+            "-x",  # Stop on first failure
+            "--disable-warnings"
+        ])
+        
+        if coverage:
+            cmd_parts.extend([
+                "--cov=src",
+                "--cov-report=html",
+                "--cov-report=term-missing",
+                "--cov-fail-under=70"
+            ])
+        
+        command = " ".join(cmd_parts)
+        return self.run_command(command, "Unit tests")
+    
+    def run_integration_tests(self, specific_test=None):
+        """Run integration tests."""
+        logger.info("🔗 Running integration tests...")
+        
+        cmd_parts = [str(self.python_path), "-m", "pytest"]
+        
+        if specific_test:
+            cmd_parts.append(f"tests/integration/*{specific_test}*")
+        else:
+            cmd_parts.extend(["tests/integration", "-m", "integration"])
+        
+        cmd_parts.extend([
+            "-v",
+            "--tb=short",
+            "--disable-warnings"
+        ])
+        
+        command = " ".join(cmd_parts)
+        return self.run_command(command, "Integration tests")
+    
+    def run_acceptance_tests(self):
+        """Run acceptance tests."""
+        logger.info("✅ Running acceptance tests...")
+        
+        cmd_parts = [
+            str(self.python_path), "-m", "pytest",
+            "tests/acceptance",
+            "-m", "acceptance",
+            "-v",
+            "--tb=short",
+            "--disable-warnings"
+        ]
+        
+        command = " ".join(cmd_parts)
+        return self.run_command(command, "Acceptance tests")
+    
+    def run_smoke_tests(self):
+        """Run a fast subset of tests for quick validation."""
+        logger.info("💨 Running smoke tests...")
+        
+        # Run a subset of unit tests that are fast and cover core functionality
+        cmd_parts = [
+            str(self.python_path), "-m", "pytest",
+            "tests/unit/test_logger_config.py",
+            "tests/unit/test_main_collection_data.py::TestCreateSparkSession::test_create_spark_session_success",
+            "tests/unit/test_main_collection_data.py::TestLoadMetadata::test_load_metadata_local_file",
+            "-v",
+            "--tb=short",
+            "--disable-warnings",
+            "-x"
+        ]
+        
+        command = " ".join(cmd_parts)
+        return self.run_command(command, "Smoke tests")
+    
+    def run_all_tests(self, coverage=False):
+        """Run all tests in sequence."""
+        logger.info("🚀 Running all tests...")
+        
+        success = True
+        
+        # Run unit tests first
+        if not self.run_unit_tests(coverage=coverage):
+            logger.error("❌ Unit tests failed")
+            success = False
+        else:
+            logger.info("✅ Unit tests passed")
+        
+        # Run integration tests
+        if not self.run_integration_tests():
+            logger.error("❌ Integration tests failed")
+            success = False
+        else:
+            logger.info("✅ Integration tests passed")
+        
+        # Run acceptance tests if they exist
+        if (self.tests_dir / "acceptance").exists():
+            if not self.run_acceptance_tests():
+                logger.error("❌ Acceptance tests failed")
+                success = False
+            else:
+                logger.info("✅ Acceptance tests passed")
+        
+        return success
+    
+    def run_specific_test(self, test_name, test_type="unit"):
+        """Run a specific test by name."""
+        logger.info(f"🎯 Running specific test: {test_name}")
+        
+        if test_type == "unit":
+            return self.run_unit_tests(specific_test=test_name)
+        elif test_type == "integration":
+            return self.run_integration_tests(specific_test=test_name)
+        else:
+            logger.error(f"Unknown test type: {test_type}")
+            return False
+    
+    def lint_code(self):
+        """Run code linting."""
+        logger.info("🔍 Running code linting...")
+        
+        # Run flake8
+        cmd = f"{self.python_path} -m flake8 src tests --max-line-length=120 --ignore=E203,W503"
+        if not self.run_command(cmd, "Flake8 linting"):
+            return False
+        
+        return True
+    
+    def format_code(self):
+        """Format code with black and isort."""
+        logger.info("🎨 Formatting code...")
+        
+        # Run black
+        cmd = f"{self.python_path} -m black src tests --line-length=120"
+        if not self.run_command(cmd, "Black formatting"):
+            return False
+        
+        # Run isort
+        cmd = f"{self.python_path} -m isort src tests --profile black"
+        if not self.run_command(cmd, "Import sorting"):
+            return False
+        
+        return True
+    
+    def check_dependencies(self):
+        """Check if all required dependencies are installed."""
+        logger.info("📦 Checking dependencies...")
+        
+        required_packages = [
+            "pytest", "pyspark", "boto3", "moto", "responses"
+        ]
+        
+        # Special cases for packages with hyphens
+        special_packages = {
+            "pytest_cov": "pytest-cov"
+        }
+        
+        for package in required_packages:
+            cmd = f"{self.python_path} -c 'import {package}'"
+            if not self.run_command(cmd, f"Checking {package}"):
+                logger.error(f"❌ Missing package: {package}")
+                logger.error("Please run 'make install-deps' to install dependencies")
+                return False
+        
+        # Check special packages
+        for import_name, package_name in special_packages.items():
+            cmd = f"{self.python_path} -c 'import {import_name}'"
+            if not self.run_command(cmd, f"Checking {package_name}"):
+                logger.error(f"❌ Missing package: {package_name}")
+                logger.error("Please run 'make install-deps' to install dependencies")
+                return False
+        
+        logger.info("✅ All dependencies are available")
+        return True
+    
+    def clean_test_artifacts(self):
+        """Clean up test artifacts."""
+        logger.info("🧹 Cleaning test artifacts...")
+        
+        # Remove pytest cache
+        cache_dirs = [
+            ".pytest_cache",
+            "htmlcov",
+            ".coverage",
+            "test-results.xml"
+        ]
+        
+        for cache_dir in cache_dirs:
+            path = self.project_root / cache_dir
+            if path.exists():
+                cmd = f"rm -rf {path}"
+                self.run_command(cmd, f"Removing {cache_dir}")
+        
+        logger.info("✅ Test artifacts cleaned")
+
+
+def main():
+    """Main entry point for the test runner."""
+    parser = argparse.ArgumentParser(
+        description="Local Test Runner for PySpark Jobs",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python test_runner.py --unit                    # Run unit tests only
+  python test_runner.py --integration            # Run integration tests only
+  python test_runner.py --all                    # Run all tests
+  python test_runner.py --coverage               # Run with coverage
+  python test_runner.py --specific test_main     # Run specific test
+  python test_runner.py --smoke                  # Run smoke tests (fast subset)
+  python test_runner.py --lint                   # Run linting only
+  python test_runner.py --format                 # Format code only
+  python test_runner.py --clean                  # Clean test artifacts
+        """
+    )
+    
+    # Test execution options
+    parser.add_argument("--unit", action="store_true", help="Run unit tests")
+    parser.add_argument("--integration", action="store_true", help="Run integration tests")
+    parser.add_argument("--acceptance", action="store_true", help="Run acceptance tests")
+    parser.add_argument("--all", action="store_true", help="Run all tests")
+    parser.add_argument("--smoke", action="store_true", help="Run smoke tests (fast subset)")
+    parser.add_argument("--specific", help="Run specific test by name")
+    parser.add_argument("--test-type", default="unit", choices=["unit", "integration"], 
+                       help="Type of test for --specific option")
+    
+    # Options
+    parser.add_argument("--coverage", action="store_true", help="Run with coverage reporting")
+    parser.add_argument("--lint", action="store_true", help="Run code linting")
+    parser.add_argument("--format", action="store_true", help="Format code")
+    parser.add_argument("--clean", action="store_true", help="Clean test artifacts")
+    
+    # Utility options
+    parser.add_argument("--check-deps", action="store_true", help="Check dependencies")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
+    
+    args = parser.parse_args()
+    
+    # Setup logging level
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+    
+    runner = TestRunner()
+    
+    # Check environment first
+    if not runner.check_environment():
+        sys.exit(1)
+    
+    success = True
+    
+    try:
+        # Handle utility commands first
+        if args.clean:
+            runner.clean_test_artifacts()
+            return
+        
+        if args.check_deps:
+            success = runner.check_dependencies()
+        
+        if args.format:
+            success = runner.format_code()
+        
+        if args.lint:
+            success = runner.lint_code()
+        
+        # Handle test execution
+        if args.specific:
+            success = runner.run_specific_test(args.specific, args.test_type)
+        elif args.smoke:
+            success = runner.run_smoke_tests()
+        elif args.unit:
+            success = runner.run_unit_tests(coverage=args.coverage)
+        elif args.integration:
+            success = runner.run_integration_tests()
+        elif args.acceptance:
+            success = runner.run_acceptance_tests()
+        elif args.all:
+            success = runner.run_all_tests(coverage=args.coverage)
+        else:
+            # Default: run smoke tests for quick validation
+            logger.info("No specific test type specified, running smoke tests...")
+            success = runner.run_smoke_tests()
+        
+        if success:
+            logger.info("🎉 All tests completed successfully!")
+            sys.exit(0)
+        else:
+            logger.error("💥 Some tests failed!")
+            sys.exit(1)
+    
+    except KeyboardInterrupt:
+        logger.info("🛑 Test execution interrupted by user")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"💥 Test runner failed: {e}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
