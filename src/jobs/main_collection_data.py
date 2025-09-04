@@ -379,12 +379,9 @@ def main(args):
             logger.info("Main: Writing to target s3 output path: process completed")
 
             # Write dataframe to Postgres for Entity table
-            # TODO : df_entity = df_entity.drop("processed_timestamp")
-
             global df_entity 
             df_entity.show(5) if df_entity else logger.info("Main: df_entity is None")
-
-            df_entity= df_entity.drop("year","month", "day")
+            df_entity = df_entity.drop("processed_timestamp","year","month", "day")    
             table_name = 'entity'
             logger.info(f"Main: before writing to postgres, df_entity dataframe is below")
             df_entity.show(5)
