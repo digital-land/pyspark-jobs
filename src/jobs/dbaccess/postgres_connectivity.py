@@ -22,7 +22,7 @@ from pathlib import Path
 # https://github.com/digital-land/digital-land.info/blob/main/application/db/models.py - refered from here
 #TODO: rename to actual name after testing and client approvals , as it replce the existing postgres entity data
 #TODO: need to remove processed_timestamp column after testing in dev environment
-dbtable_name = "pyspark_entity"
+dbtable_name = "entity"
 pyspark_entity_columns = {   
     "dataset": "TEXT",
     "end_date": "DATE",
@@ -37,8 +37,8 @@ pyspark_entity_columns = {
     "prefix": "TEXT",
     "reference": "TEXT",
     "start_date": "DATE", 
-    "typology": "TEXT",
-    "processed_timestamp": "TIMESTAMP"  # New column for processing timestamp
+    "typology": "TEXT"
+    #"processed_timestamp": "TIMESTAMP"  # New column for processing timestamp
 }
 
 # PostgreSQL connection parameters
