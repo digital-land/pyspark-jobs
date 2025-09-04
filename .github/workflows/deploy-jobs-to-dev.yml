@@ -32,6 +32,6 @@ jobs:
       - run: |
           # Copy the *entire* repo into the S3 src/ directory
           aws s3 sync . \
-            s3://development-collection-data/emr-data-processing/src/ \
+            s3://development-pyspark-jobs-codepackage/src/ \
             --exclude ".git/*" \
             --exclude ".github/*" \
