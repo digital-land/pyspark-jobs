@@ -165,7 +165,7 @@ def transform_data(df, schema_name, data_set,spark):
         logger.info(f"transform_data: DataFrame columns after renaming hyphens: {df.columns}")
         df.printSchema()
         logger.info(f"transform_data: DataFrame schema after renaming hyphens")
-        df.show()
+        df.show(5)
 
         # Get actual DataFrame columns
         df_columns = df.columns
@@ -346,7 +346,7 @@ def main(args):
                     # Show schema and sample data 
                     df.printSchema() 
                     logger.info(f"Main: Schema information for the loaded dataframe")
-                    df.show()
+                    df.show(5)
 
                     #revise this code and for converting spark session as singleton in future
                     processed_df = transform_data(df,table_name,data_set,spark)
@@ -367,7 +367,7 @@ def main(args):
                     # Show schema and sample data 
                     df.printSchema() 
                     logger.info(f"Main: Schema information for the loaded dataframe")
-                    df.show()
+                    df.show(5)
                     processed_df = transform_data(df,table_name,data_set,spark)                                      
 
                     logger.info(f"Main: Transforming data for {table_name} table completed")
@@ -418,7 +418,7 @@ def main(args):
                     # Show schema and sample data 
                     df.printSchema() 
                     logger.info(f"Main: Schema information for the loaded dataframe")
-                    df.show()
+                    df.show(5)
                     #revise this code and for converting spark session as singleton in future
                     processed_df = transform_data(df,table_name,data_set,spark)
                     logger.info(f"Main: Transforming data for {table_name} table completed")
@@ -445,7 +445,7 @@ def main(args):
                     # Show schema and sample data 
                     df.printSchema() 
                     logger.info(f"Main: Schema information for the loaded dataframe")
-                    df.show()
+                    df.show(5)
                     processed_df = transform_data(df,table_name,data_set,spark)                                      
 
                     logger.info(f"Main: Transforming data for {table_name} table completed")
