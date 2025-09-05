@@ -31,7 +31,7 @@ def initialize_logging(args):
         # Note: In EMR Serverless, console logs are automatically captured by CloudWatch
         # File logging is optional for local debugging
         log_file=os.getenv("LOG_FILE") if os.getenv("LOG_FILE") else None,
-        environment=os.getenv("ENVIRONMENT", {args.load_type})
+        environment=os.getenv("ENVIRONMENT", args.load_type)
 )
 
 logger = get_logger(__name__)
