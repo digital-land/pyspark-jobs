@@ -204,7 +204,8 @@ if __name__ == "__main__":
     print("Testing simplified logging configuration...")
     
     # Test basic setup
-    setup_logging(log_level="DEBUG", environment="development")
+    #TODO added for testing to find which values logging is picking up. Need to remove _loggerconfig
+    setup_logging(log_level="DEBUG", environment="development_loggerconfig")
     logger = get_logger(__name__)
     
     logger.debug("This is a debug message")

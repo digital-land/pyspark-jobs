@@ -25,12 +25,13 @@ from jobs.utils.logger_config import setup_logging, get_logger, log_execution_ti
 
 # -------------------- Logging Setup --------------------
 # Setup logging for EMR Serverless (console output goes to CloudWatch automatically)
-setup_logging(
-    log_level=os.getenv("LOG_LEVEL", "INFO"),
-    # Note: In EMR Serverless, console logs are automatically captured by CloudWatch
-    # File logging is optional for local debugging
-    log_file=os.getenv("LOG_FILE") if os.getenv("LOG_FILE") else None,
-    environment=os.getenv("ENVIRONMENT", "production")
+def initialize_logging(args):
+    setup_logging(
+        log_level=os.getenv("LOG_LEVEL", "INFO"),
+        # Note: In EMR Serverless, console logs are automatically captured by CloudWatch
+        # File logging is optional for local debugging
+        log_file=os.getenv("LOG_FILE") if os.getenv("LOG_FILE") else None,
+        environment=os.getenv("ENVIRONMENT", {args.load_type})
 )
 
 logger = get_logger(__name__)
@@ -304,6 +305,10 @@ def write_dataframe_to_postgres(df, table_name, data_set):
 # -------------------- Main --------------------
 @log_execution_time
 def main(args):
+    logger.info(f"Main: Initialize logging and invoking initialize_logging method")
+
+    initialize_logging(args)  # Initialize logging with args
+
     logger.info(f"Main: Starting ETL process for Collection Data {args.load_type} and dataset {args.data_set}")
     try: 
         logger.info("Main: Starting main ETL process for collection Data")          
