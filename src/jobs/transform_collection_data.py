@@ -109,6 +109,8 @@ def transform_data_entity(df,data_set,spark):
         # Add missing columns with default values
         if 'end_date' not in pivot_df_with_json.columns:
             pivot_df_with_json = pivot_df_with_json.withColumn('end_date', lit(None).cast("date"))
+        if 'start_date' not in pivot_df_with_json.columns:
+            pivot_df_with_json = pivot_df_with_json.withColumn('start_date', lit(None).cast("date"))
         if 'name' not in pivot_df_with_json.columns:
             pivot_df_with_json = pivot_df_with_json.withColumn('name', lit("").cast("string"))
         if 'point' not in pivot_df_with_json.columns:
