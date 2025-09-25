@@ -206,7 +206,10 @@ def write_to_s3(df, output_path, dataset_name, table_name):
         
         # Check and clean up existing data for this dataset before writing
         cleanup_summary = cleanup_dataset_data(output_path, dataset_name)
-        logger.debug(f"write_to_s3: S3 cleanup summary: {cleanup_summary}")
+        logger.info(f"write_to_s3: Cleaned up {cleanup_summary['objects_deleted']} objects for dataset '{dataset_name}'")
+        if cleanup_summary['errors']:
+            logger.warning(f"write_to_s3: Cleanup had {len(cleanup_summary['errors'])} errors: {cleanup_summary['errors']}")
+        logger.debug(f"write_to_s3: Full cleanup summary: {cleanup_summary}")
         
         # Add dataset as partition column
         df = df.withColumn("dataset", lit(dataset_name))
@@ -236,10 +239,11 @@ def write_to_s3(df, output_path, dataset_name, table_name):
             df_entity = df
 
         # Write to S3 with multilevel partitioning
+        # Use "append" mode since we already cleaned up the specific dataset partition
         df.coalesce(optimal_partitions) \
           .write \
           .partitionBy("dataset", "year", "month", "day") \
-          .mode("overwrite") \
+          .mode("append") \
           .option("maxRecordsPerFile", 1000000) \
           .option("compression", "snappy") \
           .parquet(output_path)
