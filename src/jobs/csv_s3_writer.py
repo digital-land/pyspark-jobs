@@ -657,10 +657,10 @@ def _import_via_aurora_s3(csv_s3_path: str, table_name: str, dataset_name: str, 
     logger.info("_import_via_aurora_s3: Starting Aurora S3 import")
     
     try:
-        import psycopg2
+        import pg8000
         from urllib.parse import urlparse
     except ImportError:
-        raise AuroraImportError("psycopg2 is required for Aurora S3 import but not available")
+        raise AuroraImportError("pg8000 is required for Aurora S3 import but not available")
     
     # Get connection parameters
     conn_params = get_aurora_connection_params()
@@ -675,15 +675,15 @@ def _import_via_aurora_s3(csv_s3_path: str, table_name: str, dataset_name: str, 
     cursor = None
     
     try:
-        # Connect to Aurora PostgreSQL
+        # Connect to Aurora PostgreSQL using pg8000
         logger.info("_import_via_aurora_s3: Connecting to Aurora PostgreSQL")
-        conn = psycopg2.connect(
+        conn = pg8000.connect(
             host=conn_params["host"],
-            port=conn_params["port"],
+            port=int(conn_params["port"]),
             database=conn_params["database"],
             user=conn_params["username"],
             password=conn_params["password"],
-            connect_timeout=30
+            timeout=30
         )
         cursor = conn.cursor()
         
@@ -738,7 +738,7 @@ def _import_via_aurora_s3(csv_s3_path: str, table_name: str, dataset_name: str, 
             }
         }
         
-    except psycopg2.Error as e:
+    except pg8000.Error as e:
         logger.error(f"_import_via_aurora_s3: PostgreSQL error: {e}")
         if conn:
             conn.rollback()
