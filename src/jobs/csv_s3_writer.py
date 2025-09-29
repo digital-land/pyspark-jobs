@@ -675,15 +675,16 @@ def _import_via_aurora_s3(csv_s3_path: str, table_name: str, dataset_name: str, 
     cursor = None
     
     try:
-        # Connect to Aurora PostgreSQL using pg8000
-        logger.info("_import_via_aurora_s3: Connecting to Aurora PostgreSQL")
+        # Connect to Aurora PostgreSQL using pg8000 with SSL support
+        logger.info("_import_via_aurora_s3: Connecting to Aurora PostgreSQL with SSL")
         conn = pg8000.connect(
             host=conn_params["host"],
             port=int(conn_params["port"]),
             database=conn_params["database"],
             user=conn_params["username"],
             password=conn_params["password"],
-            timeout=30
+            timeout=30,
+            ssl_context=True  # Enable SSL for Aurora
         )
         cursor = conn.cursor()
         

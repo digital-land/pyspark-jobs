@@ -88,7 +88,8 @@ def get_aws_secret():
             "port": int(port),  # Ensure port is integer
             "user": username,
             "password": password,
-            "timeout": 30  # Connection timeout in seconds
+            "timeout": 30,  # Connection timeout in seconds
+            "ssl_context": True  # Enable SSL for Aurora PostgreSQL
         }
         
         # Don't log the actual connection params as they contain sensitive information
