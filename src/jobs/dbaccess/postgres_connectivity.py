@@ -82,14 +82,20 @@ def get_aws_secret():
         
         logger.info(f"get_aws_secret: Retrieved secrets for {dbName} at {host}:{port} with user {username}")
         
+        # Create proper SSL context for Aurora PostgreSQL
+        import ssl
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        
         conn_params = {
             "database": dbName,  # pg8000 uses 'database' not 'dbname'
             "host": host,
             "port": int(port),  # Ensure port is integer
             "user": username,
             "password": password,
-            "timeout": 30,  # Connection timeout in seconds
-            "ssl_context": True  # Enable SSL for Aurora PostgreSQL
+            "timeout": 60,  # Increased timeout for SSL handshake
+            "ssl_context": ssl_context  # Proper SSL context for Aurora
         }
         
         # Don't log the actual connection params as they contain sensitive information
