@@ -113,14 +113,14 @@ def get_aws_secret():
 
 
 # Create table if not exists
-def create_table(conn_params, dataset_value,max_retries=3, retry_delay=5):
+def create_table(conn_params, dataset_value, max_retries=5):
     """
-    Create table with retry logic and better error handling.
+    Create table with retry logic using exponential backoff.
     
     Args:
         conn_params (dict): Database connection parameters
-        max_retries (int): Maximum number of connection attempts
-        retry_delay (int): Delay between retries in seconds
+        dataset_value (str): Dataset value for filtering/deletion
+        max_retries (int): Maximum number of connection attempts (default: 5)
     """
     import time
     if pg8000:
@@ -162,19 +162,22 @@ def create_table(conn_params, dataset_value,max_retries=3, retry_delay=5):
             return  # Success, exit function
             
         except InterfaceError as e:
-            logger.error(f"create_table: Network/Interface error (attempt {attempt + 1}/{max_retries}): {e}")
-            if "Can't create a connection" in str(e) or "timeout" in str(e).lower():
-                logger.error("create_table: This appears to be a network connectivity issue.")
-                logger.error("create_table: Possible causes:")
-                logger.error("create_table: 1. EMR Serverless not configured in correct VPC")
-                logger.error("create_table: 2. Security group rules blocking connection")
-                logger.error("create_table: 3. RDS database not accessible from EMR subnet")
-            
+            error_str = str(e).lower()
             if attempt < max_retries - 1:
-                logger.info(f"create_table: Retrying in {retry_delay} seconds...")
+                # Exponential backoff: 5s, 10s, 20s, 40s, 60s (capped at 60s)
+                retry_delay = min(5 * (2 ** attempt), 60)
+                logger.error(f"create_table: Network/Interface error (attempt {attempt + 1}/{max_retries}): {e}")
+                if "can't create a connection" in error_str or "timeout" in error_str:
+                    logger.error("create_table: This appears to be a network connectivity issue.")
+                    logger.error("create_table: Possible causes:")
+                    logger.error("create_table: 1. EMR Serverless not configured in correct VPC")
+                    logger.error("create_table: 2. Security group rules blocking connection")
+                    logger.error("create_table: 3. RDS database not accessible from EMR subnet")
+                    logger.error("create_table: 4. Aurora instance may be busy or at capacity")
+                logger.info(f"create_table: Retrying in {retry_delay} seconds with exponential backoff...")
                 time.sleep(retry_delay)
             else:
-                logger.error("create_table: All connection attempts failed")
+                logger.error(f"create_table: All {max_retries} connection attempts failed")
                 raise
                 
         except DatabaseError as e:
@@ -182,11 +185,14 @@ def create_table(conn_params, dataset_value,max_retries=3, retry_delay=5):
             raise  # Don't retry database errors
             
         except Exception as e:
-            logger.error(f"create_table: Unexpected error (attempt {attempt + 1}/{max_retries}): {e}", exc_info=True)
             if attempt < max_retries - 1:
-                logger.info(f"create_table: Retrying in {retry_delay} seconds...")
+                # Exponential backoff for unexpected errors too
+                retry_delay = min(5 * (2 ** attempt), 60)
+                logger.error(f"create_table: Unexpected error (attempt {attempt + 1}/{max_retries}): {e}", exc_info=True)
+                logger.info(f"create_table: Retrying in {retry_delay} seconds with exponential backoff...")
                 time.sleep(retry_delay)
             else:
+                logger.error(f"create_table: All {max_retries} attempts failed with unexpected errors")
                 raise
         finally:
             if cur:
@@ -298,19 +304,20 @@ def write_to_postgres(df, dataset,conn_params, method="optimized", batch_size=No
 #         raise
 
 
-def _write_to_postgres_optimized(df, dataset, conn_params, batch_size=None, num_partitions=None):
+def _write_to_postgres_optimized(df, dataset, conn_params, batch_size=None, num_partitions=None, max_retries=5):
     """
-    Optimized PostgreSQL writer with performance improvements.
+    Optimized PostgreSQL writer with performance improvements and retry logic.
     
     Args:
         df: PySpark DataFrame to write
         conn_params: Database connection parameters
         batch_size: Number of rows per batch (auto-calculated if None)
         num_partitions: Number of partitions (auto-calculated if None)
+        max_retries: Maximum number of write attempts (default: 5)
     """
     logger.info("_write_to_postgres_optimized: Starting optimized PostgreSQL write operation")
     
-    # Ensure table exists
+    # Ensure table exists (has its own retry logic)
     create_table(conn_params, dataset)
 
     # Auto-calculate optimal batch size if not specified
@@ -374,26 +381,49 @@ def _write_to_postgres_optimized(df, dataset, conn_params, batch_size=None, num_
         "assumeMinServerVersion": "12.0",                # Assume modern PostgreSQL
     }
     
-    try:
-        logger.info(f"_write_to_postgres_optimized: Writing {processed_df.count()} rows to PostgreSQL with batch size {batch_size}")
-        logger.info(f"_write_to_postgres_optimized: Using {num_partitions} partitions for parallel writes")
-        
-        # Use optimized JDBC write with error handling
-        processed_df.write \
-            .mode("append") \
-            .option("numPartitions", num_partitions) \
-            .jdbc(url=url, table=dbtable_name, properties=properties)
-        
-        logger.info(f"_write_to_postgres_optimized: Successfully wrote data to {dbtable_name} using optimized JDBC writer")
-        
-    except Exception as e:
-        logger.error(f"_write_to_postgres_optimized: Failed to write to PostgreSQL: {e}")
-        logger.error("_write_to_postgres_optimized: Troubleshooting steps:")
-        logger.error("_write_to_postgres_optimized: 1. Check if PostgreSQL JDBC driver is available")
-        logger.error("_write_to_postgres_optimized: 2. Verify network connectivity to database")
-        logger.error("_write_to_postgres_optimized: 3. Check database permissions for the user")
-        logger.error("_write_to_postgres_optimized: 4. Verify table schema matches DataFrame columns")
-        raise
+    # Retry logic with exponential backoff for busy Aurora instances
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"_write_to_postgres_optimized: Write attempt {attempt + 1}/{max_retries}")
+            logger.info(f"_write_to_postgres_optimized: Writing {processed_df.count()} rows to PostgreSQL with batch size {batch_size}")
+            logger.info(f"_write_to_postgres_optimized: Using {num_partitions} partitions for parallel writes")
+            
+            # Use optimized JDBC write with error handling
+            processed_df.write \
+                .mode("append") \
+                .option("numPartitions", num_partitions) \
+                .jdbc(url=url, table=dbtable_name, properties=properties)
+            
+            logger.info(f"_write_to_postgres_optimized: Successfully wrote data to {dbtable_name} using optimized JDBC writer")
+            return  # Success - exit function
+            
+        except Exception as e:
+            error_str = str(e).lower()
+            
+            # Check if this is a retryable error (connection issues, timeouts, busy database)
+            is_retryable = any(keyword in error_str for keyword in [
+                'timeout', 'connection', 'busy', 'locked', 'deadlock', 
+                'could not connect', 'refused', 'network', 'temporarily unavailable',
+                'too many connections', 'cannot acquire'
+            ])
+            
+            if is_retryable and attempt < max_retries - 1:
+                # Exponential backoff: 5s, 10s, 20s, 40s, 60s (capped at 60s)
+                retry_delay = min(5 * (2 ** attempt), 60)
+                logger.warning(f"_write_to_postgres_optimized: Write failed (attempt {attempt + 1}/{max_retries}): {e}")
+                logger.warning(f"_write_to_postgres_optimized: Aurora may be busy - retrying in {retry_delay} seconds...")
+                logger.warning(f"_write_to_postgres_optimized: Error type: {type(e).__name__}")
+                time.sleep(retry_delay)
+            else:
+                # Non-retryable error or final attempt - log and raise
+                logger.error(f"_write_to_postgres_optimized: Failed to write to PostgreSQL after {attempt + 1} attempts: {e}")
+                logger.error("_write_to_postgres_optimized: Troubleshooting steps:")
+                logger.error("_write_to_postgres_optimized: 1. Check if PostgreSQL JDBC driver is available")
+                logger.error("_write_to_postgres_optimized: 2. Verify network connectivity to database")
+                logger.error("_write_to_postgres_optimized: 3. Check database permissions for the user")
+                logger.error("_write_to_postgres_optimized: 4. Verify table schema matches DataFrame columns")
+                logger.error("_write_to_postgres_optimized: 5. Check if Aurora instance is busy or at capacity")
+                raise
 
 
 
