@@ -5,6 +5,11 @@ This directory contains all documentation related to database connectivity, conf
 ## 📚 Available Guides
 
 ### 🚀 **Performance & Optimization**
+- **[CSV S3 Import Guide](./CSV_S3_IMPORT_GUIDE.md)** ⭐ **NEW**
+  - Aurora S3 import with automatic CSV staging and cleanup
+  - Up to 80% faster than JDBC for large datasets
+  - Simple one-flag control with automatic fallback
+  
 - **[PostgreSQL Performance Optimization](./POSTGRESQL_PERFORMANCE_OPTIMIZATION.md)** 
   - Complete guide with 3-10x speedup techniques
   - Optimized JDBC, COPY protocol, async batching
@@ -36,6 +41,7 @@ This directory contains all documentation related to database connectivity, conf
 
 | Need | Start Here |
 |------|------------|
+| **⚡ Faster Aurora Imports** | [CSV S3 Import Guide](./CSV_S3_IMPORT_GUIDE.md) |
 | **Performance Issues** | [PostgreSQL Performance Optimization](./POSTGRESQL_PERFORMANCE_OPTIMIZATION.md) |
 | **Aurora Setup** | [Aurora PostgreSQL Optimization](./AURORA_POSTGRESQL_OPTIMIZATION.md) |
 | **Connection Problems** | [Database Connectivity](./DATABASE_CONNECTIVITY.md) |
@@ -57,6 +63,7 @@ PySpark Application
 
 | Method | Use Case | Performance Gain | Setup Required |
 |--------|----------|------------------|----------------|
+| **🆕 CSV S3 Import** | Aurora + any dataset | 50-80% faster | Aurora IAM role |
 | **Optimized JDBC** | Most datasets | 3-5x faster | None |
 | **Aurora S3 Import** | Aurora + large datasets | 5-8x faster | IAM role setup |
 | **Async Batches** | Memory-fit datasets | 4-8x faster | None |

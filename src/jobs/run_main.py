@@ -35,7 +35,9 @@ logger = get_logger(__name__)
 def parse_args():
     try:
         print("parse_args:Parsing command line arguments")
-        parser = argparse.ArgumentParser(description="ETL Process for Collection Data")
+        parser = argparse.ArgumentParser(description="ETL Process for Collection Data with Enhanced Import Options")
+        
+        # Required arguments
         parser.add_argument("--load_type", type=str, required=True,
                             help="Type of load operation (e.g., full, incremental, sample)")
         parser.add_argument("--data_set", type=str, required=True,
@@ -44,6 +46,11 @@ def parse_args():
                             help="Path to the dataset")
         parser.add_argument("--env", type=str, required=True,
                             help="Environment (e.g., development, staging, production, local)")
+        
+        # Import method control argument
+        parser.add_argument("--use-jdbc", action="store_true",
+                            help="Use JDBC import instead of Aurora S3 import (default: S3 import)")
+        
         args = parser.parse_args()
         print(f"parse_args:Adding arguments for dataset: {args}")
         return args

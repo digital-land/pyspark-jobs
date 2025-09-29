@@ -7,6 +7,7 @@ Welcome to the PySpark Jobs documentation. This directory contains comprehensive
 ### 🗄️ [Database](./database/)
 Database connectivity, performance optimization, and configuration guides:
 
+- **⭐ [CSV S3 Import Guide](./database/CSV_S3_IMPORT_GUIDE.md)** - **NEW** Aurora S3 import with automatic CSV staging (50-80% faster)
 - **[Aurora PostgreSQL Optimization](./database/AURORA_POSTGRESQL_OPTIMIZATION.md)** - AWS Aurora-specific optimizations and performance tuning
 - **[Database Connectivity](./database/DATABASE_CONNECTIVITY.md)** - Why we use pg8000 instead of psycopg2-binary for EMR compatibility
 - **[PostgreSQL JDBC Configuration](./database/POSTGRESQL_JDBC_CONFIGURATION.md)** - Setting up JDBC drivers for EMR Serverless
@@ -46,8 +47,9 @@ Common issues and their solutions:
 3. Check **[Build Guide](./deployment/BUILD_GUIDE.md)** for deployment basics
 
 ### For Performance Optimization
-1. **[PostgreSQL Performance Optimization](./database/POSTGRESQL_PERFORMANCE_OPTIMIZATION.md)** - 3-10x speedup techniques
-2. **[Aurora PostgreSQL Optimization](./database/AURORA_POSTGRESQL_OPTIMIZATION.md)** - Aurora-specific optimizations
+1. **⚡ [CSV S3 Import Guide](./database/CSV_S3_IMPORT_GUIDE.md)** - **START HERE** for fastest Aurora imports (50-80% faster)
+2. **[PostgreSQL Performance Optimization](./database/POSTGRESQL_PERFORMANCE_OPTIMIZATION.md)** - 3-10x speedup techniques
+3. **[Aurora PostgreSQL Optimization](./database/AURORA_POSTGRESQL_OPTIMIZATION.md)** - Aurora-specific optimizations
 
 ### For Deployment Issues
 1. **[Troubleshooting](./troubleshooting/)** - Start here for common issues
