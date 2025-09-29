@@ -70,6 +70,7 @@ CSV_CONFIG = {
     "date_format": "yyyy-MM-dd",
     "timestamp_format": "yyyy-MM-dd HH:mm:ss",
     "coalesce_to_single_file": True,  # For Aurora S3 import compatibility
+    "compression": None,  # No compression by default for Aurora S3 import compatibility
 }
 
 
