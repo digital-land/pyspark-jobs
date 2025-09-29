@@ -122,14 +122,20 @@ def prepare_dataframe_for_csv(df):
     for col_name, col_type in columns_info:
         logger.debug(f"prepare_dataframe_for_csv: Processing column {col_name} of type {col_type}")
         
-        # Handle JSON/struct columns - convert to JSON strings
-        if "struct" in col_type or "map" in col_type or col_name.lower() in ["geojson", "json"]:
+        # Handle JSON/struct columns - convert to JSON strings (only if not already string type)
+        if ("struct" in col_type or "map" in col_type or 
+            (col_name.lower() in ["geojson", "json"] and "string" not in col_type)):
             logger.info(f"prepare_dataframe_for_csv: Converting {col_name} to JSON string")
             processed_df = processed_df.withColumn(
                 col_name,
                 when(col(col_name).isNull(), None)
                 .otherwise(to_json(col(col_name)))
             )
+        
+        # Handle JSON columns that are already strings - just ensure they're properly formatted
+        elif col_name.lower() in ["geojson", "json"] and "string" in col_type:
+            logger.info(f"prepare_dataframe_for_csv: Column {col_name} is already a string, keeping as-is")
+            # No transformation needed - already a string
         
         # Handle date/timestamp columns - convert to standardized format
         elif "date" in col_type or "timestamp" in col_type or col_name.lower().endswith('_date'):
