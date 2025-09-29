@@ -374,9 +374,40 @@ def _move_csv_to_final_location(temp_path: str, final_csv_path: str) -> str:
         if not csv_key:
             raise CSVWriterError("No CSV file found in temporary location")
         
-        # Copy to final location
+        # Copy to final location (handle large files > 5GB)
         copy_source = {'Bucket': bucket, 'Key': csv_key}
-        s3_client.copy_object(Bucket=bucket, CopySource=copy_source, Key=final_key)
+        
+        # Check file size to determine copy method
+        head_response = s3_client.head_object(Bucket=bucket, Key=csv_key)
+        file_size = head_response['ContentLength']
+        
+        # Use multipart copy for files > 5GB (AWS limit for copy_object)
+        if file_size > 5 * 1024 * 1024 * 1024:  # 5GB
+            logger.info(f"_move_csv_to_final_location: Large file detected ({file_size} bytes), using multipart copy")
+            
+            # Use boto3's managed transfer for large files
+            import boto3.s3.transfer as s3transfer
+            transfer_config = s3transfer.TransferConfig(
+                multipart_threshold=1024 * 25,  # 25MB
+                max_concurrency=10,
+                multipart_chunksize=1024 * 25,
+                use_threads=True
+            )
+            
+            # Create a transfer manager
+            transfer = s3transfer.create_transfer_manager(s3_client, transfer_config)
+            
+            # Copy using multipart transfer
+            future = transfer.copy(
+                copy_source, bucket, final_key,
+                extra_args={}
+            )
+            future.result()  # Wait for completion
+            
+        else:
+            # Use regular copy for smaller files
+            logger.info(f"_move_csv_to_final_location: Regular file size ({file_size} bytes), using standard copy")
+            s3_client.copy_object(Bucket=bucket, CopySource=copy_source, Key=final_key)
         
         # Delete temporary files
         _cleanup_temp_path(temp_path)
