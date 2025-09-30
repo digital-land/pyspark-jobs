@@ -5,7 +5,13 @@ This directory contains all documentation related to database connectivity, conf
 ## 📚 Available Guides
 
 ### 🚀 **Performance & Optimization**
-- **[CSV S3 Import Guide](./CSV_S3_IMPORT_GUIDE.md)** ⭐ **NEW**
+- **[Staging Table Pattern](./STAGING_TABLE_PATTERN.md)** ⭐ **NEW**
+  - Reduce lock contention by 96% for high-load tables
+  - Write to temp table first, then atomic commit
+  - Perfect for entity table under constant query load
+  - **[Quick Reference](./STAGING_TABLE_QUICK_REFERENCE.md)** - TL;DR version
+
+- **[CSV S3 Import Guide](./CSV_S3_IMPORT_GUIDE.md)**
   - Aurora S3 import with automatic CSV staging and cleanup
   - Up to 80% faster than JDBC for large datasets
   - Simple one-flag control with automatic fallback
@@ -41,6 +47,7 @@ This directory contains all documentation related to database connectivity, conf
 
 | Need | Start Here |
 |------|------------|
+| **🔥 Reduce Lock Contention** | [Staging Table Quick Reference](./STAGING_TABLE_QUICK_REFERENCE.md) |
 | **⚡ Faster Aurora Imports** | [CSV S3 Import Guide](./CSV_S3_IMPORT_GUIDE.md) |
 | **Performance Issues** | [PostgreSQL Performance Optimization](./POSTGRESQL_PERFORMANCE_OPTIMIZATION.md) |
 | **Aurora Setup** | [Aurora PostgreSQL Optimization](./AURORA_POSTGRESQL_OPTIMIZATION.md) |
@@ -63,6 +70,7 @@ PySpark Application
 
 | Method | Use Case | Performance Gain | Setup Required |
 |--------|----------|------------------|----------------|
+| **🔥 Staging Table** | High-load tables | 96% less blocking | None (auto-enabled) |
 | **🆕 CSV S3 Import** | Aurora + any dataset | 50-80% faster | Aurora IAM role |
 | **Optimized JDBC** | Most datasets | 3-5x faster | None |
 | **Aurora S3 Import** | Aurora + large datasets | 5-8x faster | IAM role setup |

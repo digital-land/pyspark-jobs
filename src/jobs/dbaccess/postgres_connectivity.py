@@ -113,6 +113,299 @@ def get_aws_secret():
         raise
 
 
+# -------------------- Staging Table Pattern --------------------
+
+def create_and_prepare_staging_table(conn_params, dataset_value, max_retries=3):
+    """
+    Create a temporary staging table for data loading.
+    
+    This approach minimizes lock contention on the main entity table by:
+    1. Writing all data to a staging table first
+    2. Performing validation on staging table
+    3. Atomically swapping data from staging to production table
+    
+    Args:
+        conn_params (dict): Database connection parameters
+        dataset_value (str): Dataset value for the staging table
+        max_retries (int): Maximum number of connection attempts
+        
+    Returns:
+        str: Name of the staging table created
+    """
+    import time
+    if pg8000:
+        from pg8000.exceptions import InterfaceError, DatabaseError
+    else:
+        logger.warning("create_and_prepare_staging_table: pg8000 not available")
+        InterfaceError = DatabaseError = Exception
+    
+    # Generate unique staging table name
+    import hashlib
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dataset_hash = hashlib.md5(dataset_value.encode()).hexdigest()[:8]
+    staging_table_name = f"entity_staging_{dataset_hash}_{timestamp}"
+    
+    conn = None
+    cur = None
+    
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"create_and_prepare_staging_table: Creating staging table (attempt {attempt + 1}/{max_retries})")
+            
+            if not pg8000:
+                raise ImportError("pg8000 required for direct database connections")
+            
+            conn = pg8000.connect(**conn_params)
+            cur = conn.cursor()
+            
+            # Set shorter timeout for staging table operations (no large deletes)
+            cur.execute("SET statement_timeout = '60000';")  # 1 minute
+            
+            # Create staging table with same schema as entity table
+            column_defs = ", ".join([f"{col} {dtype}" for col, dtype in pyspark_entity_columns.items()])
+            create_staging_query = f"""
+                CREATE TEMP TABLE {staging_table_name} (
+                    {column_defs}
+                ) ON COMMIT PRESERVE ROWS;
+            """
+            
+            cur.execute(create_staging_query)
+            conn.commit()
+            
+            logger.info(f"create_and_prepare_staging_table: Successfully created staging table '{staging_table_name}'")
+            
+            # Ensure main entity table exists
+            create_entity_query = f"CREATE TABLE IF NOT EXISTS {dbtable_name} ({column_defs});"
+            cur.execute(create_entity_query)
+            conn.commit()
+            
+            logger.info(f"create_and_prepare_staging_table: Verified main table '{dbtable_name}' exists")
+            
+            cur.close()
+            conn.close()
+            
+            return staging_table_name
+            
+        except InterfaceError as e:
+            error_str = str(e).lower()
+            if attempt < max_retries - 1:
+                retry_delay = min(5 * (2 ** attempt), 30)
+                logger.error(f"create_and_prepare_staging_table: Network error (attempt {attempt + 1}/{max_retries}): {e}")
+                logger.info(f"create_and_prepare_staging_table: Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                raise
+                
+        except Exception as e:
+            if attempt < max_retries - 1:
+                retry_delay = min(5 * (2 ** attempt), 30)
+                logger.error(f"create_and_prepare_staging_table: Error (attempt {attempt + 1}/{max_retries}): {e}", exc_info=True)
+                logger.info(f"create_and_prepare_staging_table: Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                logger.error(f"create_and_prepare_staging_table: All {max_retries} attempts failed")
+                raise
+        finally:
+            if cur:
+                try:
+                    cur.close()
+                except Exception as e:
+                    logger.warning(f"create_and_prepare_staging_table: Error closing cursor: {e}")
+            if conn:
+                try:
+                    conn.close()
+                except Exception as e:
+                    logger.warning(f"create_and_prepare_staging_table: Error closing connection: {e}")
+            conn = None
+            cur = None
+
+
+def commit_staging_to_production(conn_params, staging_table_name, dataset_value, max_retries=3):
+    """
+    Atomically move data from staging table to production entity table.
+    
+    This operation:
+    1. Deletes existing data for the dataset from entity table (fast, indexed delete)
+    2. Inserts data from staging table to entity table (bulk insert)
+    3. Drops the staging table
+    
+    The operation is transactional - either all succeeds or all fails.
+    
+    Args:
+        conn_params (dict): Database connection parameters
+        staging_table_name (str): Name of the staging table
+        dataset_value (str): Dataset value to replace in production table
+        max_retries (int): Maximum number of attempts
+        
+    Returns:
+        dict: Statistics about the commit operation
+    """
+    import time
+    if pg8000:
+        from pg8000.exceptions import InterfaceError, DatabaseError
+    else:
+        logger.warning("commit_staging_to_production: pg8000 not available")
+        InterfaceError = DatabaseError = Exception
+    
+    conn = None
+    cur = None
+    
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"commit_staging_to_production: Starting commit operation (attempt {attempt + 1}/{max_retries})")
+            
+            if not pg8000:
+                raise ImportError("pg8000 required for direct database connections")
+            
+            conn = pg8000.connect(**conn_params)
+            cur = conn.cursor()
+            
+            # Set longer timeout for the production table operations
+            cur.execute("SET statement_timeout = '300000';")  # 5 minutes
+            
+            # BEGIN TRANSACTION (implicit with pg8000)
+            logger.info(f"commit_staging_to_production: Starting transaction for dataset '{dataset_value}'")
+            
+            # Step 1: Count rows in staging table
+            cur.execute(f"SELECT COUNT(*) FROM {staging_table_name};")
+            result = cur.fetchone()
+            staging_count = result[0] if result else 0
+            logger.info(f"commit_staging_to_production: Staging table has {staging_count:,} rows")
+            
+            if staging_count == 0:
+                logger.warning(f"commit_staging_to_production: Staging table is empty, aborting commit")
+                conn.rollback()
+                return {
+                    "success": False,
+                    "error": "Staging table is empty",
+                    "rows_deleted": 0,
+                    "rows_inserted": 0
+                }
+            
+            # Step 2: Delete existing data for this dataset from entity table
+            logger.info(f"commit_staging_to_production: Deleting existing data for dataset '{dataset_value}'")
+            start_delete = time.time()
+            
+            # Use indexed delete for better performance
+            delete_query = f"DELETE FROM {dbtable_name} WHERE dataset = %s;"
+            cur.execute(delete_query, (dataset_value,))
+            deleted_count = cur.rowcount
+            
+            delete_duration = time.time() - start_delete
+            logger.info(f"commit_staging_to_production: Deleted {deleted_count:,} existing rows in {delete_duration:.2f}s")
+            
+            # Step 3: Insert data from staging to entity table
+            logger.info(f"commit_staging_to_production: Inserting data from staging to entity table")
+            start_insert = time.time()
+            
+            # Get column names for INSERT
+            columns = list(pyspark_entity_columns.keys())
+            columns_str = ", ".join(columns)
+            
+            insert_query = f"""
+                INSERT INTO {dbtable_name} ({columns_str})
+                SELECT {columns_str}
+                FROM {staging_table_name};
+            """
+            
+            cur.execute(insert_query)
+            inserted_count = cur.rowcount
+            
+            insert_duration = time.time() - start_insert
+            logger.info(f"commit_staging_to_production: Inserted {inserted_count:,} rows in {insert_duration:.2f}s")
+            
+            # Step 4: Verify row counts match
+            if inserted_count != staging_count:
+                logger.error(
+                    f"commit_staging_to_production: Row count mismatch! "
+                    f"Staging: {staging_count:,}, Inserted: {inserted_count:,}"
+                )
+                conn.rollback()
+                return {
+                    "success": False,
+                    "error": f"Row count mismatch: {staging_count} vs {inserted_count}",
+                    "rows_deleted": 0,
+                    "rows_inserted": 0
+                }
+            
+            # COMMIT TRANSACTION
+            conn.commit()
+            
+            total_duration = delete_duration + insert_duration
+            logger.info(
+                f"commit_staging_to_production: ✓ Transaction committed successfully - "
+                f"deleted {deleted_count:,}, inserted {inserted_count:,} in {total_duration:.2f}s"
+            )
+            
+            # Step 5: Drop staging table (outside transaction)
+            try:
+                cur.execute(f"DROP TABLE IF EXISTS {staging_table_name};")
+                conn.commit()
+                logger.info(f"commit_staging_to_production: Dropped staging table '{staging_table_name}'")
+            except Exception as e:
+                logger.warning(f"commit_staging_to_production: Failed to drop staging table (non-critical): {e}")
+            
+            cur.close()
+            conn.close()
+            
+            return {
+                "success": True,
+                "rows_deleted": deleted_count,
+                "rows_inserted": inserted_count,
+                "delete_duration": delete_duration,
+                "insert_duration": insert_duration,
+                "total_duration": total_duration
+            }
+            
+        except InterfaceError as e:
+            error_str = str(e).lower()
+            logger.error(f"commit_staging_to_production: Network error (attempt {attempt + 1}/{max_retries}): {e}")
+            
+            if conn:
+                try:
+                    conn.rollback()
+                except:
+                    pass
+            
+            if attempt < max_retries - 1:
+                retry_delay = min(5 * (2 ** attempt), 30)
+                logger.info(f"commit_staging_to_production: Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                raise
+                
+        except Exception as e:
+            logger.error(f"commit_staging_to_production: Error (attempt {attempt + 1}/{max_retries}): {e}", exc_info=True)
+            
+            if conn:
+                try:
+                    conn.rollback()
+                    logger.info("commit_staging_to_production: Transaction rolled back")
+                except:
+                    pass
+            
+            if attempt < max_retries - 1:
+                retry_delay = min(5 * (2 ** attempt), 30)
+                logger.info(f"commit_staging_to_production: Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                raise
+        finally:
+            if cur:
+                try:
+                    cur.close()
+                except Exception as e:
+                    logger.warning(f"commit_staging_to_production: Error closing cursor: {e}")
+            if conn:
+                try:
+                    conn.close()
+                except Exception as e:
+                    logger.warning(f"commit_staging_to_production: Error closing connection: {e}")
+            conn = None
+            cur = None
+
+
 # Create table if not exists
 def create_table(conn_params, dataset_value, max_retries=5):
     """
@@ -431,24 +724,24 @@ def _prepare_geometry_columns(df):
 # -------------------- PostgreSQL Writer --------------------
 
 ##writing to postgres db
-def write_to_postgres(df, dataset,conn_params, method="optimized", batch_size=None, num_partitions=None, **kwargs):
+def write_to_postgres(df, dataset, conn_params, method="optimized", batch_size=None, num_partitions=None, target_table=None, **kwargs):
     """
     Insert DataFrame rows into PostgreSQL table using optimized PySpark JDBC writer.
     
     Args:
         df (pyspark.sql.DataFrame): DataFrame to insert
+        dataset (str): Dataset name
         conn_params (dict): PostgreSQL connection parameters
         method (str): Write method - "optimized" (default), "standard"
         batch_size (int): Number of rows per batch (auto-calculated if None)
         num_partitions (int): Number of partitions (auto-calculated if None)
+        target_table (str): Target table name (defaults to global dbtable_name if None).
+                           Use this to write to staging tables.
         **kwargs: Additional parameters for specific methods
     """
     logger.info(f"write_to_postgres: Using {method} method for PostgreSQL writes")
     
-    #if method == "standard":
-       # return _write_to_postgres_standard(df, dataset,conn_params)
-    #else:  # method == "optimized" (default) - handles any invalid method as optimized
-    return _write_to_postgres_optimized(df, dataset,conn_params, batch_size, num_partitions)
+    return _write_to_postgres_optimized(df, dataset, conn_params, batch_size, num_partitions, target_table)
 
 
 # def _write_to_postgres_standard(df, dataset, conn_params):
@@ -480,21 +773,30 @@ def write_to_postgres(df, dataset,conn_params, method="optimized", batch_size=No
 #         raise
 
 
-def _write_to_postgres_optimized(df, dataset, conn_params, batch_size=None, num_partitions=None, max_retries=5):
+def _write_to_postgres_optimized(df, dataset, conn_params, batch_size=None, num_partitions=None, target_table=None, max_retries=5):
     """
     Optimized PostgreSQL writer with performance improvements and retry logic.
     
     Args:
         df: PySpark DataFrame to write
+        dataset: Dataset name
         conn_params: Database connection parameters
         batch_size: Number of rows per batch (auto-calculated if None)
         num_partitions: Number of partitions (auto-calculated if None)
+        target_table: Target table name (uses global dbtable_name if None)
         max_retries: Maximum number of write attempts (default: 5)
     """
-    logger.info("_write_to_postgres_optimized: Starting optimized PostgreSQL write operation")
+    # Determine target table (staging or production)
+    table_name = target_table if target_table else dbtable_name
     
-    # Ensure table exists (has its own retry logic)
-    create_table(conn_params, dataset)
+    logger.info(f"_write_to_postgres_optimized: Starting optimized PostgreSQL write to table '{table_name}'")
+    
+    # Only create table if writing to production (not staging)
+    if not target_table:
+        # Ensure production table exists (has its own retry logic)
+        create_table(conn_params, dataset)
+    else:
+        logger.info(f"_write_to_postgres_optimized: Writing to staging table '{target_table}', skipping create_table")
 
     # Auto-calculate optimal batch size if not specified
     if batch_size is None:
@@ -568,9 +870,9 @@ def _write_to_postgres_optimized(df, dataset, conn_params, batch_size=None, num_
             processed_df.write \
                 .mode("append") \
                 .option("numPartitions", num_partitions) \
-                .jdbc(url=url, table=dbtable_name, properties=properties)
+                .jdbc(url=url, table=table_name, properties=properties)
             
-            logger.info(f"_write_to_postgres_optimized: Successfully wrote data to {dbtable_name} using optimized JDBC writer")
+            logger.info(f"_write_to_postgres_optimized: Successfully wrote data to {table_name} using optimized JDBC writer")
             return  # Success - exit function
             
         except Exception as e:
