@@ -162,21 +162,32 @@ def create_and_prepare_staging_table(conn_params, dataset_value, max_retries=3):
             # Set shorter timeout for staging table operations (no large deletes)
             cur.execute("SET statement_timeout = '60000';")  # 1 minute
             
-            # Create staging table with same schema as entity table
-            column_defs = ", ".join([f"{col} {dtype}" for col, dtype in pyspark_entity_columns.items()])
+            # Create staging table with TEXT columns for JSONB (since PySpark writes as TEXT)
+            # We'll cast to JSONB during the final INSERT to entity table
+            staging_columns = []
+            for col, dtype in pyspark_entity_columns.items():
+                if 'JSONB' in dtype.upper():
+                    # Use TEXT for JSONB columns since PySpark writes them as TEXT
+                    staging_columns.append(f"{col} TEXT")
+                else:
+                    staging_columns.append(f"{col} {dtype}")
+            
+            column_defs = ", ".join(staging_columns)
             create_staging_query = f"""
                 CREATE TEMP TABLE {staging_table_name} (
                     {column_defs}
                 ) ON COMMIT PRESERVE ROWS;
             """
             
+            logger.debug(f"create_and_prepare_staging_table: Creating staging with schema: {column_defs[:200]}...")
             cur.execute(create_staging_query)
             conn.commit()
             
             logger.info(f"create_and_prepare_staging_table: Successfully created staging table '{staging_table_name}'")
             
-            # Ensure main entity table exists
-            create_entity_query = f"CREATE TABLE IF NOT EXISTS {dbtable_name} ({column_defs});"
+            # Ensure main entity table exists (with original JSONB columns)
+            entity_column_defs = ", ".join([f"{col} {dtype}" for col, dtype in pyspark_entity_columns.items()])
+            create_entity_query = f"CREATE TABLE IF NOT EXISTS {dbtable_name} ({entity_column_defs});"
             cur.execute(create_entity_query)
             conn.commit()
             
@@ -299,11 +310,22 @@ def commit_staging_to_production(conn_params, staging_table_name, dataset_value,
             logger.info(f"commit_staging_to_production: Inserting data from staging to entity table")
             start_insert = time.time()
             
-            # Use SELECT * since both tables have identical schema
-            # This avoids column qualification issues with temp tables
+            # Build column list with explicit casts for JSONB columns
+            # PySpark writes JSONB as TEXT, so we need to cast during insert
+            select_columns = []
+            for col_name, col_type in pyspark_entity_columns.items():
+                if 'JSONB' in col_type.upper():
+                    # Cast TEXT to JSONB for json columns
+                    select_columns.append(f"{col_name}::jsonb")
+                else:
+                    select_columns.append(col_name)
+            
+            select_str = ", ".join(select_columns)
+            
             insert_query = f"""
                 INSERT INTO {dbtable_name}
-                SELECT * FROM {staging_table_name};
+                SELECT {select_str}
+                FROM {staging_table_name};
             """
             
             cur.execute(insert_query)
