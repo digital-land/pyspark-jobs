@@ -8,7 +8,8 @@ import argparse
 from jobs.transform_collection_data import (transform_data_fact, transform_data_fact_res,
                                       transform_data_issue, transform_data_entity) 
 from jobs.dbaccess.postgres_connectivity import (create_table, write_to_postgres, get_aws_secret,
-                                                  create_and_prepare_staging_table, commit_staging_to_production)
+                                                  create_and_prepare_staging_table, commit_staging_to_production,
+                                                  ENTITY_TABLE_NAME)
 from jobs.utils.s3_utils import cleanup_dataset_data
 from jobs.csv_s3_writer import write_dataframe_to_csv_s3, import_csv_to_aurora, cleanup_temp_csv_files
 #import sqlite3
@@ -329,9 +330,10 @@ def write_dataframe_to_postgres(df, table_name, data_set, env, use_jdbc=False):
                     logger.info(f"Write_PG: Successfully wrote temporary CSV to S3: {csv_path}")
                     
                     # Step 2: Import CSV from S3 to Aurora (this includes automatic cleanup)
+                    # Use actual database table name (ENTITY_TABLE_NAME) instead of logical name
                     import_result = import_csv_to_aurora(
                         csv_path,
-                        table_name,
+                        ENTITY_TABLE_NAME,  # Use actual DB table name (configured in postgres_connectivity.py)
                         data_set,
                         use_s3_import=True,
                         truncate_table=True  # Clean existing data for this dataset
@@ -382,7 +384,7 @@ def _write_dataframe_to_postgres_jdbc(df, table_name, data_set, use_staging=True
     
     Args:
         df: PySpark DataFrame to write
-        table_name: Target table name (currently only 'entity' supported)
+        table_name: Logical table identifier (e.g., 'entity', 'fact')
         data_set: Dataset name
         use_staging: If True, uses staging table pattern (recommended for high-load scenarios)
     """
@@ -395,6 +397,7 @@ def _write_dataframe_to_postgres_jdbc(df, table_name, data_set, use_staging=True
     
     conn_params = get_aws_secret()
     
+    # Use staging pattern for entity table (logical name comparison is correct here)
     if use_staging and table_name == 'entity':
         logger.info("_write_dataframe_to_postgres_jdbc: Using STAGING TABLE pattern for entity table")
         logger.info("_write_dataframe_to_postgres_jdbc: This minimizes lock contention on production table")

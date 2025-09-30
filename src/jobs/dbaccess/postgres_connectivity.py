@@ -1,3 +1,22 @@
+# ================================================================================
+# DATABASE TABLE CONFIGURATION
+# ================================================================================
+# 
+# ⚠️  TEMPORARY CONFIGURATION - EASY TO REVERT ⚠️
+# 
+# To switch back to production 'entity' table, change line below:
+#   ENTITY_TABLE_NAME = "pyspark_entity"  (current - temporary)
+#   ENTITY_TABLE_NAME = "entity"          (production - to revert to)
+# 
+# This single change will update:
+#   - All JDBC writes
+#   - All Aurora S3 imports  
+#   - Staging table naming
+#   - Table creation logic
+# ================================================================================
+
+ENTITY_TABLE_NAME = "pyspark_entity"  # TODO: TEMPORARY - change to "entity" when ready
+
 # -------------------- Postgres table creation --------------------
 
 ##writing to postgres db
@@ -21,7 +40,7 @@ from pathlib import Path
 
 # Define your table schema
 # https://github.com/digital-land/digital-land.info/blob/main/application/db/models.py - refered from here
-dbtable_name = "pyspark_entity"  # TODO: renamed temperorily to resolve dev issue raised by infra team
+dbtable_name = ENTITY_TABLE_NAME  # Use centralized config above
 pyspark_entity_columns = {   
     "dataset": "TEXT",
     "end_date": "DATE",
@@ -139,12 +158,12 @@ def create_and_prepare_staging_table(conn_params, dataset_value, max_retries=3):
         logger.warning("create_and_prepare_staging_table: pg8000 not available")
         InterfaceError = DatabaseError = Exception
     
-    # Generate unique staging table name
+    # Generate unique staging table name based on actual target table
     import hashlib
     from datetime import datetime
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     dataset_hash = hashlib.md5(dataset_value.encode()).hexdigest()[:8]
-    staging_table_name = f"entity_staging_{dataset_hash}_{timestamp}"
+    staging_table_name = f"{dbtable_name}_staging_{dataset_hash}_{timestamp}"
     
     conn = None
     cur = None

@@ -27,6 +27,11 @@ This directory contains all documentation related to database connectivity, conf
   - S3 import capabilities and setup
 
 ### 🔧 **Connectivity & Configuration**
+- **[Table Name Configuration](./TABLE_NAME_CONFIG.md)** ⚠️ **TEMPORARY CONFIG**
+  - Single-line change to switch between `pyspark_entity` and `entity` tables
+  - Easy revert when infra issue resolved
+  - Centralized configuration for all database operations
+
 - **[Database Connectivity](./DATABASE_CONNECTIVITY.md)**
   - Why we use pg8000 instead of psycopg2-binary
   - EMR Serverless compatibility requirements
@@ -47,6 +52,7 @@ This directory contains all documentation related to database connectivity, conf
 
 | Need | Start Here |
 |------|------------|
+| **⚠️ Change Table Name** | [Table Name Configuration](./TABLE_NAME_CONFIG.md) |
 | **🔥 Reduce Lock Contention** | [Staging Table Quick Reference](./STAGING_TABLE_QUICK_REFERENCE.md) |
 | **⚡ Faster Aurora Imports** | [CSV S3 Import Guide](./CSV_S3_IMPORT_GUIDE.md) |
 | **Performance Issues** | [PostgreSQL Performance Optimization](./POSTGRESQL_PERFORMANCE_OPTIMIZATION.md) |
