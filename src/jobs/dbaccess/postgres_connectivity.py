@@ -21,7 +21,7 @@ from pathlib import Path
 
 # Define your table schema
 # https://github.com/digital-land/digital-land.info/blob/main/application/db/models.py - refered from here
-dbtable_name = "entity"
+dbtable_name = "pyspark_entity"  # TODO: renamed temperorily to resolve dev issue raised by infra team
 pyspark_entity_columns = {   
     "dataset": "TEXT",
     "end_date": "DATE",
