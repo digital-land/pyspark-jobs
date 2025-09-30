@@ -164,6 +164,8 @@ def create_and_prepare_staging_table(conn_params, dataset_value, max_retries=3):
             
             # Create staging table with TEXT columns for JSONB (since PySpark writes as TEXT)
             # We'll cast to JSONB during the final INSERT to entity table
+            # NOTE: We use a regular table (not TEMP) because PySpark's JDBC connection
+            # is in a different session and can't see TEMP tables from this pg8000 session
             staging_columns = []
             for col, dtype in pyspark_entity_columns.items():
                 if 'JSONB' in dtype.upper():
@@ -174,14 +176,15 @@ def create_and_prepare_staging_table(conn_params, dataset_value, max_retries=3):
             
             column_defs = ", ".join(staging_columns)
             create_staging_query = f"""
-                CREATE TEMP TABLE {staging_table_name} (
+                CREATE TABLE {staging_table_name} (
                     {column_defs}
-                ) ON COMMIT PRESERVE ROWS;
+                );
             """
             
             logger.debug(f"create_and_prepare_staging_table: Creating staging with schema: {column_defs[:200]}...")
             cur.execute(create_staging_query)
             conn.commit()
+            logger.info(f"create_and_prepare_staging_table: Created regular table (not TEMP) for cross-session JDBC compatibility")
             
             logger.info(f"create_and_prepare_staging_table: Successfully created staging table '{staging_table_name}'")
             
@@ -190,6 +193,13 @@ def create_and_prepare_staging_table(conn_params, dataset_value, max_retries=3):
             create_entity_query = f"CREATE TABLE IF NOT EXISTS {dbtable_name} ({entity_column_defs});"
             cur.execute(create_entity_query)
             conn.commit()
+            
+            # Create index on dataset column if it doesn't exist (critical for fast DELETE)
+            logger.info(f"create_and_prepare_staging_table: Ensuring index on dataset column for fast deletion")
+            create_index_query = f"CREATE INDEX IF NOT EXISTS idx_{dbtable_name}_dataset ON {dbtable_name}(dataset);"
+            cur.execute(create_index_query)
+            conn.commit()
+            logger.info(f"create_and_prepare_staging_table: Index on dataset column ensured")
             
             logger.info(f"create_and_prepare_staging_table: Verified main table '{dbtable_name}' exists")
             
