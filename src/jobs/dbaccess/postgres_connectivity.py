@@ -16,6 +16,7 @@ except ImportError:
 from jobs.utils.aws_secrets_manager import get_secret_emr_compatible
 import os
 import time
+from datetime import datetime
 from pathlib import Path
 
 # Define your table schema
@@ -94,7 +95,7 @@ def get_aws_secret():
             "port": int(port),  # Ensure port is integer
             "user": username,
             "password": password,
-            "timeout": 60,  # Increased timeout for SSL handshake
+            "timeout": 300,  # 5 minute timeout for long-running operations (DELETE on large datasets)
             "ssl_context": ssl_context  # Proper SSL context for Aurora
         }
         
@@ -142,6 +143,39 @@ def create_table(conn_params, dataset_value, max_retries=5):
             conn = pg8000.connect(**conn_params)
             cur = conn.cursor()
             
+            # Set PostgreSQL statement timeout to 5 minutes for long-running DELETE operations
+            # This prevents indefinite hangs on busy Aurora instances
+            cur.execute("SET statement_timeout = '300000';")  # 5 minutes in milliseconds
+            logger.info("create_table: Set statement_timeout to 5 minutes for long operations")
+            
+            # Check for any existing long-running queries that might be blocking
+            # This prevents pileup of DELETE operations from previous failed attempts
+            check_blocking_query = """
+                SELECT pid, query_start, state, query
+                FROM pg_stat_activity
+                WHERE state = 'active'
+                  AND query ILIKE '%DELETE FROM entity%'
+                  AND query NOT ILIKE '%pg_stat_activity%'
+                  AND pid != pg_backend_pid()
+                  AND (now() - query_start) > interval '30 seconds';
+            """
+            cur.execute(check_blocking_query)
+            blocking_queries = cur.fetchall()
+            
+            if blocking_queries:
+                logger.warning(f"create_table: Found {len(blocking_queries)} existing DELETE operations still running from previous attempts")
+                for pid, query_start, state, query in blocking_queries:
+                    duration = (datetime.now() - query_start).total_seconds() if query_start else 0
+                    logger.warning(f"create_table: - PID {pid}: running for {duration:.0f}s - {query[:100]}")
+                    # Terminate the stuck query to prevent blocking
+                    try:
+                        cur.execute(f"SELECT pg_terminate_backend({pid});")
+                        logger.info(f"create_table: Terminated stuck DELETE operation (PID {pid})")
+                    except Exception as e:
+                        logger.warning(f"create_table: Could not terminate PID {pid}: {e}")
+                conn.commit()
+                logger.info("create_table: Cleaned up stuck DELETE operations, proceeding with fresh attempt")
+            
             # Build CREATE TABLE SQL dynamically
             column_defs = ", ".join([f"{col} {dtype}" for col, dtype in pyspark_entity_columns.items()])
             create_query = f"CREATE TABLE IF NOT EXISTS {dbtable_name} ({column_defs});"
@@ -153,11 +187,132 @@ def create_table(conn_params, dataset_value, max_retries=5):
 
             # Select and delete records by dataset value if provided
             if dataset_value:
-                delete_query = f"DELETE FROM {dbtable_name} WHERE dataset = %s;"
-                logger.info(f"create_table: Selecting records to delete from {dbtable_name} where dataset = {dataset_value}")
-                cur.execute(delete_query, (dataset_value,))
-                conn.commit()
-                logger.info(f"create_table: Deleted records from {dbtable_name} where dataset = {dataset_value}")
+                # First, check how many records exist for this dataset
+                count_query = f"SELECT COUNT(*) FROM {dbtable_name} WHERE dataset = %s;"
+                cur.execute(count_query, (dataset_value,))
+                result = cur.fetchone()
+                record_count = result[0] if result else 0
+                logger.info(f"create_table: Found {record_count} existing records for dataset '{dataset_value}'")
+                
+                if record_count > 0:
+                    # Adaptive batch sizing based on dataset size for optimal performance
+                    if record_count > 10000:
+                        # Calculate optimal batch size based on record count
+                        # For millions of records, use larger batches to reduce total number of operations
+                        if record_count < 100000:
+                            batch_size = 10000      # 100K records: 10 batches
+                        elif record_count < 500000:
+                            batch_size = 25000      # 500K records: 20 batches  
+                        elif record_count < 1000000:
+                            batch_size = 50000      # 1M records: 20 batches
+                        elif record_count < 5000000:
+                            batch_size = 100000     # 5M records: 50 batches
+                        else:
+                            batch_size = 200000     # 10M+ records: 50+ batches
+                        
+                        logger.info(f"create_table: Large dataset detected ({record_count:,} records). Deleting in batches of {batch_size:,} to avoid locks...")
+                        
+                        # Use CTID-based batch deletion for better performance on large datasets
+                        total_deleted = 0
+                        batch_num = 0
+                        start_time = time.time()
+                        
+                        while True:
+                            batch_num += 1
+                            batch_start_time = time.time()
+                            
+                            delete_batch_query = f"""
+                                DELETE FROM {dbtable_name} 
+                                WHERE ctid IN (
+                                    SELECT ctid FROM {dbtable_name} 
+                                    WHERE dataset = %s 
+                                    LIMIT {batch_size}
+                                );
+                            """
+                            
+                            # Execute DELETE and wait for completion
+                            cur.execute(delete_batch_query, (dataset_value,))
+                            deleted = cur.rowcount
+                            total_deleted += deleted
+                            
+                            # Commit and wait for commit to complete
+                            conn.commit()
+                            
+                            # Calculate progress and performance metrics
+                            batch_duration = time.time() - batch_start_time
+                            total_duration = time.time() - start_time
+                            progress_pct = (total_deleted / record_count) * 100
+                            
+                            # Estimate remaining time
+                            if total_deleted > 0:
+                                avg_time_per_record = total_duration / total_deleted
+                                remaining_records = record_count - total_deleted
+                                est_remaining_time = avg_time_per_record * remaining_records
+                                est_remaining_min = est_remaining_time / 60
+                                
+                                logger.info(
+                                    f"create_table: Batch {batch_num} completed in {batch_duration:.1f}s - "
+                                    f"deleted {deleted:,} records (total: {total_deleted:,}/{record_count:,} = {progress_pct:.1f}%) - "
+                                    f"est. {est_remaining_min:.1f} min remaining"
+                                )
+                            else:
+                                logger.info(f"create_table: Batch {batch_num} completed - deleted {deleted:,} records")
+                            
+                            # Check if deletion is complete
+                            if deleted < batch_size:
+                                logger.info(f"create_table: Batch deletion complete - last batch had {deleted:,} records in {total_duration:.1f}s total")
+                                break  # No more records to delete
+                        
+                        # Quick verification using EXISTS instead of COUNT for better performance on large tables
+                        logger.info(f"create_table: Verifying deletion completed successfully...")
+                        verify_query = f"SELECT EXISTS(SELECT 1 FROM {dbtable_name} WHERE dataset = %s LIMIT 1);"
+                        cur.execute(verify_query, (dataset_value,))
+                        result = cur.fetchone()
+                        records_exist = result[0] if result else False
+                        
+                        if not records_exist:
+                            logger.info(f"create_table: ✓ Deletion verified - all {total_deleted:,} records successfully deleted for dataset '{dataset_value}' in {total_duration:.1f}s")
+                        else:
+                            # If records still exist, do a COUNT to see how many
+                            cur.execute(count_query, (dataset_value,))
+                            result = cur.fetchone()
+                            remaining_count = result[0] if result else 0
+                            logger.warning(f"create_table: ⚠ Verification failed - {remaining_count:,} records still remain for dataset '{dataset_value}' (deleted {total_deleted:,})")
+                            
+                            # Try one more batch deletion for remaining records
+                            logger.info(f"create_table: Attempting to delete remaining {remaining_count:,} records...")
+                            delete_query = f"DELETE FROM {dbtable_name} WHERE dataset = %s;"
+                            cur.execute(delete_query, (dataset_value,))
+                            final_deleted = cur.rowcount
+                            conn.commit()
+                            logger.info(f"create_table: Final cleanup deleted {final_deleted:,} remaining records")
+                            
+                    else:
+                        # Small dataset - delete all at once
+                        logger.info(f"create_table: Deleting {record_count} records from {dbtable_name} where dataset = {dataset_value}")
+                        delete_query = f"DELETE FROM {dbtable_name} WHERE dataset = %s;"
+                        
+                        # Execute DELETE and wait for completion
+                        cur.execute(delete_query, (dataset_value,))
+                        deleted_count = cur.rowcount
+                        
+                        # Commit and wait for commit to complete
+                        conn.commit()
+                        logger.info(f"create_table: DELETE operation completed - {deleted_count} rows affected")
+                        
+                        # Verify deletion completed successfully
+                        logger.info(f"create_table: Verifying deletion completed successfully...")
+                        cur.execute(count_query, (dataset_value,))
+                        result = cur.fetchone()
+                        remaining_count = result[0] if result else 0
+                        
+                        if remaining_count == 0:
+                            logger.info(f"create_table: ✓ Deletion verified - all {deleted_count} records successfully deleted for dataset '{dataset_value}'")
+                        else:
+                            logger.error(f"create_table: ✗ Deletion verification failed - {remaining_count} records still exist after DELETE (expected 0)")
+                            raise DatabaseError(f"DELETE operation failed to remove all records for dataset '{dataset_value}' - {remaining_count} records remaining")
+                else:
+                    logger.info(f"create_table: No existing records to delete for dataset '{dataset_value}'")
 
             return  # Success, exit function
             
@@ -167,13 +322,22 @@ def create_table(conn_params, dataset_value, max_retries=5):
                 # Exponential backoff: 5s, 10s, 20s, 40s, 60s (capped at 60s)
                 retry_delay = min(5 * (2 ** attempt), 60)
                 logger.error(f"create_table: Network/Interface error (attempt {attempt + 1}/{max_retries}): {e}")
-                if "can't create a connection" in error_str or "timeout" in error_str:
-                    logger.error("create_table: This appears to be a network connectivity issue.")
+                
+                # Check for specific error types
+                if "network error" in error_str or "timeout" in error_str:
+                    logger.error("create_table: Network or timeout error detected")
+                    logger.error("create_table: This is likely due to:")
+                    logger.error("create_table: 1. DELETE operation timing out on large dataset")
+                    logger.error("create_table: 2. Aurora instance busy or at capacity")
+                    logger.error("create_table: 3. Network connectivity issues")
+                    logger.error("create_table: 4. Database locks from concurrent operations")
+                elif "can't create a connection" in error_str:
+                    logger.error("create_table: Connection establishment failed")
                     logger.error("create_table: Possible causes:")
                     logger.error("create_table: 1. EMR Serverless not configured in correct VPC")
                     logger.error("create_table: 2. Security group rules blocking connection")
                     logger.error("create_table: 3. RDS database not accessible from EMR subnet")
-                    logger.error("create_table: 4. Aurora instance may be busy or at capacity")
+                
                 logger.info(f"create_table: Retrying in {retry_delay} seconds with exponential backoff...")
                 time.sleep(retry_delay)
             else:
@@ -181,8 +345,20 @@ def create_table(conn_params, dataset_value, max_retries=5):
                 raise
                 
         except DatabaseError as e:
-            logger.error(f"create_table: Database error: {e}")
-            raise  # Don't retry database errors
+            error_str = str(e).lower()
+            # Check if it's a retryable database error (timeout, deadlock, etc.)
+            is_retryable = any(keyword in error_str for keyword in [
+                'timeout', 'deadlock', 'lock', 'busy', 'could not serialize'
+            ])
+            
+            if is_retryable and attempt < max_retries - 1:
+                retry_delay = min(5 * (2 ** attempt), 60)
+                logger.error(f"create_table: Retryable database error (attempt {attempt + 1}/{max_retries}): {e}")
+                logger.info(f"create_table: Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                logger.error(f"create_table: Non-retryable database error: {e}")
+                raise  # Don't retry non-retryable database errors
             
         except Exception as e:
             if attempt < max_retries - 1:
