@@ -299,14 +299,11 @@ def commit_staging_to_production(conn_params, staging_table_name, dataset_value,
             logger.info(f"commit_staging_to_production: Inserting data from staging to entity table")
             start_insert = time.time()
             
-            # Get column names for INSERT
-            columns = list(pyspark_entity_columns.keys())
-            columns_str = ", ".join(columns)
-            
+            # Use SELECT * since both tables have identical schema
+            # This avoids column qualification issues with temp tables
             insert_query = f"""
-                INSERT INTO {dbtable_name} ({columns_str})
-                SELECT {columns_str}
-                FROM {staging_table_name};
+                INSERT INTO {dbtable_name}
+                SELECT * FROM {staging_table_name};
             """
             
             cur.execute(insert_query)
