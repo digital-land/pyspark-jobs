@@ -310,22 +310,24 @@ def commit_staging_to_production(conn_params, staging_table_name, dataset_value,
             logger.info(f"commit_staging_to_production: Inserting data from staging to entity table")
             start_insert = time.time()
             
-            # Build column list with explicit casts for JSONB columns
+            # Build column list with explicit casts for JSONB columns and table qualification
             # PySpark writes JSONB as TEXT, so we need to cast during insert
+            # We also need to qualify columns with alias since 'entity' is both table and column name
             select_columns = []
             for col_name, col_type in pyspark_entity_columns.items():
                 if 'JSONB' in col_type.upper():
-                    # Cast TEXT to JSONB for json columns
-                    select_columns.append(f"{col_name}::jsonb")
+                    # Cast TEXT to JSONB for json columns, with table qualification
+                    select_columns.append(f"s.{col_name}::jsonb")
                 else:
-                    select_columns.append(col_name)
+                    # Qualify column with table alias
+                    select_columns.append(f"s.{col_name}")
             
             select_str = ", ".join(select_columns)
             
             insert_query = f"""
                 INSERT INTO {dbtable_name}
                 SELECT {select_str}
-                FROM {staging_table_name};
+                FROM {staging_table_name} AS s;
             """
             
             cur.execute(insert_query)
