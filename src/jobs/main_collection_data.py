@@ -6,9 +6,12 @@ import json
 import sys
 import argparse
 from jobs.transform_collection_data import (transform_data_fact, transform_data_fact_res,
-                                       transform_data_issue, transform_data_entity) 
-from jobs.dbaccess.postgres_connectivity import create_table,write_to_postgres, get_aws_secret
+                                      transform_data_issue, transform_data_entity) 
+from jobs.dbaccess.postgres_connectivity import (create_table, write_to_postgres, get_aws_secret,
+                                                  create_and_prepare_staging_table, commit_staging_to_production,
+                                                  ENTITY_TABLE_NAME)
 from jobs.utils.s3_utils import cleanup_dataset_data
+from jobs.csv_s3_writer import write_dataframe_to_csv_s3, import_csv_to_aurora, cleanup_temp_csv_files
 #import sqlite3
 from datetime import datetime
 from dataclasses import fields
@@ -25,12 +28,13 @@ from jobs.utils.logger_config import setup_logging, get_logger, log_execution_ti
 
 # -------------------- Logging Setup --------------------
 # Setup logging for EMR Serverless (console output goes to CloudWatch automatically)
-setup_logging(
-    log_level=os.getenv("LOG_LEVEL", "INFO"),
-    # Note: In EMR Serverless, console logs are automatically captured by CloudWatch
-    # File logging is optional for local debugging
-    log_file=os.getenv("LOG_FILE") if os.getenv("LOG_FILE") else None,
-    environment=os.getenv("ENVIRONMENT", "production")
+def initialize_logging(args):
+    setup_logging(
+        log_level=os.getenv("LOG_LEVEL", "INFO"),
+        # Note: In EMR Serverless, console logs are automatically captured by CloudWatch
+        # File logging is optional for local debugging
+        log_file=os.getenv("LOG_FILE") if os.getenv("LOG_FILE") else None,
+        environment=os.getenv("ENVIRONMENT", args.load_type)
 )
 
 logger = get_logger(__name__)
@@ -50,13 +54,13 @@ def create_spark_session(app_name="EMR Transform Job"):
         # Configure PostgreSQL JDBC driver for EMR Serverless 7.9.0
         # The driver JAR should be available via --jars parameter in EMR configuration
         # Optimized configurations for EMR 7.9.0 (Spark 3.5.x, Java 17)
-        spark_session = SparkSession.builder \
-            .appName(app_name) \
-            .config("spark.sql.adaptive.enabled", "true") \
-            .config("spark.sql.adaptive.coalescePartitions.enabled", "true") \
-            .config("spark.sql.adaptive.skewJoin.enabled", "true") \
-            .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") \
-            .getOrCreate()
+        spark_session = (SparkSession.builder
+            .appName(app_name)
+            .config("spark.sql.adaptive.enabled", "true")
+            .config("spark.sql.adaptive.coalescePartitions.enabled", "true")
+            .config("spark.sql.adaptive.skewJoin.enabled", "true")
+            .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+            .getOrCreate())
         
         # Set Spark logging level to reduce verbosity
         #set_spark_log_level("WARN")
@@ -95,7 +99,7 @@ def load_metadata(uri: str) -> dict:
             # Handle local file path or file within .whl package
             try:
                 # Try to load using pkgutil if running from .whl
-                package_name = __package__  # will be 'jobs'
+                package_name = __package__ or 'jobs'  # will be 'jobs'
                 logger.info(f"Attempting to load from package using pkgutil with package_name: {package_name} and uri: {uri}")
                 data = pkgutil.get_data(package_name, uri)
                 if data:
@@ -150,6 +154,7 @@ def transform_data(df, schema_name, data_set,spark):
         logger.info(f"transform_data: Transforming data with schema with json data: {json_data}")
 
         # Extract the list of fields
+        fields = []
         if (schema_name == 'fact' or schema_name == 'fact_res' or schema_name == 'entity'):
             fields = json_data.get("schema_fact_res_fact_entity", [])
             logger.info(f"transform_data: Fields to select from json data {fields} for {schema_name}")
@@ -165,7 +170,7 @@ def transform_data(df, schema_name, data_set,spark):
         logger.info(f"transform_data: DataFrame columns after renaming hyphens: {df.columns}")
         df.printSchema()
         logger.info(f"transform_data: DataFrame schema after renaming hyphens")
-        df.show()
+        df.show(5)
 
         # Get actual DataFrame columns
         df_columns = df.columns
@@ -205,7 +210,10 @@ def write_to_s3(df, output_path, dataset_name, table_name):
         
         # Check and clean up existing data for this dataset before writing
         cleanup_summary = cleanup_dataset_data(output_path, dataset_name)
-        logger.debug(f"write_to_s3: S3 cleanup summary: {cleanup_summary}")
+        logger.info(f"write_to_s3: Cleaned up {cleanup_summary['objects_deleted']} objects for dataset '{dataset_name}'")
+        if cleanup_summary['errors']:
+            logger.warning(f"write_to_s3: Cleanup had {len(cleanup_summary['errors'])} errors: {cleanup_summary['errors']}")
+        logger.debug(f"write_to_s3: Full cleanup summary: {cleanup_summary}")
         
         # Add dataset as partition column
         df = df.withColumn("dataset", lit(dataset_name))
@@ -235,10 +243,11 @@ def write_to_s3(df, output_path, dataset_name, table_name):
             df_entity = df
 
         # Write to S3 with multilevel partitioning
+        # Use "append" mode since we already cleaned up the specific dataset partition
         df.coalesce(optimal_partitions) \
           .write \
           .partitionBy("dataset", "year", "month", "day") \
-          .mode("overwrite") \
+          .mode("append") \
           .option("maxRecordsPerFile", 1000000) \
           .option("compression", "snappy") \
           .parquet(output_path)
@@ -256,8 +265,10 @@ def generate_sqlite(df):
     # Write to SQLite using JDBC
     try:
         # Output SQLite DB to Desktop
-        from utils.path_utils import resolve_desktop_path
-        sqlite_path = resolve_desktop_path("../MHCLG/tgt-data/sqlite-output/transport_access_node.db")
+        # Note: This is commented out as it's not used in production
+        # from utils.path_utils import resolve_desktop_path
+        # sqlite_path = resolve_desktop_path("../MHCLG/tgt-data/sqlite-output/transport_access_node.db")
+        sqlite_path = "/tmp/transport_access_node.db"  # Temporary path for development
 
         df.write \
             .format("jdbc") \
@@ -272,38 +283,208 @@ def generate_sqlite(df):
         logger.error(f"Failed to write to SQLite: {e}", exc_info=True)
         raise
 
-# -------------------- Postgres Writer --------------------
+# -------------------- Enhanced Postgres Writer with CSV S3 Import --------------------
 @log_execution_time
-def write_dataframe_to_postgres(df, table_name, data_set):
+def write_dataframe_to_postgres(df, table_name, data_set, env, use_jdbc=False):
+    """
+    Write DataFrame to PostgreSQL using either Aurora S3 import or JDBC.
+    
+    Args:
+        df: PySpark DataFrame to write
+        table_name: Target table name
+        data_set: Dataset name
+        env: Environment name 
+        use_jdbc: If True, use JDBC method; if False, use Aurora S3 import (default)
+    """
     try:
-        logger.info("Write_PG: Writing to Postgres")
-        # Write to Postgres for Entity table using optimized method
-        if (table_name == 'entity'):
-            from jobs.dbaccess.postgres_connectivity import get_performance_recommendations
-            
-            # Get performance recommendations based on dataset size
+        method = "JDBC" if use_jdbc else "Aurora S3 Import"
+        logger.info(f"Write_PG: Writing to Postgres using {method} for table: {table_name}")
+        
+        # Only process entity table for now (can be extended to other tables)
+        if table_name == 'entity':
             row_count = df.count()
-            recommendations = get_performance_recommendations(row_count)
-            logger.info(f"Write_PG: Performance recommendations for {row_count} rows: {recommendations}")
+            logger.info(f"Write_PG: Processing {row_count} rows for {table_name} table")
             
-            # Write to PostgreSQL using optimized JDBC writer with recommendations
-            write_to_postgres(
-                df, 
-                data_set,
-                get_aws_secret(),
-                method=recommendations["method"],
-                batch_size=recommendations["batch_size"],
-                num_partitions=recommendations["num_partitions"]
-            )
-            logger.info(f"Write_PG: Writing to Postgres for {table_name} table completed using {recommendations['method']} method")
+            if use_jdbc:
+                # Use traditional JDBC method
+                logger.info("Write_PG: Using JDBC import method")
+                _write_dataframe_to_postgres_jdbc(df, table_name, data_set)
+            else:
+                # Use Aurora S3 import method
+                logger.info("Write_PG: Using Aurora S3 import method")
+                
+                # Determine S3 CSV output path (under the same parquet path)
+                csv_output_path = f"s3://{env}-pyspark-assemble-parquet/csv-temp/"
+                logger.info(f"Write_PG: CSV output path: {csv_output_path}")
+                
+                csv_path = None
+                try:
+                    # Step 1: Write DataFrame to temporary CSV in S3
+                    csv_path = write_dataframe_to_csv_s3(
+                        df, 
+                        csv_output_path, 
+                        table_name, 
+                        data_set,
+                        cleanup_existing=True
+                    )
+                    logger.info(f"Write_PG: Successfully wrote temporary CSV to S3: {csv_path}")
+                    
+                    # Step 2: Import CSV from S3 to Aurora (this includes automatic cleanup)
+                    # Use actual database table name (ENTITY_TABLE_NAME) instead of logical name
+                    import_result = import_csv_to_aurora(
+                        csv_path,
+                        ENTITY_TABLE_NAME,  # Use actual DB table name (configured in postgres_connectivity.py)
+                        data_set,
+                        use_s3_import=True,
+                        truncate_table=True  # Clean existing data for this dataset
+                    )
+                    
+                    if import_result["import_successful"]:
+                        logger.info(f"Write_PG: Aurora S3 import completed successfully")
+                        logger.info(f"Write_PG: Method used: {import_result['import_method_used']}")
+                        logger.info(f"Write_PG: Rows imported: {import_result['rows_imported']}")
+                        logger.info(f"Write_PG: Duration: {import_result['import_duration']:.2f} seconds")
+                        logger.info("Write_PG: Temporary CSV files have been cleaned up")
+                        
+                        if import_result.get("warnings"):
+                            logger.warning(f"Write_PG: Import warnings: {import_result['warnings']}")
+                    else:
+                        logger.error(f"Write_PG: Aurora S3 import failed: {import_result['errors']}")
+                        logger.info("Write_PG: Falling back to JDBC method")
+                        # CSV cleanup happens in import_csv_to_aurora function
+                        _write_dataframe_to_postgres_jdbc(df, table_name, data_set)
+                        
+                except Exception as e:
+                    logger.error(f"Write_PG: Aurora S3 import failed: {e}")
+                    logger.info("Write_PG: Falling back to JDBC method")
+                    
+                    # Clean up temporary CSV files if they were created but import failed
+                    if csv_path:
+                        logger.info("Write_PG: Cleaning up temporary CSV files after S3 import failure")
+                        cleanup_temp_csv_files(csv_path)
+                    
+                    _write_dataframe_to_postgres_jdbc(df, table_name, data_set)
+                        
+        else:
+            # For non-entity tables, use traditional JDBC method
+            logger.info(f"Write_PG: Using JDBC method for non-entity table: {table_name}")
+            _write_dataframe_to_postgres_jdbc(df, table_name, data_set)
              
     except Exception as e:
         logger.error(f"Write_PG: Failed to write to Postgres: {e}", exc_info=True)
         raise
 
+
+def _write_dataframe_to_postgres_jdbc(df, table_name, data_set, use_staging=True):
+    """
+    JDBC writer with optional staging table support.
+    
+    This method can write directly to the entity table or use a staging table
+    to minimize lock contention on the production entity table.
+    
+    Args:
+        df: PySpark DataFrame to write
+        table_name: Logical table identifier (e.g., 'entity', 'fact')
+        data_set: Dataset name
+        use_staging: If True, uses staging table pattern (recommended for high-load scenarios)
+    """
+    from jobs.dbaccess.postgres_connectivity import get_performance_recommendations
+    
+    # Get performance recommendations based on dataset size
+    row_count = df.count()
+    recommendations = get_performance_recommendations(row_count)
+    logger.info(f"_write_dataframe_to_postgres_jdbc: Performance recommendations for {row_count} rows: {recommendations}")
+    
+    conn_params = get_aws_secret()
+    
+    # Use staging pattern for entity table (logical name comparison is correct here)
+    if use_staging and table_name == 'entity':
+        logger.info("_write_dataframe_to_postgres_jdbc: Using STAGING TABLE pattern for entity table")
+        logger.info("_write_dataframe_to_postgres_jdbc: This minimizes lock contention on production table")
+        
+        try:
+            # Step 1: Create staging table
+            logger.info("_write_dataframe_to_postgres_jdbc: Step 1/3 - Creating staging table")
+            staging_table_name = create_and_prepare_staging_table(
+                conn_params=conn_params,
+                dataset_value=data_set
+            )
+            logger.info(f"_write_dataframe_to_postgres_jdbc: Created staging table: {staging_table_name}")
+            
+            # Step 2: Write data to staging table
+            logger.info(f"_write_dataframe_to_postgres_jdbc: Step 2/3 - Writing {row_count:,} rows to staging table")
+            write_to_postgres(
+                df, 
+                data_set,
+                conn_params,
+                method=recommendations["method"],
+                batch_size=recommendations["batch_size"],
+                num_partitions=recommendations["num_partitions"],
+                target_table=staging_table_name  # Write to staging table
+            )
+            logger.info(f"_write_dataframe_to_postgres_jdbc: Successfully wrote data to staging table '{staging_table_name}'")
+            
+            # Step 3: Atomically commit staging data to production entity table
+            logger.info("_write_dataframe_to_postgres_jdbc: Step 3/3 - Committing staging data to production entity table")
+            commit_result = commit_staging_to_production(
+                conn_params=conn_params,
+                staging_table_name=staging_table_name,
+                dataset_value=data_set
+            )
+            
+            if commit_result["success"]:
+                logger.info(
+                    f"_write_dataframe_to_postgres_jdbc: ✓ STAGING COMMIT SUCCESSFUL - "
+                    f"Deleted {commit_result['rows_deleted']:,} old rows, "
+                    f"Inserted {commit_result['rows_inserted']:,} new rows in {commit_result['total_duration']:.2f}s"
+                )
+                logger.info(
+                    f"_write_dataframe_to_postgres_jdbc: Lock time on entity table: "
+                    f"~{commit_result['total_duration']:.2f}s (vs. several minutes with direct write)"
+                )
+            else:
+                logger.error(f"_write_dataframe_to_postgres_jdbc: Staging commit failed: {commit_result.get('error')}")
+                raise Exception(f"Staging commit failed: {commit_result.get('error')}")
+            
+        except Exception as e:
+            logger.error(f"_write_dataframe_to_postgres_jdbc: Staging table approach failed: {e}")
+            logger.info("_write_dataframe_to_postgres_jdbc: Falling back to direct write to entity table")
+            
+            # Fallback to direct write
+            write_to_postgres(
+                df, 
+                data_set,
+                conn_params,
+                method=recommendations["method"],
+                batch_size=recommendations["batch_size"],
+                num_partitions=recommendations["num_partitions"]
+            )
+    else:
+        # Direct write to production table (original behavior)
+        logger.info(f"_write_dataframe_to_postgres_jdbc: Using DIRECT WRITE to {table_name} table")
+        write_to_postgres(
+            df, 
+            data_set,
+            conn_params,
+            method=recommendations["method"],
+            batch_size=recommendations["batch_size"],
+            num_partitions=recommendations["num_partitions"]
+        )
+    
+    logger.info(f"_write_dataframe_to_postgres_jdbc: JDBC writing completed using {recommendations['method']} method")
+
 # -------------------- Main --------------------
 @log_execution_time
 def main(args):
+    logger.info(f"Main: Initialize logging and invoking initialize_logging method")
+
+    initialize_logging(args)  # Initialize logging with args
+
+    # Determine import method from command line argument
+    use_jdbc = hasattr(args, 'use_jdbc') and args.use_jdbc
+    import_method = "JDBC" if use_jdbc else "Aurora S3 Import"
+    logger.info(f"Main: Using import method: {import_method}")
+
     logger.info(f"Main: Starting ETL process for Collection Data {args.load_type} and dataset {args.data_set}")
     try: 
         logger.info("Main: Starting main ETL process for collection Data")          
@@ -321,6 +502,8 @@ def main(args):
         table_names=["fact","fact_res","entity","issue"]
         
         spark = create_spark_session()
+        if spark is None:
+            raise Exception("Failed to create Spark session")
         logger.info(f"Main: Spark session created successfully for dataset: {data_set}")
 
         if(load_type == 'full'):
@@ -337,7 +520,7 @@ def main(args):
                     full_path = f"{s3_uri}"+"/transformed/"+data_set+"/*.csv"
                     logger.info(f"Main: Dataset input path including csv file path: {full_path}")
                 
-                    if df is None or df.rdd.isEmpty():
+                    if df is None:
                         # Read CSV using the dynamic schema
                         logger.info("Main: dataframe is empty")
                         df = spark.read.option("header", "true").csv(full_path)
@@ -346,7 +529,7 @@ def main(args):
                     # Show schema and sample data 
                     df.printSchema() 
                     logger.info(f"Main: Schema information for the loaded dataframe")
-                    df.show()
+                    df.show(5)
 
                     #revise this code and for converting spark session as singleton in future
                     processed_df = transform_data(df,table_name,data_set,spark)
@@ -367,7 +550,7 @@ def main(args):
                     # Show schema and sample data 
                     df.printSchema() 
                     logger.info(f"Main: Schema information for the loaded dataframe")
-                    df.show()
+                    df.show(5)
                     processed_df = transform_data(df,table_name,data_set,spark)                                      
 
                     logger.info(f"Main: Transforming data for {table_name} table completed")
@@ -380,12 +563,15 @@ def main(args):
 
             # Write dataframe to Postgres for Entity table
             global df_entity 
-            df_entity.show(5) if df_entity else logger.info("Main: df_entity is None")
-            df_entity = df_entity.drop("processed_timestamp","year","month", "day")    
-            table_name = 'entity'
-            logger.info(f"Main: before writing to postgres, df_entity dataframe is below")
-            df_entity.show(5)
-            write_dataframe_to_postgres(df_entity, table_name, data_set)
+            if df_entity is not None:
+                df_entity.show(5)
+                df_entity = df_entity.drop("processed_timestamp","year","month", "day")    
+                table_name = 'entity'
+                logger.info(f"Main: before writing to postgres, df_entity dataframe is below")
+                df_entity.show(5)
+                write_dataframe_to_postgres(df_entity, table_name, data_set, env, use_jdbc)
+            else:
+                logger.info("Main: df_entity is None, skipping Postgres write")
 
         elif(load_type == 'delta'):
             #invoke delta load logic
@@ -409,7 +595,7 @@ def main(args):
                     logger.info(f"Main: Dataset input path including csv file path: {full_path}")
                     
                     
-                    if df is None or df.rdd.isEmpty():
+                    if df is None:
                         # Read CSV using the dynamic schema
                         logger.info("Main: dataframe is empty")
                         df = spark.read.option("header", "true").csv(full_path)
@@ -418,19 +604,19 @@ def main(args):
                     # Show schema and sample data 
                     df.printSchema() 
                     logger.info(f"Main: Schema information for the loaded dataframe")
-                    df.show()
+                    df.show(5)
                     #revise this code and for converting spark session as singleton in future
                     processed_df = transform_data(df,table_name,data_set,spark)
                     logger.info(f"Main: Transforming data for {table_name} table completed")
 
                     # Write to S3 for Fact Resource table  
                     sample_dataset_name = f"sample-{data_set}"
-                    write_to_s3(processed_df, f"{output_path}{table_name}", sample_dataset_name)
+                    write_to_s3(processed_df, f"{output_path}{table_name}", sample_dataset_name, table_name)
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")
 
                     # Write to Postgres for Entity table
                     if (table_name == 'entity'):
-                        write_to_postgres(processed_df, data_set,get_aws_secret())
+                        write_dataframe_to_postgres(processed_df, table_name, data_set, env, use_jdbc)
                         logger.info(f"Main: Writing to Postgres for {table_name} table completed")  
 
 
@@ -445,14 +631,14 @@ def main(args):
                     # Show schema and sample data 
                     df.printSchema() 
                     logger.info(f"Main: Schema information for the loaded dataframe")
-                    df.show()
+                    df.show(5)
                     processed_df = transform_data(df,table_name,data_set,spark)                                      
 
                     logger.info(f"Main: Transforming data for {table_name} table completed")
 
                     # Write to S3 for Fact table
                     sample_dataset_name = f"sample-{data_set}"
-                    write_to_s3(processed_df, f"{output_path}{table_name}", sample_dataset_name)
+                    write_to_s3(processed_df, f"{output_path}{table_name}", sample_dataset_name, table_name)
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")                                     
         else:
             logger.error(f"Main: Invalid load type specified: {load_type}")
@@ -461,11 +647,21 @@ def main(args):
     except Exception as e:
         logger.exception("Main: An error occurred during the ETL process: %s", str(e))
     finally:
-        spark.stop()
-        logger.info(f"Main: Spark session stopped")
+        if 'spark' in locals():
+            try:
+                spark.stop()
+                logger.info(f"Main: Spark session stopped")
+            except:
+                logger.warning("Main: Error stopping Spark session")
             
-        end_time = datetime.now()
-        logger.info(f"Spark session ended at: {end_time}")
-        # Duration
-        duration = end_time - start_time
-        logger.info(f"Total duration: {duration}")
+        if 'start_time' in locals():
+            try:
+                end_time = datetime.now()
+                logger.info(f"Spark session ended at: {end_time}")
+                # Duration
+                duration = end_time - start_time
+                logger.info(f"Total duration: {duration}")
+            except:
+                logger.warning("Main: Error calculating duration")
+        else:
+            logger.info("Main: ETL process completed (no timing information available)")

@@ -5,6 +5,17 @@ This directory contains all documentation related to database connectivity, conf
 ## 📚 Available Guides
 
 ### 🚀 **Performance & Optimization**
+- **[Staging Table Pattern](./STAGING_TABLE_PATTERN.md)** ⭐ **NEW**
+  - Reduce lock contention by 96% for high-load tables
+  - Write to temp table first, then atomic commit
+  - Perfect for entity table under constant query load
+  - **[Quick Reference](./STAGING_TABLE_QUICK_REFERENCE.md)** - TL;DR version
+
+- **[CSV S3 Import Guide](./CSV_S3_IMPORT_GUIDE.md)**
+  - Aurora S3 import with automatic CSV staging and cleanup
+  - Up to 80% faster than JDBC for large datasets
+  - Simple one-flag control with automatic fallback
+  
 - **[PostgreSQL Performance Optimization](./POSTGRESQL_PERFORMANCE_OPTIMIZATION.md)** 
   - Complete guide with 3-10x speedup techniques
   - Optimized JDBC, COPY protocol, async batching
@@ -16,6 +27,11 @@ This directory contains all documentation related to database connectivity, conf
   - S3 import capabilities and setup
 
 ### 🔧 **Connectivity & Configuration**
+- **[Table Name Configuration](./TABLE_NAME_CONFIG.md)** ⚠️ **TEMPORARY CONFIG**
+  - Single-line change to switch between `pyspark_entity` and `entity` tables
+  - Easy revert when infra issue resolved
+  - Centralized configuration for all database operations
+
 - **[Database Connectivity](./DATABASE_CONNECTIVITY.md)**
   - Why we use pg8000 instead of psycopg2-binary
   - EMR Serverless compatibility requirements
@@ -36,6 +52,9 @@ This directory contains all documentation related to database connectivity, conf
 
 | Need | Start Here |
 |------|------------|
+| **⚠️ Change Table Name** | [Table Name Configuration](./TABLE_NAME_CONFIG.md) |
+| **🔥 Reduce Lock Contention** | [Staging Table Quick Reference](./STAGING_TABLE_QUICK_REFERENCE.md) |
+| **⚡ Faster Aurora Imports** | [CSV S3 Import Guide](./CSV_S3_IMPORT_GUIDE.md) |
 | **Performance Issues** | [PostgreSQL Performance Optimization](./POSTGRESQL_PERFORMANCE_OPTIMIZATION.md) |
 | **Aurora Setup** | [Aurora PostgreSQL Optimization](./AURORA_POSTGRESQL_OPTIMIZATION.md) |
 | **Connection Problems** | [Database Connectivity](./DATABASE_CONNECTIVITY.md) |
@@ -57,6 +76,8 @@ PySpark Application
 
 | Method | Use Case | Performance Gain | Setup Required |
 |--------|----------|------------------|----------------|
+| **🔥 Staging Table** | High-load tables | 96% less blocking | None (auto-enabled) |
+| **🆕 CSV S3 Import** | Aurora + any dataset | 50-80% faster | Aurora IAM role |
 | **Optimized JDBC** | Most datasets | 3-5x faster | None |
 | **Aurora S3 Import** | Aurora + large datasets | 5-8x faster | IAM role setup |
 | **Async Batches** | Memory-fit datasets | 4-8x faster | None |

@@ -1,3 +1,22 @@
+# ================================================================================
+# DATABASE TABLE CONFIGURATION
+# ================================================================================
+# 
+# ⚠️  TEMPORARY CONFIGURATION - EASY TO REVERT ⚠️
+# 
+# To switch back to production 'entity' table, change line below:
+#   ENTITY_TABLE_NAME = "pyspark_entity"  (current - temporary)
+#   ENTITY_TABLE_NAME = "entity"          (production - to revert to)
+# 
+# This single change will update:
+#   - All JDBC writes
+#   - All Aurora S3 imports  
+#   - Staging table naming
+#   - Table creation logic
+# ================================================================================
+
+ENTITY_TABLE_NAME = "pyspark_entity"  # TODO: TEMPORARY - change to "entity" when ready
+
 # -------------------- Postgres table creation --------------------
 
 ##writing to postgres db
@@ -16,11 +35,12 @@ except ImportError:
 from jobs.utils.aws_secrets_manager import get_secret_emr_compatible
 import os
 import time
+from datetime import datetime
 from pathlib import Path
 
 # Define your table schema
 # https://github.com/digital-land/digital-land.info/blob/main/application/db/models.py - refered from here
-dbtable_name = "entity"
+dbtable_name = ENTITY_TABLE_NAME  # Use centralized config above
 pyspark_entity_columns = {   
     "dataset": "TEXT",
     "end_date": "DATE",
@@ -82,13 +102,20 @@ def get_aws_secret():
         
         logger.info(f"get_aws_secret: Retrieved secrets for {dbName} at {host}:{port} with user {username}")
         
+        # Create proper SSL context for Aurora PostgreSQL
+        import ssl
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        
         conn_params = {
             "database": dbName,  # pg8000 uses 'database' not 'dbname'
             "host": host,
             "port": int(port),  # Ensure port is integer
             "user": username,
             "password": password,
-            "timeout": 30  # Connection timeout in seconds
+            "timeout": 300,  # 5 minute timeout for long-running operations (DELETE on large datasets)
+            "ssl_context": ssl_context  # Proper SSL context for Aurora
         }
         
         # Don't log the actual connection params as they contain sensitive information
@@ -105,15 +132,339 @@ def get_aws_secret():
         raise
 
 
-# Create table if not exists
-def create_table(conn_params, dataset_value,max_retries=3, retry_delay=5):
+# -------------------- Staging Table Pattern --------------------
+
+def create_and_prepare_staging_table(conn_params, dataset_value, max_retries=3):
     """
-    Create table with retry logic and better error handling.
+    Create a temporary staging table for data loading.
+    
+    This approach minimizes lock contention on the main entity table by:
+    1. Writing all data to a staging table first
+    2. Performing validation on staging table
+    3. Atomically swapping data from staging to production table
     
     Args:
         conn_params (dict): Database connection parameters
+        dataset_value (str): Dataset value for the staging table
         max_retries (int): Maximum number of connection attempts
-        retry_delay (int): Delay between retries in seconds
+        
+    Returns:
+        str: Name of the staging table created
+    """
+    import time
+    if pg8000:
+        from pg8000.exceptions import InterfaceError, DatabaseError
+    else:
+        logger.warning("create_and_prepare_staging_table: pg8000 not available")
+        InterfaceError = DatabaseError = Exception
+    
+    # Generate unique staging table name based on actual target table
+    import hashlib
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dataset_hash = hashlib.md5(dataset_value.encode()).hexdigest()[:8]
+    staging_table_name = f"{dbtable_name}_staging_{dataset_hash}_{timestamp}"
+    
+    conn = None
+    cur = None
+    
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"create_and_prepare_staging_table: Creating staging table (attempt {attempt + 1}/{max_retries})")
+            
+            if not pg8000:
+                raise ImportError("pg8000 required for direct database connections")
+            
+            conn = pg8000.connect(**conn_params)
+            cur = conn.cursor()
+            
+            # Set shorter timeout for staging table operations (no large deletes)
+            cur.execute("SET statement_timeout = '60000';")  # 1 minute
+            
+            # Create staging table with TEXT columns for JSONB (since PySpark writes as TEXT)
+            # We'll cast to JSONB during the final INSERT to entity table
+            # NOTE: We use a regular table (not TEMP) because PySpark's JDBC connection
+            # is in a different session and can't see TEMP tables from this pg8000 session
+            staging_columns = []
+            for col, dtype in pyspark_entity_columns.items():
+                if 'JSONB' in dtype.upper():
+                    # Use TEXT for JSONB columns since PySpark writes them as TEXT
+                    staging_columns.append(f"{col} TEXT")
+                else:
+                    staging_columns.append(f"{col} {dtype}")
+            
+            column_defs = ", ".join(staging_columns)
+            create_staging_query = f"""
+                CREATE TABLE {staging_table_name} (
+                    {column_defs}
+                );
+            """
+            
+            logger.debug(f"create_and_prepare_staging_table: Creating staging with schema: {column_defs[:200]}...")
+            cur.execute(create_staging_query)
+            conn.commit()
+            logger.info(f"create_and_prepare_staging_table: Created regular table (not TEMP) for cross-session JDBC compatibility")
+            
+            logger.info(f"create_and_prepare_staging_table: Successfully created staging table '{staging_table_name}'")
+            
+            # Ensure main entity table exists (with original JSONB columns)
+            entity_column_defs = ", ".join([f"{col} {dtype}" for col, dtype in pyspark_entity_columns.items()])
+            create_entity_query = f"CREATE TABLE IF NOT EXISTS {dbtable_name} ({entity_column_defs});"
+            cur.execute(create_entity_query)
+            conn.commit()
+            
+            # Create index on dataset column if it doesn't exist (critical for fast DELETE)
+            logger.info(f"create_and_prepare_staging_table: Ensuring index on dataset column for fast deletion")
+            create_index_query = f"CREATE INDEX IF NOT EXISTS idx_{dbtable_name}_dataset ON {dbtable_name}(dataset);"
+            cur.execute(create_index_query)
+            conn.commit()
+            logger.info(f"create_and_prepare_staging_table: Index on dataset column ensured")
+            
+            logger.info(f"create_and_prepare_staging_table: Verified main table '{dbtable_name}' exists")
+            
+            cur.close()
+            conn.close()
+            
+            return staging_table_name
+            
+        except InterfaceError as e:
+            error_str = str(e).lower()
+            if attempt < max_retries - 1:
+                retry_delay = min(5 * (2 ** attempt), 30)
+                logger.error(f"create_and_prepare_staging_table: Network error (attempt {attempt + 1}/{max_retries}): {e}")
+                logger.info(f"create_and_prepare_staging_table: Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                raise
+                
+        except Exception as e:
+            if attempt < max_retries - 1:
+                retry_delay = min(5 * (2 ** attempt), 30)
+                logger.error(f"create_and_prepare_staging_table: Error (attempt {attempt + 1}/{max_retries}): {e}", exc_info=True)
+                logger.info(f"create_and_prepare_staging_table: Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                logger.error(f"create_and_prepare_staging_table: All {max_retries} attempts failed")
+                raise
+        finally:
+            if cur:
+                try:
+                    cur.close()
+                except Exception as e:
+                    logger.warning(f"create_and_prepare_staging_table: Error closing cursor: {e}")
+            if conn:
+                try:
+                    conn.close()
+                except Exception as e:
+                    logger.warning(f"create_and_prepare_staging_table: Error closing connection: {e}")
+            conn = None
+            cur = None
+
+
+def commit_staging_to_production(conn_params, staging_table_name, dataset_value, max_retries=3):
+    """
+    Atomically move data from staging table to production entity table.
+    
+    This operation:
+    1. Deletes existing data for the dataset from entity table (fast, indexed delete)
+    2. Inserts data from staging table to entity table (bulk insert)
+    3. Drops the staging table
+    
+    The operation is transactional - either all succeeds or all fails.
+    
+    Args:
+        conn_params (dict): Database connection parameters
+        staging_table_name (str): Name of the staging table
+        dataset_value (str): Dataset value to replace in production table
+        max_retries (int): Maximum number of attempts
+        
+    Returns:
+        dict: Statistics about the commit operation
+    """
+    import time
+    if pg8000:
+        from pg8000.exceptions import InterfaceError, DatabaseError
+    else:
+        logger.warning("commit_staging_to_production: pg8000 not available")
+        InterfaceError = DatabaseError = Exception
+    
+    conn = None
+    cur = None
+    
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"commit_staging_to_production: Starting commit operation (attempt {attempt + 1}/{max_retries})")
+            
+            if not pg8000:
+                raise ImportError("pg8000 required for direct database connections")
+            
+            conn = pg8000.connect(**conn_params)
+            cur = conn.cursor()
+            
+            # Set longer timeout for the production table operations
+            cur.execute("SET statement_timeout = '300000';")  # 5 minutes
+            
+            # BEGIN TRANSACTION (implicit with pg8000)
+            logger.info(f"commit_staging_to_production: Starting transaction for dataset '{dataset_value}'")
+            
+            # Step 1: Count rows in staging table
+            cur.execute(f"SELECT COUNT(*) FROM {staging_table_name};")
+            result = cur.fetchone()
+            staging_count = result[0] if result else 0
+            logger.info(f"commit_staging_to_production: Staging table has {staging_count:,} rows")
+            
+            if staging_count == 0:
+                logger.warning(f"commit_staging_to_production: Staging table is empty, aborting commit")
+                conn.rollback()
+                return {
+                    "success": False,
+                    "error": "Staging table is empty",
+                    "rows_deleted": 0,
+                    "rows_inserted": 0
+                }
+            
+            # Step 2: Delete existing data for this dataset from entity table
+            logger.info(f"commit_staging_to_production: Deleting existing data for dataset '{dataset_value}'")
+            start_delete = time.time()
+            
+            # Use indexed delete for better performance
+            delete_query = f"DELETE FROM {dbtable_name} WHERE dataset = %s;"
+            cur.execute(delete_query, (dataset_value,))
+            deleted_count = cur.rowcount
+            
+            delete_duration = time.time() - start_delete
+            logger.info(f"commit_staging_to_production: Deleted {deleted_count:,} existing rows in {delete_duration:.2f}s")
+            
+            # Step 3: Insert data from staging to entity table
+            logger.info(f"commit_staging_to_production: Inserting data from staging to entity table")
+            start_insert = time.time()
+            
+            # Build column list with explicit casts for JSONB columns and table qualification
+            # PySpark writes JSONB as TEXT, so we need to cast during insert
+            # We also need to qualify columns with alias since 'entity' is both table and column name
+            select_columns = []
+            for col_name, col_type in pyspark_entity_columns.items():
+                if 'JSONB' in col_type.upper():
+                    # Cast TEXT to JSONB for json columns, with table qualification
+                    select_columns.append(f"s.{col_name}::jsonb")
+                else:
+                    # Qualify column with table alias
+                    select_columns.append(f"s.{col_name}")
+            
+            select_str = ", ".join(select_columns)
+            
+            insert_query = f"""
+                INSERT INTO {dbtable_name}
+                SELECT {select_str}
+                FROM {staging_table_name} AS s;
+            """
+            
+            cur.execute(insert_query)
+            inserted_count = cur.rowcount
+            
+            insert_duration = time.time() - start_insert
+            logger.info(f"commit_staging_to_production: Inserted {inserted_count:,} rows in {insert_duration:.2f}s")
+            
+            # Step 4: Verify row counts match
+            if inserted_count != staging_count:
+                logger.error(
+                    f"commit_staging_to_production: Row count mismatch! "
+                    f"Staging: {staging_count:,}, Inserted: {inserted_count:,}"
+                )
+                conn.rollback()
+                return {
+                    "success": False,
+                    "error": f"Row count mismatch: {staging_count} vs {inserted_count}",
+                    "rows_deleted": 0,
+                    "rows_inserted": 0
+                }
+            
+            # COMMIT TRANSACTION
+            conn.commit()
+            
+            total_duration = delete_duration + insert_duration
+            logger.info(
+                f"commit_staging_to_production: ✓ Transaction committed successfully - "
+                f"deleted {deleted_count:,}, inserted {inserted_count:,} in {total_duration:.2f}s"
+            )
+            
+            # Step 5: Drop staging table (outside transaction)
+            try:
+                cur.execute(f"DROP TABLE IF EXISTS {staging_table_name};")
+                conn.commit()
+                logger.info(f"commit_staging_to_production: Dropped staging table '{staging_table_name}'")
+            except Exception as e:
+                logger.warning(f"commit_staging_to_production: Failed to drop staging table (non-critical): {e}")
+            
+            cur.close()
+            conn.close()
+            
+            return {
+                "success": True,
+                "rows_deleted": deleted_count,
+                "rows_inserted": inserted_count,
+                "delete_duration": delete_duration,
+                "insert_duration": insert_duration,
+                "total_duration": total_duration
+            }
+            
+        except InterfaceError as e:
+            error_str = str(e).lower()
+            logger.error(f"commit_staging_to_production: Network error (attempt {attempt + 1}/{max_retries}): {e}")
+            
+            if conn:
+                try:
+                    conn.rollback()
+                except:
+                    pass
+            
+            if attempt < max_retries - 1:
+                retry_delay = min(5 * (2 ** attempt), 30)
+                logger.info(f"commit_staging_to_production: Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                raise
+                
+        except Exception as e:
+            logger.error(f"commit_staging_to_production: Error (attempt {attempt + 1}/{max_retries}): {e}", exc_info=True)
+            
+            if conn:
+                try:
+                    conn.rollback()
+                    logger.info("commit_staging_to_production: Transaction rolled back")
+                except:
+                    pass
+            
+            if attempt < max_retries - 1:
+                retry_delay = min(5 * (2 ** attempt), 30)
+                logger.info(f"commit_staging_to_production: Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                raise
+        finally:
+            if cur:
+                try:
+                    cur.close()
+                except Exception as e:
+                    logger.warning(f"commit_staging_to_production: Error closing cursor: {e}")
+            if conn:
+                try:
+                    conn.close()
+                except Exception as e:
+                    logger.warning(f"commit_staging_to_production: Error closing connection: {e}")
+            conn = None
+            cur = None
+
+
+# Create table if not exists
+def create_table(conn_params, dataset_value, max_retries=5):
+    """
+    Create table with retry logic using exponential backoff.
+    
+    Args:
+        conn_params (dict): Database connection parameters
+        dataset_value (str): Dataset value for filtering/deletion
+        max_retries (int): Maximum number of connection attempts (default: 5)
     """
     import time
     if pg8000:
@@ -135,6 +486,39 @@ def create_table(conn_params, dataset_value,max_retries=3, retry_delay=5):
             conn = pg8000.connect(**conn_params)
             cur = conn.cursor()
             
+            # Set PostgreSQL statement timeout to 5 minutes for long-running DELETE operations
+            # This prevents indefinite hangs on busy Aurora instances
+            cur.execute("SET statement_timeout = '300000';")  # 5 minutes in milliseconds
+            logger.info("create_table: Set statement_timeout to 5 minutes for long operations")
+            
+            # Check for any existing long-running queries that might be blocking
+            # This prevents pileup of DELETE operations from previous failed attempts
+            check_blocking_query = """
+                SELECT pid, query_start, state, query
+                FROM pg_stat_activity
+                WHERE state = 'active'
+                  AND query ILIKE '%DELETE FROM entity%'
+                  AND query NOT ILIKE '%pg_stat_activity%'
+                  AND pid != pg_backend_pid()
+                  AND (now() - query_start) > interval '30 seconds';
+            """
+            cur.execute(check_blocking_query)
+            blocking_queries = cur.fetchall()
+            
+            if blocking_queries:
+                logger.warning(f"create_table: Found {len(blocking_queries)} existing DELETE operations still running from previous attempts")
+                for pid, query_start, state, query in blocking_queries:
+                    duration = (datetime.now() - query_start).total_seconds() if query_start else 0
+                    logger.warning(f"create_table: - PID {pid}: running for {duration:.0f}s - {query[:100]}")
+                    # Terminate the stuck query to prevent blocking
+                    try:
+                        cur.execute(f"SELECT pg_terminate_backend({pid});")
+                        logger.info(f"create_table: Terminated stuck DELETE operation (PID {pid})")
+                    except Exception as e:
+                        logger.warning(f"create_table: Could not terminate PID {pid}: {e}")
+                conn.commit()
+                logger.info("create_table: Cleaned up stuck DELETE operations, proceeding with fresh attempt")
+            
             # Build CREATE TABLE SQL dynamically
             column_defs = ", ".join([f"{col} {dtype}" for col, dtype in pyspark_entity_columns.items()])
             create_query = f"CREATE TABLE IF NOT EXISTS {dbtable_name} ({column_defs});"
@@ -146,40 +530,188 @@ def create_table(conn_params, dataset_value,max_retries=3, retry_delay=5):
 
             # Select and delete records by dataset value if provided
             if dataset_value:
-                delete_query = f"DELETE FROM {dbtable_name} WHERE dataset = %s;"
-                logger.info(f"create_table: Selecting records to delete from {dbtable_name} where dataset = {dataset_value}")
-                cur.execute(delete_query, (dataset_value,))
-                conn.commit()
-                logger.info(f"create_table: Deleted records from {dbtable_name} where dataset = {dataset_value}")
+                # First, check how many records exist for this dataset
+                count_query = f"SELECT COUNT(*) FROM {dbtable_name} WHERE dataset = %s;"
+                cur.execute(count_query, (dataset_value,))
+                result = cur.fetchone()
+                record_count = result[0] if result else 0
+                logger.info(f"create_table: Found {record_count} existing records for dataset '{dataset_value}'")
+                
+                if record_count > 0:
+                    # Adaptive batch sizing based on dataset size for optimal performance
+                    if record_count > 10000:
+                        # Calculate optimal batch size based on record count
+                        # For millions of records, use larger batches to reduce total number of operations
+                        if record_count < 100000:
+                            batch_size = 10000      # 100K records: 10 batches
+                        elif record_count < 500000:
+                            batch_size = 25000      # 500K records: 20 batches  
+                        elif record_count < 1000000:
+                            batch_size = 50000      # 1M records: 20 batches
+                        elif record_count < 5000000:
+                            batch_size = 100000     # 5M records: 50 batches
+                        else:
+                            batch_size = 200000     # 10M+ records: 50+ batches
+                        
+                        logger.info(f"create_table: Large dataset detected ({record_count:,} records). Deleting in batches of {batch_size:,} to avoid locks...")
+                        
+                        # Use CTID-based batch deletion for better performance on large datasets
+                        total_deleted = 0
+                        batch_num = 0
+                        start_time = time.time()
+                        
+                        while True:
+                            batch_num += 1
+                            batch_start_time = time.time()
+                            
+                            delete_batch_query = f"""
+                                DELETE FROM {dbtable_name} 
+                                WHERE ctid IN (
+                                    SELECT ctid FROM {dbtable_name} 
+                                    WHERE dataset = %s 
+                                    LIMIT {batch_size}
+                                );
+                            """
+                            
+                            # Execute DELETE and wait for completion
+                            cur.execute(delete_batch_query, (dataset_value,))
+                            deleted = cur.rowcount
+                            total_deleted += deleted
+                            
+                            # Commit and wait for commit to complete
+                            conn.commit()
+                            
+                            # Calculate progress and performance metrics
+                            batch_duration = time.time() - batch_start_time
+                            total_duration = time.time() - start_time
+                            progress_pct = (total_deleted / record_count) * 100
+                            
+                            # Estimate remaining time
+                            if total_deleted > 0:
+                                avg_time_per_record = total_duration / total_deleted
+                                remaining_records = record_count - total_deleted
+                                est_remaining_time = avg_time_per_record * remaining_records
+                                est_remaining_min = est_remaining_time / 60
+                                
+                                logger.info(
+                                    f"create_table: Batch {batch_num} completed in {batch_duration:.1f}s - "
+                                    f"deleted {deleted:,} records (total: {total_deleted:,}/{record_count:,} = {progress_pct:.1f}%) - "
+                                    f"est. {est_remaining_min:.1f} min remaining"
+                                )
+                            else:
+                                logger.info(f"create_table: Batch {batch_num} completed - deleted {deleted:,} records")
+                            
+                            # Check if deletion is complete
+                            if deleted < batch_size:
+                                logger.info(f"create_table: Batch deletion complete - last batch had {deleted:,} records in {total_duration:.1f}s total")
+                                break  # No more records to delete
+                        
+                        # Quick verification using EXISTS instead of COUNT for better performance on large tables
+                        logger.info(f"create_table: Verifying deletion completed successfully...")
+                        verify_query = f"SELECT EXISTS(SELECT 1 FROM {dbtable_name} WHERE dataset = %s LIMIT 1);"
+                        cur.execute(verify_query, (dataset_value,))
+                        result = cur.fetchone()
+                        records_exist = result[0] if result else False
+                        
+                        if not records_exist:
+                            logger.info(f"create_table: ✓ Deletion verified - all {total_deleted:,} records successfully deleted for dataset '{dataset_value}' in {total_duration:.1f}s")
+                        else:
+                            # If records still exist, do a COUNT to see how many
+                            cur.execute(count_query, (dataset_value,))
+                            result = cur.fetchone()
+                            remaining_count = result[0] if result else 0
+                            logger.warning(f"create_table: ⚠ Verification failed - {remaining_count:,} records still remain for dataset '{dataset_value}' (deleted {total_deleted:,})")
+                            
+                            # Try one more batch deletion for remaining records
+                            logger.info(f"create_table: Attempting to delete remaining {remaining_count:,} records...")
+                            delete_query = f"DELETE FROM {dbtable_name} WHERE dataset = %s;"
+                            cur.execute(delete_query, (dataset_value,))
+                            final_deleted = cur.rowcount
+                            conn.commit()
+                            logger.info(f"create_table: Final cleanup deleted {final_deleted:,} remaining records")
+                            
+                    else:
+                        # Small dataset - delete all at once
+                        logger.info(f"create_table: Deleting {record_count} records from {dbtable_name} where dataset = {dataset_value}")
+                        delete_query = f"DELETE FROM {dbtable_name} WHERE dataset = %s;"
+                        
+                        # Execute DELETE and wait for completion
+                        cur.execute(delete_query, (dataset_value,))
+                        deleted_count = cur.rowcount
+                        
+                        # Commit and wait for commit to complete
+                        conn.commit()
+                        logger.info(f"create_table: DELETE operation completed - {deleted_count} rows affected")
+                        
+                        # Verify deletion completed successfully
+                        logger.info(f"create_table: Verifying deletion completed successfully...")
+                        cur.execute(count_query, (dataset_value,))
+                        result = cur.fetchone()
+                        remaining_count = result[0] if result else 0
+                        
+                        if remaining_count == 0:
+                            logger.info(f"create_table: ✓ Deletion verified - all {deleted_count} records successfully deleted for dataset '{dataset_value}'")
+                        else:
+                            logger.error(f"create_table: ✗ Deletion verification failed - {remaining_count} records still exist after DELETE (expected 0)")
+                            raise DatabaseError(f"DELETE operation failed to remove all records for dataset '{dataset_value}' - {remaining_count} records remaining")
+                else:
+                    logger.info(f"create_table: No existing records to delete for dataset '{dataset_value}'")
 
             return  # Success, exit function
             
         except InterfaceError as e:
-            logger.error(f"create_table: Network/Interface error (attempt {attempt + 1}/{max_retries}): {e}")
-            if "Can't create a connection" in str(e) or "timeout" in str(e).lower():
-                logger.error("create_table: This appears to be a network connectivity issue.")
-                logger.error("create_table: Possible causes:")
-                logger.error("create_table: 1. EMR Serverless not configured in correct VPC")
-                logger.error("create_table: 2. Security group rules blocking connection")
-                logger.error("create_table: 3. RDS database not accessible from EMR subnet")
-            
+            error_str = str(e).lower()
             if attempt < max_retries - 1:
-                logger.info(f"create_table: Retrying in {retry_delay} seconds...")
+                # Exponential backoff: 5s, 10s, 20s, 40s, 60s (capped at 60s)
+                retry_delay = min(5 * (2 ** attempt), 60)
+                logger.error(f"create_table: Network/Interface error (attempt {attempt + 1}/{max_retries}): {e}")
+                
+                # Check for specific error types
+                if "network error" in error_str or "timeout" in error_str:
+                    logger.error("create_table: Network or timeout error detected")
+                    logger.error("create_table: This is likely due to:")
+                    logger.error("create_table: 1. DELETE operation timing out on large dataset")
+                    logger.error("create_table: 2. Aurora instance busy or at capacity")
+                    logger.error("create_table: 3. Network connectivity issues")
+                    logger.error("create_table: 4. Database locks from concurrent operations")
+                elif "can't create a connection" in error_str:
+                    logger.error("create_table: Connection establishment failed")
+                    logger.error("create_table: Possible causes:")
+                    logger.error("create_table: 1. EMR Serverless not configured in correct VPC")
+                    logger.error("create_table: 2. Security group rules blocking connection")
+                    logger.error("create_table: 3. RDS database not accessible from EMR subnet")
+                
+                logger.info(f"create_table: Retrying in {retry_delay} seconds with exponential backoff...")
                 time.sleep(retry_delay)
             else:
-                logger.error("create_table: All connection attempts failed")
+                logger.error(f"create_table: All {max_retries} connection attempts failed")
                 raise
                 
         except DatabaseError as e:
-            logger.error(f"create_table: Database error: {e}")
-            raise  # Don't retry database errors
+            error_str = str(e).lower()
+            # Check if it's a retryable database error (timeout, deadlock, etc.)
+            is_retryable = any(keyword in error_str for keyword in [
+                'timeout', 'deadlock', 'lock', 'busy', 'could not serialize'
+            ])
             
-        except Exception as e:
-            logger.error(f"create_table: Unexpected error (attempt {attempt + 1}/{max_retries}): {e}", exc_info=True)
-            if attempt < max_retries - 1:
+            if is_retryable and attempt < max_retries - 1:
+                retry_delay = min(5 * (2 ** attempt), 60)
+                logger.error(f"create_table: Retryable database error (attempt {attempt + 1}/{max_retries}): {e}")
                 logger.info(f"create_table: Retrying in {retry_delay} seconds...")
                 time.sleep(retry_delay)
             else:
+                logger.error(f"create_table: Non-retryable database error: {e}")
+                raise  # Don't retry non-retryable database errors
+            
+        except Exception as e:
+            if attempt < max_retries - 1:
+                # Exponential backoff for unexpected errors too
+                retry_delay = min(5 * (2 ** attempt), 60)
+                logger.error(f"create_table: Unexpected error (attempt {attempt + 1}/{max_retries}): {e}", exc_info=True)
+                logger.info(f"create_table: Retrying in {retry_delay} seconds with exponential backoff...")
+                time.sleep(retry_delay)
+            else:
+                logger.error(f"create_table: All {max_retries} attempts failed with unexpected errors")
                 raise
         finally:
             if cur:
@@ -242,24 +774,24 @@ def _prepare_geometry_columns(df):
 # -------------------- PostgreSQL Writer --------------------
 
 ##writing to postgres db
-def write_to_postgres(df, dataset,conn_params, method="optimized", batch_size=None, num_partitions=None, **kwargs):
+def write_to_postgres(df, dataset, conn_params, method="optimized", batch_size=None, num_partitions=None, target_table=None, **kwargs):
     """
     Insert DataFrame rows into PostgreSQL table using optimized PySpark JDBC writer.
     
     Args:
         df (pyspark.sql.DataFrame): DataFrame to insert
+        dataset (str): Dataset name
         conn_params (dict): PostgreSQL connection parameters
         method (str): Write method - "optimized" (default), "standard"
         batch_size (int): Number of rows per batch (auto-calculated if None)
         num_partitions (int): Number of partitions (auto-calculated if None)
+        target_table (str): Target table name (defaults to global dbtable_name if None).
+                           Use this to write to staging tables.
         **kwargs: Additional parameters for specific methods
     """
     logger.info(f"write_to_postgres: Using {method} method for PostgreSQL writes")
     
-    #if method == "standard":
-       # return _write_to_postgres_standard(df, dataset,conn_params)
-    #else:  # method == "optimized" (default) - handles any invalid method as optimized
-    return _write_to_postgres_optimized(df, dataset,conn_params, batch_size, num_partitions)
+    return _write_to_postgres_optimized(df, dataset, conn_params, batch_size, num_partitions, target_table)
 
 
 # def _write_to_postgres_standard(df, dataset, conn_params):
@@ -291,20 +823,30 @@ def write_to_postgres(df, dataset,conn_params, method="optimized", batch_size=No
 #         raise
 
 
-def _write_to_postgres_optimized(df, dataset, conn_params, batch_size=None, num_partitions=None):
+def _write_to_postgres_optimized(df, dataset, conn_params, batch_size=None, num_partitions=None, target_table=None, max_retries=5):
     """
-    Optimized PostgreSQL writer with performance improvements.
+    Optimized PostgreSQL writer with performance improvements and retry logic.
     
     Args:
         df: PySpark DataFrame to write
+        dataset: Dataset name
         conn_params: Database connection parameters
         batch_size: Number of rows per batch (auto-calculated if None)
         num_partitions: Number of partitions (auto-calculated if None)
+        target_table: Target table name (uses global dbtable_name if None)
+        max_retries: Maximum number of write attempts (default: 5)
     """
-    logger.info("_write_to_postgres_optimized: Starting optimized PostgreSQL write operation")
+    # Determine target table (staging or production)
+    table_name = target_table if target_table else dbtable_name
     
-    # Ensure table exists
-    create_table(conn_params, dataset)
+    logger.info(f"_write_to_postgres_optimized: Starting optimized PostgreSQL write to table '{table_name}'")
+    
+    # Only create table if writing to production (not staging)
+    if not target_table:
+        # Ensure production table exists (has its own retry logic)
+        create_table(conn_params, dataset)
+    else:
+        logger.info(f"_write_to_postgres_optimized: Writing to staging table '{target_table}', skipping create_table")
 
     # Auto-calculate optimal batch size if not specified
     if batch_size is None:
@@ -367,26 +909,49 @@ def _write_to_postgres_optimized(df, dataset, conn_params, batch_size=None, num_
         "assumeMinServerVersion": "12.0",                # Assume modern PostgreSQL
     }
     
-    try:
-        logger.info(f"_write_to_postgres_optimized: Writing {processed_df.count()} rows to PostgreSQL with batch size {batch_size}")
-        logger.info(f"_write_to_postgres_optimized: Using {num_partitions} partitions for parallel writes")
-        
-        # Use optimized JDBC write with error handling
-        processed_df.write \
-            .mode("append") \
-            .option("numPartitions", num_partitions) \
-            .jdbc(url=url, table=dbtable_name, properties=properties)
-        
-        logger.info(f"_write_to_postgres_optimized: Successfully wrote data to {dbtable_name} using optimized JDBC writer")
-        
-    except Exception as e:
-        logger.error(f"_write_to_postgres_optimized: Failed to write to PostgreSQL: {e}")
-        logger.error("_write_to_postgres_optimized: Troubleshooting steps:")
-        logger.error("_write_to_postgres_optimized: 1. Check if PostgreSQL JDBC driver is available")
-        logger.error("_write_to_postgres_optimized: 2. Verify network connectivity to database")
-        logger.error("_write_to_postgres_optimized: 3. Check database permissions for the user")
-        logger.error("_write_to_postgres_optimized: 4. Verify table schema matches DataFrame columns")
-        raise
+    # Retry logic with exponential backoff for busy Aurora instances
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"_write_to_postgres_optimized: Write attempt {attempt + 1}/{max_retries}")
+            logger.info(f"_write_to_postgres_optimized: Writing {processed_df.count()} rows to PostgreSQL with batch size {batch_size}")
+            logger.info(f"_write_to_postgres_optimized: Using {num_partitions} partitions for parallel writes")
+            
+            # Use optimized JDBC write with error handling
+            processed_df.write \
+                .mode("append") \
+                .option("numPartitions", num_partitions) \
+                .jdbc(url=url, table=table_name, properties=properties)
+            
+            logger.info(f"_write_to_postgres_optimized: Successfully wrote data to {table_name} using optimized JDBC writer")
+            return  # Success - exit function
+            
+        except Exception as e:
+            error_str = str(e).lower()
+            
+            # Check if this is a retryable error (connection issues, timeouts, busy database)
+            is_retryable = any(keyword in error_str for keyword in [
+                'timeout', 'connection', 'busy', 'locked', 'deadlock', 
+                'could not connect', 'refused', 'network', 'temporarily unavailable',
+                'too many connections', 'cannot acquire'
+            ])
+            
+            if is_retryable and attempt < max_retries - 1:
+                # Exponential backoff: 5s, 10s, 20s, 40s, 60s (capped at 60s)
+                retry_delay = min(5 * (2 ** attempt), 60)
+                logger.warning(f"_write_to_postgres_optimized: Write failed (attempt {attempt + 1}/{max_retries}): {e}")
+                logger.warning(f"_write_to_postgres_optimized: Aurora may be busy - retrying in {retry_delay} seconds...")
+                logger.warning(f"_write_to_postgres_optimized: Error type: {type(e).__name__}")
+                time.sleep(retry_delay)
+            else:
+                # Non-retryable error or final attempt - log and raise
+                logger.error(f"_write_to_postgres_optimized: Failed to write to PostgreSQL after {attempt + 1} attempts: {e}")
+                logger.error("_write_to_postgres_optimized: Troubleshooting steps:")
+                logger.error("_write_to_postgres_optimized: 1. Check if PostgreSQL JDBC driver is available")
+                logger.error("_write_to_postgres_optimized: 2. Verify network connectivity to database")
+                logger.error("_write_to_postgres_optimized: 3. Check database permissions for the user")
+                logger.error("_write_to_postgres_optimized: 4. Verify table schema matches DataFrame columns")
+                logger.error("_write_to_postgres_optimized: 5. Check if Aurora instance is busy or at capacity")
+                raise
 
 
 

@@ -102,13 +102,15 @@ def transform_data_entity(df,data_set,spark):
         pivot_df_with_json = pivot_df_with_json.join(dataset_df, pivot_df_with_json.dataset == dataset_df.dataset, "left") \
             .select(pivot_df_with_json["*"], dataset_df["typology"])
         
-        pivot_df_with_json.select("typology").show(truncate=False)
+        pivot_df_with_json.select("typology").show(5, truncate=False)
 
-        logger.info(f"transform_data_entity:Final DataFrame after filtering: {pivot_df_with_json.show(truncate=False)}")
+        logger.info(f"transform_data_entity:Final DataFrame after filtering: {pivot_df_with_json.show(5, truncate=False)}")
 
         # Add missing columns with default values
         if 'end_date' not in pivot_df_with_json.columns:
             pivot_df_with_json = pivot_df_with_json.withColumn('end_date', lit(None).cast("date"))
+        if 'start_date' not in pivot_df_with_json.columns:
+            pivot_df_with_json = pivot_df_with_json.withColumn('start_date', lit(None).cast("date"))
         if 'name' not in pivot_df_with_json.columns:
             pivot_df_with_json = pivot_df_with_json.withColumn('name', lit("").cast("string"))
         if 'point' not in pivot_df_with_json.columns:
