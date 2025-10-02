@@ -304,19 +304,18 @@ def write_to_s3_format(df, output_path, dataset_name, table_name):
         # Use "append" mode since we already cleaned up the specific dataset partition
         df.coalesce(optimal_partitions) \
           .write \
-          .partitionBy("dataset", "year", "month", "day") \
           .mode("append") \
           .option("maxRecordsPerFile", 1000000) \
           .option("compression", "snappy") \
           .csv(output_path)
         
-        df.coalesce(optimal_partitions) \
-          .write \
-          .partitionBy("dataset", "year", "month", "day") \
-          .mode("append") \
-          .option("maxRecordsPerFile", 1000000) \
-          .option("compression", "snappy") \
-          .json(output_path)
+        #df.coalesce(optimal_partitions) \
+        #  .write \
+        #  .partitionBy("dataset", "year", "month", "day") \
+        #  .mode("append") \
+        #  .option("maxRecordsPerFile", 1000000) \
+        #  .option("compression", "snappy") \
+        #  .json(output_path)
 
         logger.info(f"write_to_s3_format: Successfully wrote {row_count} rows to {output_path} with {optimal_partitions} partitions")
 
