@@ -277,13 +277,13 @@ def write_to_s3_format(df, output_path, dataset_name, table_name):
         df = df.withColumn("dataset", lit(dataset_name))
                 
         # Convert entry-date to date type and use it for partitioning
-        df = df.withColumn("entry_date_parsed", to_date("entry_date", "yyyy-MM-dd"))
-        df = df.withColumn("year", year("entry_date_parsed")) \
-            .withColumn("month", month("entry_date_parsed")) \
-            .withColumn("day", dayofmonth("entry_date_parsed"))
+        #df = df.withColumn("entry_date_parsed", to_date("entry_date", "yyyy-MM-dd"))
+        #df = df.withColumn("year", year("entry_date_parsed")) \
+        #    .withColumn("month", month("entry_date_parsed")) \
+        #    .withColumn("day", dayofmonth("entry_date_parsed"))
         
         # Drop the temporary parsing column
-        df = df.drop("entry_date_parsed")
+        #df = df.drop("entry_date_parsed")
         
         # Calculate optimal partitions based on data size
         row_count = df.count()
