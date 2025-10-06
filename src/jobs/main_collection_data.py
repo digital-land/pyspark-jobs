@@ -302,12 +302,16 @@ def write_to_s3_format(df, output_path, dataset_name, table_name):
 
         # Write to S3 with multilevel partitioning
         # Use "append" mode since we already cleaned up the specific dataset partition
-        df.coalesce(optimal_partitions) \
+        df.coalesce(1) \
           .write \
-          .mode("append") \
-          .option("maxRecordsPerFile", 1000000) \
-          .option("compression", "snappy") \
+          .mode("overwrite") .option("compression", "snappy") \
           .csv(output_path)
+        #df.coalesce(optimal_partitions) \
+        #  .write \
+        #  .mode("append") \
+        #  .option("maxRecordsPerFile", 1000000) \
+        #  .option("compression", "snappy") \
+        #  .csv(output_path)
         
         #df.coalesce(optimal_partitions) \
         #  .write \
