@@ -276,15 +276,7 @@ def write_to_s3_format(df, output_path, dataset_name, table_name):
         # Add dataset as partition column
         df = df.withColumn("dataset", lit(dataset_name))
                 
-        # Convert entry-date to date type and use it for partitioning
-        #df = df.withColumn("entry_date_parsed", to_date("entry_date", "yyyy-MM-dd"))
-        #df = df.withColumn("year", year("entry_date_parsed")) \
-        #    .withColumn("month", month("entry_date_parsed")) \
-        #    .withColumn("day", dayofmonth("entry_date_parsed"))
-        
-        # Drop the temporary parsing column
-        #df = df.drop("entry_date_parsed")
-        
+        # Convert entry-date to date type and use it for partitioning       
         # Calculate optimal partitions based on data size
         row_count = df.count()
         optimal_partitions = max(1, min(200, row_count // 1000000))  # ~1M records per partition
@@ -306,12 +298,7 @@ def write_to_s3_format(df, output_path, dataset_name, table_name):
           .write \
           .mode("overwrite") .option("compression", "snappy") \
           .csv(output_path)
-        #df.coalesce(optimal_partitions) \
-        #  .write \
-        #  .mode("append") \
-        #  .option("maxRecordsPerFile", 1000000) \
-        #  .option("compression", "snappy") \
-        #  .csv(output_path)
+        
         
         #df.coalesce(optimal_partitions) \
         #  .write \
