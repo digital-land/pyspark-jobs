@@ -25,7 +25,7 @@ def test_copy_protocol_auto_s3_configuration():
         print("\n1. Testing default S3 bucket configuration:")
         result = get_copy_protocol_recommendation()
         
-        default_bucket = 'development-pyspark-jobs-codepackage'
+        default_bucket = 'development-emr-serverless-pyspark-jobs-codepackage'
         
         print(f"   Default bucket fallback: {default_bucket}")
         print(f"   Recommended method: {result['method']}")
@@ -82,7 +82,7 @@ def test_temp_path_generation():
         dbtable_name = "pyspark_entity"
         temp_session_id = str(uuid.uuid4())[:8]
         temp_timestamp = int(time.time())
-        bucket = 'development-pyspark-jobs-codepackage'
+        bucket = 'development-emr-serverless-pyspark-jobs-codepackage'
         temp_s3_path = f"s3a://{bucket}/tmp/postgres-copy/{dbtable_name}-{temp_timestamp}-{temp_session_id}/"
         
         print(f"✅ Generated temporary path: {temp_s3_path}")
