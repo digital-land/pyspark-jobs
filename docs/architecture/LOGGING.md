@@ -49,7 +49,7 @@ export LOG_FILE=logs/my_app.log
 
 # Enable S3 logging
 export LOG_S3_ENABLED=true
-export LOG_S3_BUCKET=arn:aws:s3:::development-pyspark-jobs-logs
+export LOG_S3_BUCKET=arn:aws:s3:::development-emr-serverless-pyspark-jobs-logs
 export LOG_S3_KEY_PREFIX=pyspark-jobs
 
 # Environment type (affects log format)
@@ -159,7 +159,7 @@ setup_logging(
     log_level="INFO",
     enable_console=True,
     enable_s3=True,
-    s3_bucket="arn:aws:s3:::development-pyspark-jobs-logs",
+    s3_bucket="arn:aws:s3:::development-emr-serverless-pyspark-jobs-logs",
     s3_key_prefix="my-app-logs",
     environment="production"
 )
@@ -168,7 +168,7 @@ logger = get_logger(__name__)
 logger.info("This message will be sent to both console and S3")
 
 # S3 logs are organized by timestamp:
-# s3://development-pyspark-jobs-logs/my-app-logs/2023/12/07/14/job-EMR_123-20231207-143025.log
+# s3://development-emr-serverless-pyspark-jobs-logs/my-app-logs/2023/12/07/14/job-EMR_123-20231207-143025.log
 ```
 
 ### 7. Quick Setup for Scripts
@@ -207,7 +207,7 @@ setup_logging(
     enable_file=True,
     log_file="logs/emr_transform_job.log",
     enable_s3=True,
-    s3_bucket="arn:aws:s3:::development-pyspark-jobs-logs",
+    s3_bucket="arn:aws:s3:::development-emr-serverless-pyspark-jobs-logs",
     s3_key_prefix="pyspark-jobs",
     environment=os.getenv("ENVIRONMENT", "development")
 )
