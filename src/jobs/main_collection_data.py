@@ -370,7 +370,7 @@ def write_dataframe_to_postgres(df, table_name, data_set, env, use_jdbc=False):
                 logger.info("Write_PG: Using Aurora S3 import method")
                 
                 # Determine S3 CSV output path (under the same parquet path)
-                csv_output_path = f"s3://{env}-target-data/csv-temp/"
+                csv_output_path = f"s3://{env}-collection-target-data/csv-temp/"
                 logger.info(f"Write_PG: CSV output path: {csv_output_path}")
                 
                 csv_path = None
@@ -566,7 +566,7 @@ def main(args):
             #invoke full load logic
             logger.info(f"Main: Load type is {load_type} and dataset is {data_set} and path is {s3_uri}")
 
-            output_path = f"s3://{env}-target-data/"
+            output_path = f"s3://{env}-collection-target-data/"
             logger.info(f" Main: Target output path: {output_path}")
                          
             df = None  # Initialise df to avoid UnboundLocalError
@@ -641,7 +641,7 @@ def main(args):
             logger.info(f"Main: Processing dataset with path information : {s3_uri}")         
 
             logger.info("Main: Set target s3 output path")
-            output_path = f"s3://{env}-target-data/"
+            output_path = f"s3://{env}-collection-target-data/"
             logger.info(f" Main: Target output path: {output_path}")
                          
             df = None  # Initialise df to avoid UnboundLocalError
