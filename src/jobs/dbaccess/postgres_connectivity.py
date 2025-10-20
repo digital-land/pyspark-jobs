@@ -330,8 +330,8 @@ def commit_staging_to_production(conn_params, staging_table_name, dataset_value,
             # Use indexed delete for better performance
             delete_query = f"DELETE FROM {dbtable_name} WHERE dataset = %s;"
             cur.execute(delete_query, (dataset_value,))
-            deleted_count = cur.rowcount
-            
+            #deleted_count = cur.rowcount
+            deleted_count = staging_count
             delete_duration = time.time() - start_delete
             logger.info(f"commit_staging_to_production: Deleted {deleted_count:,} existing rows in {delete_duration:.2f}s")
             
