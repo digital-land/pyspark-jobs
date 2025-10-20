@@ -567,7 +567,7 @@ def get_aurora_connection_params() -> Dict[str, str]:
         logger.info("get_aurora_connection_params: Retrieving Aurora connection parameters")
         
         # Use the existing secret retrieval method
-        aws_secrets_json = get_secret_emr_compatible("dev/pyspark/postgres")
+        aws_secrets_json = get_secret_emr_compatible("development-emr-serverless-pyspark/postgres")
         secrets = json.loads(aws_secrets_json)
         
         # Extract required fields

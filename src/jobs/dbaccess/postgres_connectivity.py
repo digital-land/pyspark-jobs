@@ -79,7 +79,7 @@ def get_aws_secret():
     """
     try:
         logger.info("Attempting to retrieve PostgreSQL secrets using EMR-compatible method")
-        aws_secrets_json = get_secret_emr_compatible("dev/pyspark/postgres")
+        aws_secrets_json = get_secret_emr_compatible("development-emr-serverless-pyspark/postgres")
         
         # Parse the JSON string
         secrets = json.loads(aws_secrets_json)

@@ -26,7 +26,7 @@ The `get_secret_emr_compatible()` function includes multiple fallback strategies
 from jobs.utils.aws_secrets_manager import get_secret_emr_compatible
 
 # Use this instead of get_secret()
-secret_value = get_secret_emr_compatible("dev/pyspark/postgres")
+secret_value = get_secret_emr_compatible("development-emr-serverless-pyspark/postgres")
 ```
 
 #### Solution 2: Environment Variable Fallback
@@ -38,7 +38,7 @@ export SECRET_DEV_PYSPARK_POSTGRES='{"username":"user","password":"pass","dbName
 ```
 
 The naming convention converts the secret name:
-- `dev/pyspark/postgres` → `SECRET_DEV_PYSPARK_POSTGRES`
+- `development-emr-serverless-pyspark/postgres` → `SECRET_DEV_PYSPARK_POSTGRES`
 - Replace `/` and `-` with `_`
 - Convert to uppercase
 - Add `SECRET_` prefix
@@ -83,7 +83,7 @@ Ensure EMR Serverless has proper IAM roles configured with Secrets Manager permi
             "Action": [
                 "secretsmanager:GetSecretValue"
             ],
-            "Resource": "arn:aws:secretsmanager:region:account:secret:dev/pyspark/postgres*"
+            "Resource": "arn:aws:secretsmanager:region:account:secret:development-emr-serverless-pyspark/postgres*"
         }
     ]
 }
@@ -152,7 +152,7 @@ If these solutions don't resolve your issue:
 3. Test with a simple secret retrieval script first
 4. Consider using AWS CLI from EMR to verify basic connectivity:
    ```bash
-   aws secretsmanager get-secret-value --secret-id dev/pyspark/postgres
+   aws secretsmanager get-secret-value --secret-id development-emr-serverless-pyspark/postgres
    ```
 
 ## Related Files
