@@ -111,6 +111,15 @@ def transform_data_entity(df,data_set,spark):
         }
         if "geometry" not in pivot_df.columns:
             pivot_df = pivot_df.withColumn("geometry", lit(None).cast("string"))
+        # Ensure expected columns exist before projection
+        if "end_date" not in pivot_df.columns:
+            pivot_df = pivot_df.withColumn("end_date", lit(None).cast("date"))
+        if "start_date" not in pivot_df.columns:
+            pivot_df = pivot_df.withColumn("start_date", lit(None).cast("date"))
+        if "name" not in pivot_df.columns:
+            pivot_df = pivot_df.withColumn("name", lit("").cast("string"))
+        if "point" not in pivot_df.columns:
+            pivot_df = pivot_df.withColumn("point", lit(None).cast("string"))
         diff_columns = [c for c in pivot_df.columns if c not in standard_columns]
         if diff_columns:
             pivot_df = pivot_df.withColumn("json", to_json(struct(*[col(c) for c in diff_columns])))
