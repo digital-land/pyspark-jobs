@@ -101,7 +101,7 @@ def get_aws_secret(environment="development"):
         port = secrets.get("port")
         
         # Validate required fields
-        required_fields = ["username", "password", "dbName", "host", "port"]
+        required_fields = ["username", "password", "db_name", "host", "port"]
         missing_fields = [field for field in required_fields if not secrets.get(field)]
         
         if missing_fields:
