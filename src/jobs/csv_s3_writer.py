@@ -584,9 +584,13 @@ def get_aurora_connection_params(env: str) -> Dict[str, str]:
         }
         
         # Validate required fields
-        missing_fields = [k for k, v in conn_params.items() if not v]
+        required_fields = ["username", "password", "db_name", "host", "port"]
+        missing_fields = [field for field in required_fields if not secrets.get(field)]
+        
         if missing_fields:
-            raise AuroraImportError(f"Missing connection parameters: {missing_fields}")
+            error_msg = f"Missing required secret fields: {missing_fields}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
         
         logger.info("get_aurora_connection_params: Successfully retrieved connection parameters")
         return conn_params
