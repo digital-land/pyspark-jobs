@@ -364,7 +364,7 @@ def write_dataframe_to_postgres(df, table_name, data_set, env, use_jdbc=False):
             if use_jdbc:
                 # Use traditional JDBC method
                 logger.info("Write_PG: Using JDBC import method")
-                _write_dataframe_to_postgres_jdbc(df, table_name, data_set)
+                _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env)
             else:
                 # Use Aurora S3 import method
                 logger.info("Write_PG: Using Aurora S3 import method")
@@ -391,6 +391,7 @@ def write_dataframe_to_postgres(df, table_name, data_set, env, use_jdbc=False):
                         csv_path,
                         ENTITY_TABLE_NAME,  # Use actual DB table name (configured in postgres_connectivity.py)
                         data_set,
+                        env,
                         use_s3_import=True,
                         truncate_table=True  # Clean existing data for this dataset
                     )
@@ -408,7 +409,7 @@ def write_dataframe_to_postgres(df, table_name, data_set, env, use_jdbc=False):
                         logger.error(f"Write_PG: Aurora S3 import failed: {import_result['errors']}")
                         logger.info("Write_PG: Falling back to JDBC method")
                         # CSV cleanup happens in import_csv_to_aurora function
-                        _write_dataframe_to_postgres_jdbc(df, table_name, data_set)
+                        _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env)
                         
                 except Exception as e:
                     logger.error(f"Write_PG: Aurora S3 import failed: {e}")
@@ -419,7 +420,7 @@ def write_dataframe_to_postgres(df, table_name, data_set, env, use_jdbc=False):
                         logger.info("Write_PG: Cleaning up temporary CSV files after S3 import failure")
                         cleanup_temp_csv_files(csv_path)
                     
-                    _write_dataframe_to_postgres_jdbc(df, table_name, data_set)
+                    _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env)
                         
         else:
             # For non-entity tables, use traditional JDBC method
@@ -431,7 +432,7 @@ def write_dataframe_to_postgres(df, table_name, data_set, env, use_jdbc=False):
         raise
 
 
-def _write_dataframe_to_postgres_jdbc(df, table_name, data_set, use_staging=True):
+def _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env, use_staging=True):
     """
     JDBC writer with optional staging table support.
     
@@ -451,7 +452,7 @@ def _write_dataframe_to_postgres_jdbc(df, table_name, data_set, use_staging=True
     recommendations = get_performance_recommendations(row_count)
     logger.info(f"_write_dataframe_to_postgres_jdbc: Performance recommendations for {row_count} rows: {recommendations}")
     
-    conn_params = get_aws_secret()
+    conn_params = get_aws_secret(env)
     
     # Use staging pattern for entity table (logical name comparison is correct here)
     if use_staging and table_name == 'entity':

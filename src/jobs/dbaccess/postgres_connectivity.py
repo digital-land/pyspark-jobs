@@ -64,12 +64,16 @@ pyspark_entity_columns = {
 # read host, port,dbname,user, password
 
 
-def get_aws_secret():
+def get_aws_secret(environment="development"):
     """
     Retrieve AWS secrets for PostgreSQL connection with EMR Serverless compatibility.
     
     This function uses the EMR-compatible secret retrieval method that includes
     multiple fallback strategies to handle botocore issues in EMR environments.
+    
+    Args:
+        environment (str): Environment name (development, staging, production)
+                          Defaults to "development"
     
     Returns:
         dict: PostgreSQL connection parameters
@@ -78,8 +82,13 @@ def get_aws_secret():
         Exception: If secrets cannot be retrieved or parsed
     """
     try:
-        logger.info("Attempting to retrieve PostgreSQL secrets using EMR-compatible method")
-        aws_secrets_json = get_secret_emr_compatible("dev/pyspark/postgres")
+        logger.info(f"Attempting to retrieve PostgreSQL secrets using EMR-compatible method for environment: {environment}")
+        
+        # Construct secret path based on environment
+        secret_path = f"{environment}-emr-serverless-pyspark/postgres"
+        logger.info(f"Using secret path: {secret_path}")
+        
+        aws_secrets_json = get_secret_emr_compatible(secret_path)
         
         # Parse the JSON string
         secrets = json.loads(aws_secrets_json)

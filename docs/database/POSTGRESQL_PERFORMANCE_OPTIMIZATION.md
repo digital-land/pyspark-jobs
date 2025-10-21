@@ -267,7 +267,7 @@ if (table_name == 'entity'):
     
     optimized_write(
         processed_df, 
-        get_aws_secret(),
+        get_aws_secret("development"),
         method=recommendations["method"],
         batch_size=recommendations["batch_size"],
         num_partitions=recommendations["num_partitions"]
