@@ -647,7 +647,9 @@ def import_csv_to_aurora(
     try:
         if use_s3_import:
             logger.info("import_csv_to_aurora: Using Aurora S3 import method")
-            s3_result = _import_via_aurora_s3(csv_s3_path, table_name, dataset_name, truncate_table)
+            s3_result = _import_via_aurora_s3(
+                csv_s3_path, table_name, dataset_name, truncate_table, env
+            )
             results.update(s3_result)
             results["import_method_used"] = "aurora_s3"
             results["import_successful"] = True
@@ -689,7 +691,13 @@ def import_csv_to_aurora(
         raise
 
 
-def _import_via_aurora_s3(csv_s3_path: str, table_name: str, dataset_name: str, truncate_table: bool) -> Dict[str, Any]:
+def _import_via_aurora_s3(
+    csv_s3_path: str,
+    table_name: str,
+    dataset_name: str,
+    truncate_table: bool,
+    env: str
+) -> Dict[str, Any]:
     """Import CSV data using Aurora PostgreSQL S3 import feature."""
     logger.info("_import_via_aurora_s3: Starting Aurora S3 import")
     
