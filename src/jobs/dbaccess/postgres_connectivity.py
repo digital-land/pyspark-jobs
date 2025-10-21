@@ -96,7 +96,7 @@ def get_aws_secret(environment="development"):
         # Extract required fields
         username = secrets.get("username")
         password = secrets.get("password")
-        dbName = secrets.get("db_Name")
+        dbName = secrets.get("db_name")
         host = secrets.get("host")
         port = secrets.get("port")
         
