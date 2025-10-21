@@ -79,7 +79,7 @@ def get_aws_secret():
     """
     try:
         logger.info("Attempting to retrieve PostgreSQL secrets using EMR-compatible method")
-        aws_secrets_json = get_secret_emr_compatible("development-emr-serverless-pyspark/postgres")
+        aws_secrets_json = get_secret_emr_compatible("dev/pyspark/postgres")
         
         # Parse the JSON string
         secrets = json.loads(aws_secrets_json)
@@ -87,7 +87,7 @@ def get_aws_secret():
         # Extract required fields
         username = secrets.get("username")
         password = secrets.get("password")
-        dbName = secrets.get("dbName")
+        dbName = secrets.get("db_Name")
         host = secrets.get("host")
         port = secrets.get("port")
         
@@ -330,8 +330,8 @@ def commit_staging_to_production(conn_params, staging_table_name, dataset_value,
             # Use indexed delete for better performance
             delete_query = f"DELETE FROM {dbtable_name} WHERE dataset = %s;"
             cur.execute(delete_query, (dataset_value,))
-            #deleted_count = cur.rowcount
-            deleted_count = staging_count
+            deleted_count = cur.rowcount
+            
             delete_duration = time.time() - start_delete
             logger.info(f"commit_staging_to_production: Deleted {deleted_count:,} existing rows in {delete_duration:.2f}s")
             
