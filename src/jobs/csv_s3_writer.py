@@ -578,7 +578,7 @@ def get_aurora_connection_params(env: str) -> Dict[str, str]:
         conn_params = {
             "host": secrets.get("host"),
             "port": secrets.get("port", "5432"),
-            "database": secrets.get("dbName"),
+            "database": secrets.get("db_Name"),
             "username": secrets.get("username"),
             "password": secrets.get("password"),
         }
