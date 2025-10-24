@@ -570,7 +570,7 @@ def get_aurora_connection_params(env: str) -> Dict[str, str]:
         logger.info("get_aurora_connection_params: Retrieving Aurora connection parameters")
         
         # Use the existing secret retrieval method with dynamic environment
-        secret_path = f"{env}-emr-serverless-pyspark/postgres"
+        secret_path = f"{env}-pd-batch/postgres-secret"
         aws_secrets_json = get_secret_emr_compatible(secret_path)
         secrets = json.loads(aws_secrets_json)
         

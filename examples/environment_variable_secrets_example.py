@@ -38,7 +38,7 @@ def main():
         "port": "5432"
     }
     
-    # Convert secret name to environment variable name (development-emr-serverless-pyspark/postgres -> SECRET_DEV_PYSPARK_POSTGRES)
+    # Convert secret name to environment variable name (development-pd-batch/postgres-secret -> SECRET_DEV_PYSPARK_POSTGRES)
     env_var_name = "SECRET_DEV_PYSPARK_POSTGRES"
     os.environ[env_var_name] = json.dumps(postgres_secret)
     
@@ -46,7 +46,7 @@ def main():
     
     try:
         # Try to get the secret - this should use the environment variable fallback
-        secret_json = get_secret_emr_compatible("development-emr-serverless-pyspark/postgres")
+        secret_json = get_secret_emr_compatible("development-pd-batch/postgres-secret")
         
         # Parse and validate the secret
         secret_data = json.loads(secret_json)
