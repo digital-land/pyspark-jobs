@@ -58,7 +58,7 @@ def transform_data_issue(df):
 def transform_data_entity(df,data_set,spark):
     try:
         logger.info("transform_data_entity:Transforming data for Entity table")
-        df.show(5)
+        df.show(20)
         # 1) Select the top record per (entity, field) using priority, entry_date, entry_number
         # Fallback if 'priority' is missing: use entry_date, entry_number
         if "priority" in df.columns:
@@ -73,6 +73,7 @@ def transform_data_entity(df,data_set,spark):
 
         # 2) Pivot to get one row per entity
         pivot_df = df_ranked.groupBy("entity").pivot("field").agg(first("value"))
+        pivot_df.show(5)
 
         # 3) Normalise column names (kebab-case -> snake_case)
         for column in pivot_df.columns:
