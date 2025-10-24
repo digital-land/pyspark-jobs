@@ -58,7 +58,7 @@ def transform_data_issue(df):
 def transform_data_entity(df,data_set,spark):
     try:
         logger.info("transform_data_entity:Transforming data for Entity table")
-
+        df.show(5)
         # 1) Select the top record per (entity, field) using priority, entry_date, entry_number
         # Fallback if 'priority' is missing: use entry_date, entry_number
         if "priority" in df.columns:
@@ -155,6 +155,9 @@ def transform_data_entity(df,data_set,spark):
             "name", "organisation_entity", "point", "prefix", "reference",
             "start_date", "typology"
         ).dropDuplicates(["entity"])
+
+        logger.info("transform_data_entity:Transform data for Entity table after pivoting and normalization")
+        out.show(5)
 
         return out
     except Exception as e:
