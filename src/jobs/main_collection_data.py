@@ -10,6 +10,7 @@ from jobs.transform_collection_data import (transform_data_fact, transform_data_
 from jobs.dbaccess.postgres_connectivity import (create_table, write_to_postgres, get_aws_secret,
                                                   create_and_prepare_staging_table, commit_staging_to_production,
                                                   ENTITY_TABLE_NAME)
+from jobs.utils.s3_format_utils import s3_csv_format
 from jobs.utils.s3_utils import cleanup_dataset_data
 from jobs.csv_s3_writer import write_dataframe_to_csv_s3, import_csv_to_aurora, cleanup_temp_csv_files
 #import sqlite3
@@ -262,7 +263,7 @@ def write_to_s3(df, output_path, dataset_name, table_name):
 df_entity = None
 @log_execution_time
 def write_to_s3_format(df, output_path, dataset_name, table_name):
-    output_path=f"s3://development-collection-data/dataset/{dataset_name}"
+    output_path=f"s3://{env}-collection-data/dataset/"
     try:   
         logger.info(f"write_to_s3_format: Writing data to S3 at {output_path} for dataset {dataset_name}") 
         
@@ -291,22 +292,22 @@ def write_to_s3_format(df, output_path, dataset_name, table_name):
             global df_entity
             df_entity.show(5) if df_entity else logger.info("write_to_s3_format: df_entity is None")
             df_entity = df
-
+        df = s3_csv_format(df)
         # Write to S3 with multilevel partitioning
         # Use "append" mode since we already cleaned up the specific dataset partition
+        
         df.coalesce(1) \
           .write \
-          .mode("overwrite") .option("compression", "snappy") \
+          .mode("overwrite")  \
           .csv(output_path)
         
         
-        df.coalesce(optimal_partitions) \
-          .write \
-          .partitionBy("dataset", "year", "month", "day") \
-          .mode("append") \
-          .option("maxRecordsPerFile", 1000000) \
-          .option("compression", "snappy") \
-          .json(output_path)
+        #df.coalesce(optimal_partitions) \
+        #  .write \
+        #  .mode("append") \
+        #  .option("maxRecordsPerFile", 1000000) \
+        #  .option("compression", "snappy") \
+        #  .json(output_path)
 
         logger.info(f"write_to_s3_format: Successfully wrote {row_count} rows to {output_path} with {optimal_partitions} partitions")
 
@@ -531,6 +532,8 @@ def _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env, use_staging
     logger.info(f"_write_dataframe_to_postgres_jdbc: JDBC writing completed using {recommendations['method']} method")
 
 # -------------------- Main --------------------
+
+env = None
 @log_execution_time
 def main(args):
     logger.info(f"Main: Initialize logging and invoking initialize_logging method")
@@ -551,10 +554,11 @@ def main(args):
         load_type = args.load_type
         data_set = args.data_set
         s3_uri = args.path
-        env=args.env
+        global env
+        env = args.env
         logger.info(f"Main: env variable for the dataset: {env}")
 
-        s3_uri=s3_uri+data_set+"-collection"
+        s3_uri = s3_uri + data_set + "-collection"
 
         table_names=["fact","fact_res","entity","issue"]
         
