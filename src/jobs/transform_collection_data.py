@@ -74,6 +74,11 @@ def transform_data_entity(df,data_set,spark):
         # 2) Pivot to get one row per entity
         pivot_df = df_ranked.groupBy("entity").pivot("field").agg(first("value"))
         pivot_df.show(5)
+        # TODO:this code is for testing the typology missing data - remove after testing
+        logger.info("This code is for testing the typology missing data")
+
+        filtered_df = pivot_df.filter(col("field") == "typology").select("field", "value")
+        filtered_df.show()
 
         # 3) Normalise column names (kebab-case -> snake_case)
         for column in pivot_df.columns:
