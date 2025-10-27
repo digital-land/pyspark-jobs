@@ -16,5 +16,8 @@ PyYAML>=6.0
 # Python standard library extensions
 typing-extensions>=4.0.0
 
+# Geospatial operations
+shapely>=2.0.0
+
 # Package metadata
 setuptools>=65.0.0
