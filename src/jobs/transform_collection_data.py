@@ -4,7 +4,7 @@ logger = get_logger(__name__)
 from pyspark.sql.functions import row_number, lit, first, to_json, struct, col, when, to_date, desc
 from pyspark.sql.window import Window
 from pyspark.sql.functions import lit
-from jobs.utils.s3_dataset_typology import get_dataset_typology, get_datasets
+from jobs.utils.s3_dataset_typology import get_dataset_typology
 from jobs.utils.point_utils import centroid_udf
 
 
