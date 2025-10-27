@@ -3,6 +3,10 @@ from jobs.utils.logger_config import get_logger
 logger = get_logger(__name__)
 from pyspark.sql.functions import row_number, lit, first, to_json, struct, col, when, to_date, desc
 from pyspark.sql.window import Window
+from pyspark.sql.functions import lit
+from jobs.utils.s3_dataset_typology import get_dataset_typology, get_datasets
+from jobs.utils.point_utils import centroid_udf
+
 
 # -------------------- Transformation Processing --------------------
 def transform_data_fact(df):
@@ -74,11 +78,17 @@ def transform_data_entity(df,data_set,spark):
         # 2) Pivot to get one row per entity
         pivot_df = df_ranked.groupBy("entity").pivot("field").agg(first("value"))
         pivot_df.show(5)
-        # TODO:this code is for testing the typology missing data - remove after testing
-        logger.info("This code is for testing the typology missing data")
 
-        filtered_df = pivot_df.filter(col("field") == "typology").select("field", "value")
-        filtered_df.show()
+        logger.info("transform_data_entity:Adding Typology data as the column missing after flattening")
+        #filtered_df = pivot_df.filter(col("field") == "typology").select("field", "value")
+        # we are invoking udf to calculate typology data whcih is retrieved from specifications.csv
+        filtered_df = filtered_df.withColumn("typology", get_dataset_typology(data_set))
+        filtered_df.show(5)
+        
+        logger.info("transform_data_entity:Adding point column - by adding extra column after flattening ")    
+        # we are invoking udf to calculate point data which is also called as centroid
+        filtered_df = filtered_df.withColumn("point", centroid_udf(filtered_df["geometry"]))
+        filtered_df.show(5)
 
         # 3) Normalise column names (kebab-case -> snake_case)
         for column in pivot_df.columns:
