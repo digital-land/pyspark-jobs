@@ -83,7 +83,8 @@ def transform_data_entity(df,data_set,spark):
         #filtered_df = pivot_df.filter(col("field") == "typology").select("field", "value")
 
         # Add a new column "typology" to the pivoted DataFrame by applying the get_dataset_typology function 
-        filtered_df = pivot_df.withColumn("typology", get_dataset_typology(data_set))
+        typology_value = get_dataset_typology(data_set)
+        filtered_df = pivot_df.withColumn("typology", F.lit(typology_value))
         filtered_df.show(5)
         
         logger.info("transform_data_entity:Adding point column - by adding extra column after flattening ")    
