@@ -1,5 +1,5 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col
+from pyspark.sql.functions import from_json, col, when, length
 from pyspark.sql.types import MapType, StringType
 import json
 import logging
@@ -50,8 +50,11 @@ def s3_csv_format(df):
         if sample:
             logger.info(f"Processing JSON column: {json_col}")
             # Remove outer quotes and double quotes using Spark SQL functions
-            cleaned_col = col(json_col)
-            cleaned_col = cleaned_col.substr(2, cleaned_col.length()-2).when(cleaned_col.startswith('"') & cleaned_col.endswith('"'), cleaned_col).otherwise(cleaned_col)
+            cleaned_col = when(
+                (col(json_col).startswith('"') & col(json_col).endswith('"')),
+                col(json_col).substr(2, length(col(json_col)) - 2)
+            ).otherwise(col(json_col))
+            # Replace double quotes with single quotes
             cleaned_col = cleaned_col.replace('""', '"')
             # Parse JSON using from_json
             df = df.withColumn(f"{json_col}_map", from_json(col(json_col), MapType(StringType(), StringType())))
