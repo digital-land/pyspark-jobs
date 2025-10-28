@@ -5,7 +5,7 @@ from pyspark.sql.functions import (
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 from jobs.utils.s3_dataset_typology import get_dataset_typology
-from jobs.utils.point_utils import centroid_udf
+# from jobs.utils.point_utils import centroid_udf
 
 logger = get_logger(__name__)
 
@@ -81,29 +81,35 @@ def transform_data_entity(df,data_set,spark):
         pivot_df.show(5)
 
         logger.info("transform_data_entity:Adding Typology data as the column missing after flattening")
-        #filtered_df = pivot_df.filter(col("field") == "typology").select("field", "value")
+        # filtered_df = pivot_df.filter(col("field") == "typology").select("field", "value")
 
         # Add a new column "typology" to the pivoted DataFrame by applying the get_dataset_typology function 
         typology_value = get_dataset_typology(data_set)
-        filtered_df = pivot_df.withColumn("typology", F.lit(typology_value))
-        filtered_df.show(5)
+        logger.info(f"transform_data_entity: Fetched typology value from dataset specification for dataset: {data_set} is {typology_value}")
+
+        pivot_df = pivot_df.withColumn("typology", F.lit(typology_value))
+        pivot_df.show(5)
         
-        logger.info("transform_data_entity:Adding point column - by adding extra column after flattening ")    
-        # we are invoking udf to calculate point data which is also called as centroid
-        filtered_df = filtered_df.withColumn("point", centroid_udf(filtered_df["geometry"]))
-        filtered_df.show(5)
+        # Calculate point data for each Multipolygon value which is also known as the Centroid
+        # TODO: Uncomment below lines after testing centroid_udf function in EMR Serverless
+        # logger.info("transform_data_entity:Adding point column - by adding extra column after flattening ")
+        # pivot_df = pivot_df.withColumn("point", centroid_udf(pivot_df["geometry"]))
+        # pivot_df.show(5)
 
         # 3) Normalise column names (kebab-case -> snake_case)
+        logger.info(f"transform_data_entity: Normalising column names from kebab-case to snake_case")
         for column in pivot_df.columns:
             if "-" in column:
                 pivot_df = pivot_df.withColumnRenamed(column, column.replace("-", "_"))
 
         # 4) Set dataset and drop legacy geojson if present
+        logger.info(f"transform_data_entity: Setting dataset column to {data_set} and dropping geojson column if exists")
         pivot_df = pivot_df.withColumn("dataset", lit(data_set))
         if "geojson" in pivot_df.columns:
             pivot_df = pivot_df.drop("geojson")
 
         # 5) Organisation join to fetch organisation_entity
+        logger.info(f"transform_data_entity: Joining organisation to get organisation_entity")
         organisation_df = spark.read.option("header", "true").csv("s3://development-collection-data/organisation/dataset/organisation.csv")
         pivot_df = pivot_df.join(
             organisation_df,
@@ -115,12 +121,7 @@ def transform_data_entity(df,data_set,spark):
         ).drop("organisation")
 
         # 6) Join typology from dataset specification
-        dataset_df = spark.read.option("header", "true").csv("s3://development-collection-data/emr-data-processing/specification/dataset/dataset.csv")
-        pivot_df = pivot_df.join(
-            dataset_df,
-            pivot_df.dataset == dataset_df.dataset,
-            "left"
-        ).select(pivot_df["*"], dataset_df["typology"])
+        # (Step removed: typology already retrieved earlier)
 
         # 7) Build json from any non-standard columns
         standard_columns = {
