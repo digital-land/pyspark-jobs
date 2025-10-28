@@ -9,7 +9,7 @@ from jobs.transform_collection_data import (transform_data_fact, transform_data_
                                       transform_data_issue, transform_data_entity) 
 from jobs.dbaccess.postgres_connectivity import (create_table, write_to_postgres, get_aws_secret,
                                                   create_and_prepare_staging_table, commit_staging_to_production,
-                                                  ENTITY_TABLE_NAME)
+                                                  calculate_centroid_wkt, ENTITY_TABLE_NAME)
 from jobs.utils.s3_format_utils import s3_csv_format
 from jobs.utils.s3_utils import cleanup_dataset_data
 from jobs.csv_s3_writer import write_dataframe_to_csv_s3, import_csv_to_aurora, cleanup_temp_csv_files
@@ -483,6 +483,21 @@ def _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env, use_staging
                 target_table=staging_table_name  # Write to staging table
             )
             logger.info(f"_write_dataframe_to_postgres_jdbc: Successfully wrote data to staging table '{staging_table_name}'")
+
+            # Step 2b: Calculate the centroid of the multiplygon data into the point field
+            logger.info(
+                "_write_dataframe_to_postgres_jdbc: "
+                f"Calculating centroids for multipolygon geometries in {staging_table_name}"
+            )
+            rows_updated = calculate_centroid_wkt(
+                conn_params,
+                target_table=staging_table_name  # Update centroids in staging table
+            )
+            logger.info(
+                "_write_dataframe_to_postgres_jdbc: "
+                f"Updated {rows_updated} centroids in staging table"
+            )
+
             
             # Step 3: Atomically commit staging data to production entity table
             logger.info("_write_dataframe_to_postgres_jdbc: Step 3/3 - Committing staging data to production entity table")

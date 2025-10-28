@@ -780,6 +780,99 @@ def _prepare_geometry_columns(df):
     
     return processed_df
 
+def calculate_centroid_wkt(conn_params, target_table=None, max_retries=3):
+    """
+    Calculate centroids for geometries and update the point column.
+    Uses PostGIS ST_PointOnSurface for more accurate centroid calculation that 
+    ensures the point falls within the geometry.
+    
+    Args:
+        conn_params (dict): Database connection parameters
+        target_table (str): Optional target table name. If provided, updates this table
+                           instead of the main table. Used for staging table operations.
+        max_retries (int): Maximum number of retry attempts
+    
+    Returns:
+        int: Number of rows updated with calculated centroids
+    """
+    if pg8000:
+        from pg8000.exceptions import InterfaceError
+    else:
+        logger.warning("calculate_centroid_wkt: pg8000 not available")
+        InterfaceError = Exception
+    
+    # Determine which table to update
+    table_name = target_table if target_table else dbtable_name
+    
+    conn = None
+    cur = None
+    
+    for attempt in range(max_retries):
+        try:
+            logger.info(
+                f"calculate_centroid_wkt: Connecting to database to calculate "
+                f"centroids for table '{table_name}'"
+            )
+            conn = pg8000.connect(**conn_params)
+            cur = conn.cursor()
+            
+            # Set longer timeout for potentially long-running geometry operations
+            cur.execute("SET statement_timeout = '300000';")  # 5 minutes
+            
+            sql_update_pos = f"""
+            UPDATE {table_name} t
+            SET point = ST_PointOnSurface(
+                CASE 
+                    WHEN NOT ST_IsValid(t.geometry) 
+                    THEN ST_MakeValid(t.geometry) 
+                    ELSE t.geometry 
+                END
+            )::geometry(Point, 4326)
+            WHERE point IS NULL AND geometry IS NOT NULL;
+            """
+            
+            cur.execute(sql_update_pos)
+            rows_updated = cur.rowcount
+            conn.commit()
+            
+            logger.info(f"calculate_centroid_wkt: Updated {rows_updated} rows with calculated centroids")
+            return rows_updated
+            
+        except InterfaceError as e:
+            error_str = str(e).lower()
+            if attempt < max_retries - 1:
+                retry_delay = min(5 * (2 ** attempt), 30)
+                logger.error(f"calculate_centroid_wkt: Network error (attempt {attempt + 1}/{max_retries}): {e}")
+                logger.info(f"calculate_centroid_wkt: Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                raise
+        
+        except Exception as e:
+            if attempt < max_retries - 1:
+                retry_delay = min(5 * (2 ** attempt), 30)
+                logger.error(f"calculate_centroid_wkt: Error (attempt {attempt + 1}/{max_retries}): {e}")
+                logger.info(f"calculate_centroid_wkt: Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                raise
+                
+        finally:
+            if cur:
+                try:
+                    cur.close()
+                except Exception as e:
+                    logger.warning(f"calculate_centroid_wkt: Error closing cursor: {e}")
+            if conn:
+                try:
+                    conn.close()
+                except Exception as e:
+                    logger.warning(f"calculate_centroid_wkt: Error closing connection: {e}")
+            conn = None
+            cur = None
+
+
+
 # -------------------- PostgreSQL Writer --------------------
 
 ##writing to postgres db
