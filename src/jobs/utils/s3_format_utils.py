@@ -1,5 +1,5 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col, udf
+from pyspark.sql.functions import from_json, col
 from pyspark.sql.types import MapType, StringType
 import json
 
@@ -19,7 +19,6 @@ def parse_possible_json(val):
     except Exception:
         return None
 
-parse_possible_json_udf = udf(parse_possible_json, MapType(StringType(), StringType()))
 detected_json_cols = []
 def s3_csv_format(df):
     # Automatically detect string columns that contain JSON by sampling non-null values
@@ -43,8 +42,12 @@ def s3_csv_format(df):
     for json_col in detected_json_cols:
         sample = df.select(json_col).dropna().limit(1).collect()
         if sample:
-            # Use the generalised UDF to parse possible JSON
-            df = df.withColumn(f"{json_col}_map", parse_possible_json_udf(col(json_col)))
+            # Remove outer quotes and double quotes using Spark SQL functions
+            cleaned_col = col(json_col)
+            cleaned_col = cleaned_col.substr(2, cleaned_col.length()-2).when(cleaned_col.startswith('"') & cleaned_col.endswith('"'), cleaned_col).otherwise(cleaned_col)
+            cleaned_col = cleaned_col.replace('""', '"')
+            # Parse JSON using from_json
+            df = df.withColumn(f"{json_col}_map", from_json(col(json_col), MapType(StringType(), StringType())))
             # Get all keys in this JSON column
             keys = df.select(f"{json_col}_map").rdd \
                 .flatMap(lambda row: row[f"{json_col}_map"].keys() if row[f"{json_col}_map"] else []) \
@@ -54,5 +57,4 @@ def s3_csv_format(df):
                 df = df.withColumn(f"{json_col}_{key}", col(f"{json_col}_map").getItem(key))
             # Drop the original and map columns
             df = df.drop(json_col, f"{json_col}_map")
-
-        return df
+    return df
