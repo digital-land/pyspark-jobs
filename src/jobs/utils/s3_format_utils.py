@@ -1,5 +1,5 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col, when, expr
+from pyspark.sql.functions import from_json, col, when, expr, regexp_replace
 from pyspark.sql.types import MapType, StringType
 import json
 import logging
@@ -54,8 +54,10 @@ def s3_csv_format(df):
                 (col(json_col).startswith('"') & col(json_col).endswith('"')),
                 expr(f"substring({json_col}, 2, length({json_col}) - 2)")
             ).otherwise(col(json_col))
+            logger.debug(f"Cleaned column expression for '{json_col}': {cleaned_col}")
             # Replace double quotes with single quotes
-            cleaned_col = cleaned_col.replace('""', '"')
+            cleaned_col = regexp_replace(cleaned_col, '""', '"')
+            logger.debug(f"Final cleaned column for '{json_col}': {cleaned_col}")
             # Parse JSON using from_json
             df = df.withColumn(f"{json_col}_map", from_json(col(json_col), MapType(StringType(), StringType())))
             # Get all keys in this JSON column
