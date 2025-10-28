@@ -265,7 +265,7 @@ def write_to_s3(df, output_path, dataset_name, table_name):
 df_entity = None
 @log_execution_time
 def write_to_s3_format(df, output_path, dataset_name, table_name):
-    output_path=f"s3://{env}-collection-data/dataset/temp-csv/"
+    output_path=f"s3://{env}-collection-data/dataset/temp/{dataset_name}.csv"
     try:   
         logger.info(f"write_to_s3_format: Writing data to S3 at {output_path} for dataset {dataset_name}") 
         
