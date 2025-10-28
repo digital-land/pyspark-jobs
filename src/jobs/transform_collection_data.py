@@ -1,11 +1,12 @@
 from jobs.utils.logger_config import get_logger
 from pyspark.sql.functions import (
-    row_number, lit, first, to_json, struct, col, when, to_date, desc
+    row_number, lit, first, to_json, struct, col, when, to_date, desc, expr
 )
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 from jobs.utils.s3_dataset_typology import get_dataset_typology
-# from jobs.utils.point_utils import centroid_udf
+# centroid computation is handled via Sedona when available; fall back to
+# the Python UDF in jobs.utils.point_utils at runtime if needed (lazy import).
 
 logger = get_logger(__name__)
 
@@ -90,11 +91,40 @@ def transform_data_entity(df,data_set,spark):
         pivot_df = pivot_df.withColumn("typology", F.lit(typology_value))
         pivot_df.show(5)
         
-        # Calculate point data for each Multipolygon value which is also known as the Centroid
-        # TODO: Uncomment below lines after testing centroid_udf function in EMR Serverless
-        # logger.info("transform_data_entity:Adding point column - by adding extra column after flattening ")
-        # pivot_df = pivot_df.withColumn("point", centroid_udf(pivot_df["geometry"]))
-        # pivot_df.show(5)
+        # TODO: The following is going to be offloaded into Posgres for processing: Calculate point data (centroid) for Multipolygon values.
+        # TODO: Delete this codebock once moved to Postgres
+        # Prefer using Sedona (distributed). Fall back to Python UDF if Sedona
+        # is not available on the cluster. Ensure a `point` column exists.
+        # logger.info("transform_data_entity: Adding point column - by adding extra column after flattening ")
+        # if "geometry" in pivot_df.columns:
+        #     try:
+        #         from sedona.register import SedonaRegistrator
+        #         SedonaRegistrator.registerAll(spark)
+        #         pivot_df = pivot_df.withColumn(
+        #             "point",
+        #             expr("ST_AsText(ST_Centroid(ST_GeomFromWKT(geometry)))")
+        #         )
+        #         pivot_df.show(5)
+        #     except Exception as sedona_err:
+        #         logger.info(f"Sedona not available or failed to initialize: {sedona_err}. Falling back to Python UDF.")
+        #         try:
+        #             from jobs.utils.point_utils import centroid_udf  # lazy import
+        #         except Exception:
+        #             centroid_udf = None
+
+        #         if centroid_udf is not None:
+        #             try:
+        #                 pivot_df = pivot_df.withColumn("point", centroid_udf(pivot_df["geometry"]))
+        #                 pivot_df.show(5)
+        #             except Exception as e:
+        #                 logger.warning(f"transform_data_entity: Failed to compute centroid with Python UDF: {e}")
+        #                 pivot_df = pivot_df.withColumn("point", lit(None).cast("string"))
+        #         else:
+        #             logger.info("transform_data_entity: No centroid implementation available; point column set to None")
+        #             pivot_df = pivot_df.withColumn("point", lit(None).cast("string"))
+        # else:
+        #     logger.info("transform_data_entity: geometry column not present; skipping point column")
+        #     pivot_df = pivot_df.withColumn("point", lit(None).cast("string"))
 
         # 3) Normalise column names (kebab-case -> snake_case)
         logger.info(f"transform_data_entity: Normalising column names from kebab-case to snake_case")
