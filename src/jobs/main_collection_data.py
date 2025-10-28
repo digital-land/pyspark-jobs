@@ -294,10 +294,13 @@ def write_to_s3_format(df, output_path, dataset_name, table_name):
             global df_entity
             df_entity.show(5) if df_entity else logger.info("write_to_s3_format: df_entity is None")
             df_entity = df
+
+        logger.info(f"write_to_s3_format: Invoking s3_csv_format for dataset {dataset_name}") 
+
         df = s3_csv_format(df)
         # Write to S3 with multilevel partitioning
         # Use "append" mode since we already cleaned up the specific dataset partition
-        
+        df.show(5)
         df.coalesce(1) \
           .write \
           .mode("overwrite")  \
