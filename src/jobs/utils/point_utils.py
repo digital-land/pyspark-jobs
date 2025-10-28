@@ -29,3 +29,15 @@ def get_centroid_wkt(geom_wkt):
         return centroid.wkt
     except Exception:
         return None
+
+
+try:
+    # Create a PySpark UDF if PySpark is available. If PySpark isn't
+    # installed in the environment (common in lightweight test runners)
+    # just expose None so importing this module doesn't fail.
+    from pyspark.sql.functions import udf
+    from pyspark.sql.types import StringType
+
+    centroid_udf = udf(get_centroid_wkt, StringType())
+except Exception:
+    centroid_udf = None
