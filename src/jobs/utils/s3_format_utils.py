@@ -2,6 +2,10 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import from_json, col
 from pyspark.sql.types import MapType, StringType
 import json
+import logging
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 # Helper function to clean and parse double-escaped JSON strings
 def parse_possible_json(val):
@@ -24,24 +28,27 @@ def s3_csv_format(df):
     # Automatically detect string columns that contain JSON by sampling non-null values
     candidate_string_cols = [f.name for f in df.schema if isinstance(f.dataType, StringType)]
     detected_json_cols = []
+    logger.info(f"Candidate string columns: {candidate_string_cols}")
     for c in candidate_string_cols:
         sample = df.select(c).dropna().limit(1).collect()
         if sample:
             if parse_possible_json(sample[0][0]):
                 detected_json_cols.append(c)
+                logger.info(f"Detected JSON column: {c}")
 
-    # Identify and print columns with JSON data
+    # Identify and log columns with JSON data
     for json_col in detected_json_cols:
         sample = df.select(json_col).dropna().limit(1).collect()
         if sample:
             parsed = parse_possible_json(sample[0][0])
             if parsed:
-                print(f"Column '{json_col}' contains JSON data. Example:")
-                print(json.dumps(parsed, indent=2))
+                logger.info(f"Column '{json_col}' contains JSON data. Example:")
+                logger.debug(json.dumps(parsed, indent=2))
 
     for json_col in detected_json_cols:
         sample = df.select(json_col).dropna().limit(1).collect()
         if sample:
+            logger.info(f"Processing JSON column: {json_col}")
             # Remove outer quotes and double quotes using Spark SQL functions
             cleaned_col = col(json_col)
             cleaned_col = cleaned_col.substr(2, cleaned_col.length()-2).when(cleaned_col.startswith('"') & cleaned_col.endswith('"'), cleaned_col).otherwise(cleaned_col)
@@ -52,9 +59,12 @@ def s3_csv_format(df):
             keys = df.select(f"{json_col}_map").rdd \
                 .flatMap(lambda row: row[f"{json_col}_map"].keys() if row[f"{json_col}_map"] else []) \
                 .distinct().collect()
+            logger.info(f"Keys found in column '{json_col}': {keys}")
             # Add each key as a new column
             for key in keys:
+                logger.debug(f"Adding column: {json_col}_{key}")
                 df = df.withColumn(f"{json_col}_{key}", col(f"{json_col}_map").getItem(key))
             # Drop the original and map columns
             df = df.drop(json_col, f"{json_col}_map")
+    logger.info("Completed S3 CSV format transformation.")
     return df
