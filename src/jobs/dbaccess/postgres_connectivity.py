@@ -85,7 +85,7 @@ def get_aws_secret(environment="development"):
         logger.info(f"Attempting to retrieve PostgreSQL secrets using EMR-compatible method for environment: {environment}")
         
         # Construct secret path based on environment
-        secret_path = f"{environment}-pd-batch/postgres-secret"
+        secret_path = f"/{environment}-pd-batch/postgres-secret"
         logger.info(f"Using secret path: {secret_path}")
         
         aws_secrets_json = get_secret_emr_compatible(secret_path)
