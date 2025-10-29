@@ -10,7 +10,7 @@ from jobs.transform_collection_data import (transform_data_fact, transform_data_
 from jobs.dbaccess.postgres_connectivity import (create_table, write_to_postgres, get_aws_secret,
                                                   create_and_prepare_staging_table, commit_staging_to_production,
                                                   calculate_centroid_wkt, ENTITY_TABLE_NAME)
-from jobs.utils.point_sedona_test import sedona_test
+from jobs.utils.point_sedona import sedona_test
 from jobs.utils.s3_format_utils import s3_csv_format
 from jobs.utils.s3_utils import cleanup_dataset_data
 from jobs.csv_s3_writer import write_dataframe_to_csv_s3, import_csv_to_aurora, cleanup_temp_csv_files
@@ -589,8 +589,9 @@ def main(args):
         if spark is None:
             raise Exception("Failed to create Spark session")
         logger.info(f"Main: Spark session created successfully for dataset: {data_set}")
+        
         #TODO :remove below line after testing
-        sedona_test(spark)
+        sedona_test()
 
         if(load_type == 'full'):
             #invoke full load logic
