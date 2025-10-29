@@ -19,5 +19,8 @@ typing-extensions>=4.0.0
 # Geospatial operations
 shapely>=2.0.7
 
+# Apache Sedona for geospatial Spark integration
+apache-sedona==1.8.0
+
 # Package metadata
 setuptools>=65.0.0
