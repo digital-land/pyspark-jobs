@@ -3,7 +3,15 @@ from sedona.spark import SedonaContext
 
 
 def sedona_test():
-    sedona = SedonaContext.create(SparkSession.builder)
+    # Create (or reuse) the SparkSession first
+    spark = SparkSession.builder.getOrCreate()
+
+    # Wrap it with Sedona; this wires up SQL functions/UDFs
+    sedona = SedonaContext.create(spark)
+
+
+    # Minimal fail‑fast check (optional but helpful in Airflow logs)
+    sedona.sql("SELECT ST_Point(0,0)").collect()
 
     # Create a more detailed spatial analysis
     df = sedona.sql("""
