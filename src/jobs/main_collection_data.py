@@ -40,6 +40,7 @@ def initialize_logging(args):
 )
 
 logger = get_logger(__name__)
+df_entity = None
 
 # -------------------- Spark Session --------------------
 @log_execution_time
