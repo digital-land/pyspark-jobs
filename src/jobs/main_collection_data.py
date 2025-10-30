@@ -11,7 +11,7 @@ from jobs.dbaccess.postgres_connectivity import (create_table, write_to_postgres
                                                   create_and_prepare_staging_table, commit_staging_to_production,
                                                   calculate_centroid_wkt, ENTITY_TABLE_NAME)
 #from jobs.utils.point_sedona import sedona_test
-from jobs.utils.s3_format_utils import s3_csv_format
+from jobs.utils.s3_format_utils import flatten_s3_json, s3_csv_format
 from jobs.utils.s3_utils import cleanup_dataset_data
 from jobs.csv_s3_writer import write_dataframe_to_csv_s3, import_csv_to_aurora, cleanup_temp_csv_files
 #import sqlite3
@@ -267,7 +267,7 @@ df_entity = None
 @log_execution_time
 def write_to_s3_format(df, output_path, dataset_name, table_name):
     output_path=f"s3://development-pd-batch-emr-studio-ws-bucket/csv/{dataset_name}.csv"
-    output_path1=f"s3://development-pd-batch-emr-studio-ws-bucket/csv/{dataset_name}.json"
+    output_path1=f"s3://development-pd-batch-emr-studio-ws-bucket/json/{dataset_name}.json"
 
     #output_path=f"s3://{env}-collection-data/dataset/{dataset_name}_test.csv"
     try:   
@@ -301,17 +301,19 @@ def write_to_s3_format(df, output_path, dataset_name, table_name):
 
         logger.info(f"write_to_s3_format: Invoking s3_csv_format for dataset {dataset_name}") 
 
-        df = s3_csv_format(df)
+        df_csv = s3_csv_format(df)
         # Write to S3 with multilevel partitioning
         # Use "append" mode since we already cleaned up the specific dataset partition
-        df.show(5)
-        df.coalesce(1) \
+        df_csv.show(5)
+        df_csv.coalesce(1) \
           .write \
           .mode("overwrite")  \
+          .option("header", "true") \
           .csv(output_path)
         
-        
-        df.coalesce(1) \
+        df_json=flatten_s3_json(df)
+        df_json.show(5)
+        df_json.coalesce(1) \
           .write \
           .mode("overwrite") \
           .json(output_path1)
