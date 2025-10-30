@@ -502,7 +502,8 @@ def main(args):
                     logger.info(f"Main: Schema information for the loaded dataframe")
                     df.show(5)
                     if(table_name== 'entity'):
-                        write_to_s3_format(processed_df, f"{output_path}{table_name}", data_set,table_name) 
+                        logger.info(f"Main: Invocation of write_to_s3_format method for {table_name} table")
+                        write_to_s3_format(df, f"{output_path}{table_name}", data_set,table_name) 
                     #revise this code and for converting spark session as singleton in future
                     processed_df = transform_data(df,table_name,data_set,spark)
                     logger.info(f"Main: Transforming data for {table_name} table completed")
