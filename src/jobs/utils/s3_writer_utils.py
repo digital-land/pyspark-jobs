@@ -1,4 +1,4 @@
-from build.lib.jobs.transform_collection_data import transform_data_issue
+from jobs.transform_collection_data import transform_data_issue
 from jobs.main_collection_data import load_metadata
 from jobs.transform_collection_data import transform_data_entity, transform_data_fact, transform_data_fact_res
 from jobs.utils.s3_dataset_typology import get_dataset_typology
