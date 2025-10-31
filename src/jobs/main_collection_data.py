@@ -136,7 +136,6 @@ def load_metadata(uri: str) -> dict:
         logger.error(f"Error loading metadata from {uri}: {e}")
         raise
 
-
 # -------------------- Data Reader --------------------
 def read_data(spark, input_path):
     try:

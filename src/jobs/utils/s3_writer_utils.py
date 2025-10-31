@@ -1,5 +1,4 @@
 from jobs.transform_collection_data import transform_data_issue
-from jobs.main_collection_data import load_metadata
 from jobs.transform_collection_data import transform_data_entity, transform_data_fact, transform_data_fact_res
 from jobs.utils.s3_dataset_typology import get_dataset_typology
 from jobs.utils.s3_format_utils import flatten_s3_json, s3_csv_format
@@ -141,6 +140,7 @@ def transform_data_entity_format(df,data_set,spark):
 @log_execution_time
 def transform_data_format(df, schema_name, data_set,spark):      
     try:
+        from jobs.main_collection_data import load_metadata
         dataset_json_transformed_path = "config/transformed_source.json"
         logger.info(f"transform_data_format: Transforming data for table: {schema_name} using schema from {dataset_json_transformed_path}")
         json_data = load_metadata(dataset_json_transformed_path)
