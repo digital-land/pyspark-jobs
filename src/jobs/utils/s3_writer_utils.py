@@ -46,7 +46,7 @@ def transform_data_entity_format(df,data_set,spark):
         typology_value = get_dataset_typology(data_set)
         logger.info(f"transform_data_entity: Fetched typology value from dataset specification for dataset: {data_set} is {typology_value}")
 
-        pivot_df = pivot_df.withColumn("typology", F.lit(typology_value))
+        pivot_df = pivot_df.withColumn("typology", lit(typology_value))
         pivot_df.show(5)
         
         
