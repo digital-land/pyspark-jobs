@@ -1,5 +1,5 @@
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import from_json, col
+from pyspark.sql.functions import from_json, col, schema_of_json
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, ArrayType
 
 def flatten_json_column(df: DataFrame) -> DataFrame:
@@ -15,14 +15,12 @@ def flatten_json_column(df: DataFrame) -> DataFrame:
     if "json" not in df.columns:
         return df
     
-    # Infer schema from the json column
-    schema = df.select(from_json(col("json"), "string").alias("parsed")).schema.fields[0].dataType
+    # Infer schema from a sample JSON string
+    sample_json = df.select(col("json")).filter(col("json").isNotNull()).first()
+    if not sample_json or not sample_json[0]:
+        return df
     
-    # If schema inference didn't work, sample and infer
-    if isinstance(schema, StructType):
-        json_schema = schema
-    else:
-        json_schema = df.select(from_json(col("json"), df.select(col("json")).first()[0]).alias("parsed")).schema.fields[0].dataType
+    json_schema = schema_of_json(sample_json[0])
     
     # Parse JSON and flatten
     df_parsed = df.withColumn("parsed", from_json(col("json"), json_schema))

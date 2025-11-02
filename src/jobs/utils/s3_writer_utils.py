@@ -347,7 +347,7 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
         temp_df = df
 
         logger.info(f"write_to_s3_format: Flattening json data for: {dataset_name}") 
-        flatten_json_column(temp_df)
+        temp_df = flatten_json_column(temp_df)
         temp_df.show(5)
 
         # Write to S3 with multilevel partitioning
