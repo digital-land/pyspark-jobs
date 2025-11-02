@@ -24,13 +24,6 @@ def calculate_centroid(df: DataFrame) -> DataFrame:
     # Create temp view and use SQL to calculate centroid
     df.createOrReplaceTempView("temp_geometry")
     
-    # Debug: Test with actual geometry data
-    sample = df.select("geometry").filter("geometry IS NOT NULL").first()
-    if sample:
-        print(f"Sample geometry: {sample[0][:100]}...")
-        test_geom = df.sparkSession.sql(f"SELECT ST_GeomFromWKT('{sample[0][:200]}') as geom").collect()
-        print(f"Parsed geometry: {test_geom}")
-    
     return df.sparkSession.sql("""
         SELECT *, 
                ST_AsText(
