@@ -12,7 +12,7 @@ from pyspark.sql.functions import (
     row_number, lit, first, to_json, struct, col, when, to_date, desc, expr
 )
 from pyspark.sql.window import Window
-
+from jobs.utils.flatten_csv import flatten_json_column, flatten_geojson_column
 
 logger = get_logger(__name__)
 
@@ -138,32 +138,34 @@ def transform_data_entity_format(df,data_set,spark):
         logger.error(f"transform_data_entity:Error occurred - {e}")
         raise
 @log_execution_time
-def transform_data_format(df, schema_name, data_set,spark):      
+
+
+def normalise_dataframe_schema(df, schema_name, data_set,spark):      
     try:
         from jobs.main_collection_data import load_metadata
         dataset_json_transformed_path = "config/transformed_source.json"
-        logger.info(f"transform_data_format: Transforming data for table: {schema_name} using schema from {dataset_json_transformed_path}")
+        logger.info(f"normalise_dataframe_schema: Transforming data for table: {schema_name} using schema from {dataset_json_transformed_path}")
         json_data = load_metadata(dataset_json_transformed_path)
-        logger.info(f"transform_data_format: Transforming data with schema with json data: {json_data}")
+        logger.info(f"normalise_dataframe_schema: Transforming data with schema with json data: {json_data}")
         df.show(5)
 
         # Extract the list of fields
         fields = []
         if (schema_name == 'fact' or schema_name == 'fact_res' or schema_name == 'entity'):
             fields = json_data.get("schema_fact_res_fact_entity", [])
-            logger.info(f"transform_data_format: Fields to select from json data {fields} for {schema_name}")
+            logger.info(f"normalise_dataframe_schema: Fields to select from json data {fields} for {schema_name}")
         elif (schema_name == 'issue'):
             fields = json_data.get("schema_issue", [])
-            logger.info(f"transform_data_format: Fields to select from json data {fields} for {schema_name}")
+            logger.info(f"normalise_dataframe_schema: Fields to select from json data {fields} for {schema_name}")
 
         # Replace hyphens with underscores in column names
         for col in df.columns:
             if "-" in col:
                 new_col = col.replace("-", "_")
                 df = df.withColumnRenamed(col, new_col)
-        logger.info(f"transform_data_format: DataFrame columns after renaming hyphens: {df.columns}")
+        logger.info(f"normalise_dataframe_schema: DataFrame columns after renaming hyphens: {df.columns}")
         df.printSchema()
-        logger.info(f"transform_data_format: DataFrame schema after renaming hyphens")
+        logger.info(f"normalise_dataframe_schema: DataFrame schema after renaming hyphens")
         df.show(5)
 
         # Get actual DataFrame columns
@@ -171,12 +173,12 @@ def transform_data_format(df, schema_name, data_set,spark):
 
         # Find fields that are present in both DataFrame and json    
         if set(fields) == set(df.columns):
-            logger.info("transform_data_format: All fields are present in the DataFrame")
+            logger.info("normalise_dataframe_schema: All fields are present in the DataFrame")
         else:
-            logger.warning("transform_data_format: Some fields are missing in the DataFrame")
+            logger.warning("normalise_dataframe_schema: Some fields are missing in the DataFrame")
             
         if schema_name == 'entity':
-            logger.info("transform_data_format: Transforming data for Entity table")
+            logger.info("normalise_dataframe_schema: Transforming data for Entity table")
             df.show(5)
             return transform_data_entity_format(df,data_set,spark)        
         else:
@@ -188,68 +190,68 @@ def transform_data_format(df, schema_name, data_set,spark):
 
 
 
-# -------------------- S3 Writer Format--------------------
-def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
-    df = transform_data_format(df,table_name,dataset_name,spark)
-    logger.info(f"write_to_s3_format: DataFrame after transformation for dataset {dataset_name} and table {table_name}")
-    df.show(5)
-    output_path=f"s3://{env}-pd-batch-emr-studio-ws-bucket/csv/{dataset_name}.csv"
-    output_path1=f"s3://{env}-pd-batch-emr-studio-ws-bucket/json/{dataset_name}.json"
+# # -------------------- S3 Writer Format--------------------
+# def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
+#     df = normalise_dataframe_schema(df,table_name,dataset_name,spark)
+#     logger.info(f"write_to_s3_format: DataFrame after transformation for dataset {dataset_name} and table {table_name}")
+#     df.show(5)
+#     output_path=f"s3://{env}-pd-batch-emr-studio-ws-bucket/csv/{dataset_name}.csv"
+#     output_path1=f"s3://{env}-pd-batch-emr-studio-ws-bucket/json/{dataset_name}.json"
 
-    #output_path=f"s3://{env}-collection-data/dataset/{dataset_name}_test.csv"
-    try:   
-        logger.info(f"write_to_s3_format: Writing data to S3 at {output_path} for dataset {dataset_name}") 
+#     #output_path=f"s3://{env}-collection-data/dataset/{dataset_name}_test.csv"
+#     try:   
+#         logger.info(f"write_to_s3_format: Writing data to S3 at {output_path} for dataset {dataset_name}") 
         
-        # Check and clean up existing data for this dataset before writing
-        cleanup_summary = cleanup_dataset_data(output_path, dataset_name)
-        logger.info(f"write_to_s3_format: Cleaned up {cleanup_summary['objects_deleted']} objects for dataset '{dataset_name}'")
-        if cleanup_summary['errors']:
-            logger.warning(f"write_to_s3_format: Cleanup had {len(cleanup_summary['errors'])} errors: {cleanup_summary['errors']}")
-        logger.debug(f"write_to_s3_format: Full cleanup summary: {cleanup_summary}")
+#         # Check and clean up existing data for this dataset before writing
+#         cleanup_summary = cleanup_dataset_data(output_path, dataset_name)
+#         logger.info(f"write_to_s3_format: Cleaned up {cleanup_summary['objects_deleted']} objects for dataset '{dataset_name}'")
+#         if cleanup_summary['errors']:
+#             logger.warning(f"write_to_s3_format: Cleanup had {len(cleanup_summary['errors'])} errors: {cleanup_summary['errors']}")
+#         logger.debug(f"write_to_s3_format: Full cleanup summary: {cleanup_summary}")
 
-        # Add dataset as partition column
-        df = df.withColumn("dataset", lit(dataset_name))
+#         # Add dataset as partition column
+#         df = df.withColumn("dataset", lit(dataset_name))
                 
-        # Convert entry-date to date type and use it for partitioning       
-        # Calculate optimal partitions based on data size
-        row_count = df.count()
-        optimal_partitions = max(1, min(200, row_count // 1000000))  # ~1M records per partition
+#         # Convert entry-date to date type and use it for partitioning       
+#         # Calculate optimal partitions based on data size
+#         row_count = df.count()
+#         optimal_partitions = max(1, min(200, row_count // 1000000))  # ~1M records per partition
         
-        #adding time stamp to the dataframe for parquet file
-        df = df.withColumn("processed_timestamp", lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()))
-        logger.info(f"write_to_s3_format: DataFrame after adding processed_timestamp column")
-        df.show(5)
+#         #adding time stamp to the dataframe for parquet file
+#         df = df.withColumn("processed_timestamp", lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()))
+#         logger.info(f"write_to_s3_format: DataFrame after adding processed_timestamp column")
+#         df.show(5)
     
 
-        if table_name == 'entity':
-            global df_entity
-            df_entity.show(5) if df_entity else logger.info("write_to_s3_format: df_entity is None")
-            df_entity = df
+#         if table_name == 'entity':
+#             global df_entity
+#             df_entity.show(5) if df_entity else logger.info("write_to_s3_format: df_entity is None")
+#             df_entity = df
 
-        logger.info(f"write_to_s3_format: Invoking s3_csv_format for dataset {dataset_name}") 
+#         logger.info(f"write_to_s3_format: Invoking s3_csv_format for dataset {dataset_name}") 
 
-        df_csv = s3_csv_format(df)
-        # Write to S3 with multilevel partitioning
-        # Use "append" mode since we already cleaned up the specific dataset partition
-        df_csv.show(5)
-        df_csv.coalesce(1) \
-          .write \
-          .mode("overwrite")  \
-          .option("header", "true") \
-          .csv(output_path)
+#         df_csv = s3_csv_format(df)
+#         # Write to S3 with multilevel partitioning
+#         # Use "append" mode since we already cleaned up the specific dataset partition
+#         df_csv.show(5)
+#         df_csv.coalesce(1) \
+#           .write \
+#           .mode("overwrite")  \
+#           .option("header", "true") \
+#           .csv(output_path)
         
-        df_json=flatten_s3_json(df)
-        df_json.show(5)
-        df_json.coalesce(1) \
-          .write \
-          .mode("overwrite") \
-          .json(output_path1)
+#         df_json=flatten_s3_json(df)
+#         df_json.show(5)
+#         df_json.coalesce(1) \
+#           .write \
+#           .mode("overwrite") \
+#           .json(output_path1)
 
-        logger.info(f"write_to_s3_format: Successfully wrote {row_count} rows to {output_path} with {optimal_partitions} partitions")
+#         logger.info(f"write_to_s3_format: Successfully wrote {row_count} rows to {output_path} with {optimal_partitions} partitions")
 
-    except Exception as e:
-        logger.error(f"write_to_s3_format: Failed to write to S3: {e}", exc_info=True)
-        raise
+#     except Exception as e:
+#         logger.error(f"write_to_s3_format: Failed to write to S3: {e}", exc_info=True)
+#         raise
 
 # -------------------- S3 Writer --------------------
 df_entity = None
@@ -308,3 +310,68 @@ def write_to_s3(df, output_path, dataset_name, table_name):
         logger.error(f"write_to_s3: Failed to write to S3: {e}", exc_info=True)
         raise
 
+# -------------------- S3 Writer Format--------------------
+def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env,type):
+    csv_output_path=f"s3://{env}-pd-batch-emr-studio-ws-bucket/csv/{dataset_name}.csv"
+    json_output_path=f"s3://{env}-pd-batch-emr-studio-ws-bucket/json/{dataset_name}.json"
+
+    df = normalise_dataframe_schema(df,table_name,dataset_name,spark)
+    logger.info(f"write_to_s3_format: DataFrame after transformation for dataset {dataset_name} and table {table_name}")
+    df.show(5)
+
+    try:   
+        logger.info(f"write_to_s3_format: Writing data to S3 at {output_path} for dataset {dataset_name}") 
+        
+        # Check and clean up existing data for this dataset before writing
+        cleanup_summary = cleanup_dataset_data(output_path, dataset_name)
+        logger.info(f"write_to_s3_format: Cleaned up {cleanup_summary['objects_deleted']} objects for dataset '{dataset_name}'")
+        if cleanup_summary['errors']:
+            logger.warning(f"write_to_s3_format: Cleanup had {len(cleanup_summary['errors'])} errors: {cleanup_summary['errors']}")
+        logger.debug(f"write_to_s3_format: Full cleanup summary: {cleanup_summary}")
+
+        # Add dataset as partition column
+        logger.info(f"write_to_s3_format: Adding dataset column with value {dataset_name}")
+        df = df.withColumn("dataset", lit(dataset_name))
+        df.show(5)
+                     
+        # Calculate optimal partitions based on data size
+        logger.info(f"write_to_s3_format: Calculating optimal partitions based on data size")
+        row_count = df.count()
+        optimal_partitions = max(1, min(200, row_count // 1000000))  # ~1M records per partition
+        
+        # Adding time stamp to the dataframe for parquet file
+        df = df.withColumn("processed_timestamp", lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()))
+        logger.info(f"write_to_s3_format: DataFrame after adding processed_timestamp column")
+        df.show(5)
+
+        temp_df = df
+
+        logger.info(f"write_to_s3_format: Flattening json data for: {dataset_name}") 
+        flatten_json_column(temp_df)
+        temp_df.show(5)
+
+        # Write to S3 with multilevel partitioning
+        # Use "append" mode since we already cleaned up the specific dataset partition
+        logger.info(f"write_to_s3_format: Writing csv data for: {dataset_name}") 
+        temp_df.show(5)
+        temp_df.coalesce(1) \
+          .write \
+          .mode("overwrite")  \
+          .option("header", "true") \
+          .csv(csv_output_path)
+
+        # Write JSON data
+        
+        logger.info(f"write_to_s3_format: Writing json data for: {dataset_name}") 
+        temp_df.show(5)
+        temp_df.coalesce(1) \
+          .write \
+          .mode("overwrite")  \
+          .option("header", "true") \
+          .json(json_output_path)
+
+        logger.info(f"write_to_s3_format: csv and json files successfully written for dataset {dataset_name}")
+
+    except Exception as e:
+        logger.error(f"write_to_s3_format: Failed to write to S3: {e}", exc_info=True)
+        raise
