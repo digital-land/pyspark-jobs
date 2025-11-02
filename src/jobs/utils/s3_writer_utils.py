@@ -348,7 +348,7 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
         df.show(5)
 
         logger.info(f"write_to_s3_format: Invocation of calculate_centroid method for {table_name} table")
-        calculate_centroid(df)
+        df = calculate_centroid(df)
         df.show(5)
 
         temp_df = df
