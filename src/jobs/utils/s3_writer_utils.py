@@ -343,9 +343,9 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
         optimal_partitions = max(1, min(200, row_count // 1000000))  # ~1M records per partition
         
         # Adding time stamp to the dataframe for parquet file
-        df = df.withColumn("processed_timestamp", lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()))
-        logger.info(f"write_to_s3_format: DataFrame after adding processed_timestamp column")
-        df.show(5)
+        # df = df.withColumn("processed_timestamp", lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()))
+        # logger.info(f"write_to_s3_format: DataFrame after adding processed_timestamp column")
+        # df.show(5)
 
         logger.info(f"write_to_s3_format: Invocation of calculate_centroid method for {table_name} table")
         df = calculate_centroid(df)

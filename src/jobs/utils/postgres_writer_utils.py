@@ -61,19 +61,18 @@ def _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env, use_staging
             logger.info(f"_write_dataframe_to_postgres_jdbc: Successfully wrote data to staging table '{staging_table_name}'")
 
             # Step 2b: Calculate the centroid of the multiplygon data into the point field
-            logger.info(
-                "_write_dataframe_to_postgres_jdbc: "
-                f"Calculating centroids for multipolygon geometries in {staging_table_name}"
-            )
-            rows_updated = calculate_centroid_wkt(
-                conn_params,
-                target_table=staging_table_name  # Update centroids in staging table
-            )
-            logger.info(
-                "_write_dataframe_to_postgres_jdbc: "
-                f"Updated {rows_updated} centroids in staging table"
-            )
-
+            # logger.info(
+            #     "_write_dataframe_to_postgres_jdbc: "
+            #     f"Calculating centroids for multipolygon geometries in {staging_table_name}"
+            # )
+            # rows_updated = calculate_centroid_wkt(
+            #     conn_params,
+            #     target_table=staging_table_name  # Update centroids in staging table
+            # )
+            # logger.info(
+            #     "_write_dataframe_to_postgres_jdbc: "
+            #     f"Updated {rows_updated} centroids in staging table"
+            # )
             
             # Step 3: Atomically commit staging data to production entity table
             logger.info("_write_dataframe_to_postgres_jdbc: Step 3/3 - Committing staging data to production entity table")
