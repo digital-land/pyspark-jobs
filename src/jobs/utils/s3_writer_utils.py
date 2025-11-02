@@ -311,7 +311,7 @@ def write_to_s3(df, output_path, dataset_name, table_name):
         raise
 
 # -------------------- S3 Writer Format--------------------
-def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env,type):
+def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
     csv_output_path=f"s3://{env}-pd-batch-emr-studio-ws-bucket/csv/{dataset_name}.csv"
     json_output_path=f"s3://{env}-pd-batch-emr-studio-ws-bucket/json/{dataset_name}.json"
 
