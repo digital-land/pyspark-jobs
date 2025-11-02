@@ -14,6 +14,9 @@ def calculate_centroid(df: DataFrame) -> DataFrame:
     Returns:
         DataFrame with added 'point' column containing centroid as WKT point
     """
+    # Initialize Sedona context to register spatial functions
+    sedona = SedonaContext.create(df.sparkSession)
+    
     return df.withColumn(
         "point",
         expr("ST_AsText(ST_Centroid(ST_GeomFromWKT(geometry)))")

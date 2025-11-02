@@ -347,7 +347,7 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
         logger.info(f"write_to_s3_format: DataFrame after adding processed_timestamp column")
         df.show(5)
 
-        logger.info(f"Main: Invocation of calculate_centroid method for {table_name} table")
+        logger.info(f"write_to_s3_format: Invocation of calculate_centroid method for {table_name} table")
         calculate_centroid(df)
         df.show(5)
 
