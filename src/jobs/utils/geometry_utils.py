@@ -17,14 +17,22 @@ def calculate_centroid(df: DataFrame) -> DataFrame:
     # Initialize Sedona context to register spatial functions
     SedonaContext.create(df.sparkSession)
     
+    # Drop existing point column if present
+    if 'point' in df.columns:
+        df = df.drop('point')
+    
     # Create temp view and use SQL to calculate centroid
     df.createOrReplaceTempView("temp_geometry")
+    
+    # Debug: Check if ST functions work
+    test = df.sparkSession.sql("SELECT ST_Point(0.0, 0.0) as test_point").collect()
+    print(f"Sedona test: {test}")
     
     return df.sparkSession.sql("""
         SELECT *, 
                ST_AsText(
                    ST_Centroid(
-                       ST_GeomFromText(geometry)
+                       ST_GeomFromWKT(geometry)
                    )
                ) as point
         FROM temp_geometry
