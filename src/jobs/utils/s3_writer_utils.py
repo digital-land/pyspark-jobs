@@ -14,6 +14,9 @@ from pyspark.sql.functions import (
 from pyspark.sql.window import Window
 from jobs.utils.flatten_csv import flatten_json_column, flatten_geojson_column
 
+# Import geometry utilities
+from jobs.utils.geometry_utils import calculate_centroid
+
 logger = get_logger(__name__)
 
 df_entity = None
@@ -342,6 +345,10 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
         # Adding time stamp to the dataframe for parquet file
         df = df.withColumn("processed_timestamp", lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()))
         logger.info(f"write_to_s3_format: DataFrame after adding processed_timestamp column")
+        df.show(5)
+
+        logger.info(f"Main: Invocation of calculate_centroid method for {table_name} table")
+        calculate_centroid(df)
         df.show(5)
 
         temp_df = df
