@@ -26,6 +26,9 @@ from pyspark.sql.window import Window
 from jobs.utils.logger_config import setup_logging, get_logger, log_execution_time, set_spark_log_level
 from jobs.utils.s3_writer_utils import write_to_s3, write_to_s3_format
 
+# Import geometry utilities
+from jobs.utils.geometry_utils import calculate_centroid
+
 #from utils.path_utils import load_json_from_repo
 
 # -------------------- Logging Setup --------------------
@@ -501,8 +504,11 @@ def main(args):
                     logger.info(f"Main: Schema information for the loaded dataframe")
                     df.show(5)
                     if(table_name== 'entity'):
-                        logger.info(f"Main: Invocation of write_to_s3_format method for {table_name} table")
+                        logger.info(f"Main: Invocation of calculate_centroid method for {table_name} table")
+                        calculate_centroid(df)
+                        df.show(5)
 
+                        logger.info(f"Main: Invocation of write_to_s3_format method for {table_name} table")
                         write_to_s3_format(df, f"{output_path}{table_name}", data_set,table_name,spark,env)
 
                     #TODO: revise this code and for converting spark session as singleton in future

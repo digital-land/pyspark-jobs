@@ -1,8 +1,25 @@
+from pyspark.sql import DataFrame
+from pyspark.sql.functions import expr
 from pyspark.sql import SparkSession
 from sedona.spark import SedonaContext
 
 
-def sedona_test():
+def calculate_centroid(df: DataFrame) -> DataFrame:
+    """
+    Calculate centroid from geometry column and add as point column.
+    
+    Args:
+        df: DataFrame with 'geometry' column containing WKT multipolygon data
+        
+    Returns:
+        DataFrame with added 'point' column containing centroid as WKT point
+    """
+    return df.withColumn(
+        "point",
+        expr("ST_AsText(ST_Centroid(ST_GeomFromWKT(geometry)))")
+    )
+
+def sedona_unit_test():
     # Create (or reuse) the SparkSession first
     spark = SparkSession.builder.getOrCreate()
 
