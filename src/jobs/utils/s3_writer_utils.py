@@ -315,8 +315,8 @@ def write_to_s3(df, output_path, dataset_name, table_name):
 
 # -------------------- S3 Writer Format--------------------
 def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
-    # csv_output_path=f"s3://{env}-pd-batch-emr-studio-ws-bucket/csv/{dataset_name}.csv"
-    json_output_path=f"s3://{env}-pd-batch-emr-studio-ws-bucket/json/"
+    csv_output_path = f"s3://{env}-pd-batch-emr-studio-ws-bucket/csv/{dataset_name}"
+    json_output_path=f"s3://{env}-pd-batch-emr-studio-ws-bucket/json/{dataset_name}"
 
     df = normalise_dataframe_schema(df,table_name,dataset_name,spark)
     logger.info(f"write_to_s3_format: DataFrame after transformation for dataset {dataset_name} and table {table_name}")
@@ -361,7 +361,7 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
         # Use "append" mode since we already cleaned up the specific dataset partition
         logger.info(f"write_to_s3_format: Writing csv data for: {dataset_name}") 
         temp_df.show(5)
-        csv_output_path = f"s3://{env}-pd-batch-emr-studio-ws-bucket/csv/{dataset_name}"
+        
         temp_df.coalesce(1) \
           .write \
           .mode("overwrite")  \
