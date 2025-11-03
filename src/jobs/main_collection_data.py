@@ -220,7 +220,6 @@ def main(args):
         logger.info("Main: Starting main ETL process for collection Data")          
         start_time = datetime.now()
         logger.info(f"Main: Spark session started at: {start_time}")    
-        #s3://development-collection-data/transport-access-node-collection/transformed/transport-access-node
         load_type = args.load_type
         data_set = args.data_set
         s3_uri = args.path
