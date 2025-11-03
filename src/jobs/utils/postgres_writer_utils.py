@@ -11,6 +11,99 @@ from jobs.csv_s3_writer import write_dataframe_to_csv_s3, import_csv_to_aurora, 
 
 logger = get_logger(__name__)
 
+# -------------------- Enhanced Postgres Writer with CSV S3 Import --------------------
+@log_execution_time
+def write_dataframe_to_postgres(df, table_name, data_set, env, use_jdbc=False):
+    """
+    Write DataFrame to PostgreSQL using either Aurora S3 import or JDBC.
+    
+    Args:
+        df: PySpark DataFrame to write
+        table_name: Target table name
+        data_set: Dataset name
+        env: Environment name 
+        use_jdbc: If True, use JDBC method; if False, use Aurora S3 import (default)
+    """
+    try:
+        method = "JDBC" if use_jdbc else "Aurora S3 Import"
+        logger.info(f"Write_PG: Writing to Postgres using {method} for table: {table_name}")
+        
+        # Only process entity table for now (can be extended to other tables)
+        if table_name == 'entity':
+            row_count = df.count()
+            logger.info(f"Write_PG: Processing {row_count} rows for {table_name} table")
+            
+            if use_jdbc:
+                # Use traditional JDBC method
+                logger.info("Write_PG: Using JDBC import method")
+                _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env)
+            else:
+                # Use Aurora S3 import method
+                logger.info("Write_PG: Using Aurora S3 import method")
+                
+                # Determine S3 CSV output path (under the same parquet path)
+                csv_output_path = f"s3://{env}-collection-target-data/csv-temp/"
+                logger.info(f"Write_PG: CSV output path: {csv_output_path}")
+                
+                csv_path = None
+                try:
+                    # Step 1: Write DataFrame to temporary CSV in S3
+                    csv_path = write_dataframe_to_csv_s3(
+                        df, 
+                        csv_output_path, 
+                        table_name, 
+                        data_set,
+                        cleanup_existing=True
+                    )
+                    logger.info(f"Write_PG: Successfully wrote temporary CSV to S3: {csv_path}")
+                    
+                    # Step 2: Import CSV from S3 to Aurora (this includes automatic cleanup)
+                    # Use actual database table name (ENTITY_TABLE_NAME) instead of logical name
+                    import_result = import_csv_to_aurora(
+                        csv_path,
+                        ENTITY_TABLE_NAME,  # Use actual DB table name (configured in postgres_connectivity.py)
+                        data_set,
+                        env,
+                        use_s3_import=True,
+                        truncate_table=True  # Clean existing data for this dataset
+                    )
+                    
+                    if import_result["import_successful"]:
+                        logger.info(f"Write_PG: Aurora S3 import completed successfully")
+                        logger.info(f"Write_PG: Method used: {import_result['import_method_used']}")
+                        logger.info(f"Write_PG: Rows imported: {import_result['rows_imported']}")
+                        logger.info(f"Write_PG: Duration: {import_result['import_duration']:.2f} seconds")
+                        logger.info("Write_PG: Temporary CSV files have been cleaned up")
+                        
+                        if import_result.get("warnings"):
+                            logger.warning(f"Write_PG: Import warnings: {import_result['warnings']}")
+                    else:
+                        logger.error(f"Write_PG: Aurora S3 import failed: {import_result['errors']}")
+                        logger.info("Write_PG: Falling back to JDBC method")
+                        # CSV cleanup happens in import_csv_to_aurora function
+                        _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env)
+                        
+                except Exception as e:
+                    logger.error(f"Write_PG: Aurora S3 import failed: {e}")
+                    logger.info("Write_PG: Falling back to JDBC method")
+                    
+                    # Clean up temporary CSV files if they were created but import failed
+                    if csv_path:
+                        logger.info("Write_PG: Cleaning up temporary CSV files after S3 import failure")
+                        cleanup_temp_csv_files(csv_path)
+                    
+                    _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env)
+                        
+        else:
+            # For non-entity tables, use traditional JDBC method
+            logger.info(f"Write_PG: Using JDBC method for non-entity table: {table_name}")
+            _write_dataframe_to_postgres_jdbc(df, table_name, data_set)
+             
+    except Exception as e:
+        logger.error(f"Write_PG: Failed to write to Postgres: {e}", exc_info=True)
+        raise
+
+
 def _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env, use_staging=True):
     """
     JDBC writer with optional staging table support.
@@ -122,95 +215,3 @@ def _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env, use_staging
         )
     
     logger.info(f"_write_dataframe_to_postgres_jdbc: JDBC writing completed using {recommendations['method']} method")
-
-# -------------------- Enhanced Postgres Writer with CSV S3 Import --------------------
-@log_execution_time
-def write_dataframe_to_postgres(df, table_name, data_set, env, use_jdbc=False):
-    """
-    Write DataFrame to PostgreSQL using either Aurora S3 import or JDBC.
-    
-    Args:
-        df: PySpark DataFrame to write
-        table_name: Target table name
-        data_set: Dataset name
-        env: Environment name 
-        use_jdbc: If True, use JDBC method; if False, use Aurora S3 import (default)
-    """
-    try:
-        method = "JDBC" if use_jdbc else "Aurora S3 Import"
-        logger.info(f"Write_PG: Writing to Postgres using {method} for table: {table_name}")
-        
-        # Only process entity table for now (can be extended to other tables)
-        if table_name == 'entity':
-            row_count = df.count()
-            logger.info(f"Write_PG: Processing {row_count} rows for {table_name} table")
-            
-            if use_jdbc:
-                # Use traditional JDBC method
-                logger.info("Write_PG: Using JDBC import method")
-                _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env)
-            else:
-                # Use Aurora S3 import method
-                logger.info("Write_PG: Using Aurora S3 import method")
-                
-                # Determine S3 CSV output path (under the same parquet path)
-                csv_output_path = f"s3://{env}-collection-target-data/csv-temp/"
-                logger.info(f"Write_PG: CSV output path: {csv_output_path}")
-                
-                csv_path = None
-                try:
-                    # Step 1: Write DataFrame to temporary CSV in S3
-                    csv_path = write_dataframe_to_csv_s3(
-                        df, 
-                        csv_output_path, 
-                        table_name, 
-                        data_set,
-                        cleanup_existing=True
-                    )
-                    logger.info(f"Write_PG: Successfully wrote temporary CSV to S3: {csv_path}")
-                    
-                    # Step 2: Import CSV from S3 to Aurora (this includes automatic cleanup)
-                    # Use actual database table name (ENTITY_TABLE_NAME) instead of logical name
-                    import_result = import_csv_to_aurora(
-                        csv_path,
-                        ENTITY_TABLE_NAME,  # Use actual DB table name (configured in postgres_connectivity.py)
-                        data_set,
-                        env,
-                        use_s3_import=True,
-                        truncate_table=True  # Clean existing data for this dataset
-                    )
-                    
-                    if import_result["import_successful"]:
-                        logger.info(f"Write_PG: Aurora S3 import completed successfully")
-                        logger.info(f"Write_PG: Method used: {import_result['import_method_used']}")
-                        logger.info(f"Write_PG: Rows imported: {import_result['rows_imported']}")
-                        logger.info(f"Write_PG: Duration: {import_result['import_duration']:.2f} seconds")
-                        logger.info("Write_PG: Temporary CSV files have been cleaned up")
-                        
-                        if import_result.get("warnings"):
-                            logger.warning(f"Write_PG: Import warnings: {import_result['warnings']}")
-                    else:
-                        logger.error(f"Write_PG: Aurora S3 import failed: {import_result['errors']}")
-                        logger.info("Write_PG: Falling back to JDBC method")
-                        # CSV cleanup happens in import_csv_to_aurora function
-                        _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env)
-                        
-                except Exception as e:
-                    logger.error(f"Write_PG: Aurora S3 import failed: {e}")
-                    logger.info("Write_PG: Falling back to JDBC method")
-                    
-                    # Clean up temporary CSV files if they were created but import failed
-                    if csv_path:
-                        logger.info("Write_PG: Cleaning up temporary CSV files after S3 import failure")
-                        cleanup_temp_csv_files(csv_path)
-                    
-                    _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env)
-                        
-        else:
-            # For non-entity tables, use traditional JDBC method
-            logger.info(f"Write_PG: Using JDBC method for non-entity table: {table_name}")
-            _write_dataframe_to_postgres_jdbc(df, table_name, data_set)
-             
-    except Exception as e:
-        logger.error(f"Write_PG: Failed to write to Postgres: {e}", exc_info=True)
-        raise
