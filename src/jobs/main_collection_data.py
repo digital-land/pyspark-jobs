@@ -188,7 +188,7 @@ def transform_data(df, schema_name, data_set,spark):
         elif schema_name == 'entity':
             logger.info("transform_data: Transforming data for Entity table")
             df.show(5)
-            return transform_data_entity(df,data_set,spark)
+            return transform_data_entity(df,data_set,spark,env)
         elif schema_name == 'issue':
             logger.info("transform_data: Transforming data for Issue table")
             return transform_data_issue(df)
