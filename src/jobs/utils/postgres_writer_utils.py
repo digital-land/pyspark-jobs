@@ -36,7 +36,7 @@ def write_dataframe_to_postgres(df, table_name, data_set, env, use_jdbc=False):
             if use_jdbc:
                 # Use traditional JDBC method
                 logger.info("Write_PG: Using JDBC import method")
-                _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env)
+                write_dataframe_to_postgres_jdbc(df, table_name, data_set, env)
             else:
                 # Use Aurora S3 import method
                 logger.info("Write_PG: Using Aurora S3 import method")
@@ -81,7 +81,7 @@ def write_dataframe_to_postgres(df, table_name, data_set, env, use_jdbc=False):
                         logger.error(f"Write_PG: Aurora S3 import failed: {import_result['errors']}")
                         logger.info("Write_PG: Falling back to JDBC method")
                         # CSV cleanup happens in import_csv_to_aurora function
-                        _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env)
+                        write_dataframe_to_postgres_jdbc(df, table_name, data_set, env)
                         
                 except Exception as e:
                     logger.error(f"Write_PG: Aurora S3 import failed: {e}")
@@ -92,19 +92,19 @@ def write_dataframe_to_postgres(df, table_name, data_set, env, use_jdbc=False):
                         logger.info("Write_PG: Cleaning up temporary CSV files after S3 import failure")
                         cleanup_temp_csv_files(csv_path)
                     
-                    _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env)
+                    write_dataframe_to_postgres_jdbc(df, table_name, data_set, env)
                         
         else:
             # For non-entity tables, use traditional JDBC method
             logger.info(f"Write_PG: Using JDBC method for non-entity table: {table_name}")
-            _write_dataframe_to_postgres_jdbc(df, table_name, data_set)
+            write_dataframe_to_postgres_jdbc(df, table_name, data_set)
              
     except Exception as e:
         logger.error(f"Write_PG: Failed to write to Postgres: {e}", exc_info=True)
         raise
 
 
-def _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env, use_staging=True):
+def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env, use_staging=True):
     """
     JDBC writer with optional staging table support.
     
@@ -122,26 +122,26 @@ def _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env, use_staging
     # Get performance recommendations based on dataset size
     row_count = df.count()
     recommendations = get_performance_recommendations(row_count)
-    logger.info(f"_write_dataframe_to_postgres_jdbc: Performance recommendations for {row_count} rows: {recommendations}")
+    logger.info(f"write_dataframe_to_postgres_jdbc: Performance recommendations for {row_count} rows: {recommendations}")
     
     conn_params = get_aws_secret(env)
     
     # Use staging pattern for entity table (logical name comparison is correct here)
     if use_staging and table_name == 'entity':
-        logger.info("_write_dataframe_to_postgres_jdbc: Using STAGING TABLE pattern for entity table")
-        logger.info("_write_dataframe_to_postgres_jdbc: This minimizes lock contention on production table")
+        logger.info("write_dataframe_to_postgres_jdbc: Using STAGING TABLE pattern for entity table")
+        logger.info("write_dataframe_to_postgres_jdbc: This minimizes lock contention on production table")
         
         try:
             # Step 1: Create staging table
-            logger.info("_write_dataframe_to_postgres_jdbc: Step 1/3 - Creating staging table")
+            logger.info("write_dataframe_to_postgres_jdbc: Step 1/3 - Creating staging table")
             staging_table_name = create_and_prepare_staging_table(
                 conn_params=conn_params,
                 dataset_value=data_set
             )
-            logger.info(f"_write_dataframe_to_postgres_jdbc: Created staging table: {staging_table_name}")
+            logger.info(f"write_dataframe_to_postgres_jdbc: Created staging table: {staging_table_name}")
             
             # Step 2: Write data to staging table
-            logger.info(f"_write_dataframe_to_postgres_jdbc: Step 2/3 - Writing {row_count:,} rows to staging table")
+            logger.info(f"write_dataframe_to_postgres_jdbc: Step 2/3 - Writing {row_count:,} rows to staging table")
             write_to_postgres(
                 df, 
                 data_set,
@@ -151,7 +151,7 @@ def _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env, use_staging
                 num_partitions=recommendations["num_partitions"],
                 target_table=staging_table_name  # Write to staging table
             )
-            logger.info(f"_write_dataframe_to_postgres_jdbc: Successfully wrote data to staging table '{staging_table_name}'")
+            logger.info(f"write_dataframe_to_postgres_jdbc: Successfully wrote data to staging table '{staging_table_name}'")
 
             # Step 2b: Calculate the centroid of the multiplygon data into the point field
             # logger.info(
@@ -168,7 +168,7 @@ def _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env, use_staging
             # )
             
             # Step 3: Atomically commit staging data to production entity table
-            logger.info("_write_dataframe_to_postgres_jdbc: Step 3/3 - Committing staging data to production entity table")
+            logger.info("write_dataframe_to_postgres_jdbc: Step 3/3 - Committing staging data to production entity table")
             commit_result = commit_staging_to_production(
                 conn_params=conn_params,
                 staging_table_name=staging_table_name,
@@ -177,21 +177,21 @@ def _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env, use_staging
             
             if commit_result["success"]:
                 logger.info(
-                    f"_write_dataframe_to_postgres_jdbc: ✓ STAGING COMMIT SUCCESSFUL - "
+                    f"write_dataframe_to_postgres_jdbc: ✓ STAGING COMMIT SUCCESSFUL - "
                     f"Deleted {commit_result['rows_deleted']:,} old rows, "
                     f"Inserted {commit_result['rows_inserted']:,} new rows in {commit_result['total_duration']:.2f}s"
                 )
                 logger.info(
-                    f"_write_dataframe_to_postgres_jdbc: Lock time on entity table: "
+                    f"write_dataframe_to_postgres_jdbc: Lock time on entity table: "
                     f"~{commit_result['total_duration']:.2f}s (vs. several minutes with direct write)"
                 )
             else:
-                logger.error(f"_write_dataframe_to_postgres_jdbc: Staging commit failed: {commit_result.get('error')}")
+                logger.error(f"write_dataframe_to_postgres_jdbc: Staging commit failed: {commit_result.get('error')}")
                 raise Exception(f"Staging commit failed: {commit_result.get('error')}")
             
         except Exception as e:
-            logger.error(f"_write_dataframe_to_postgres_jdbc: Staging table approach failed: {e}")
-            logger.info("_write_dataframe_to_postgres_jdbc: Falling back to direct write to entity table")
+            logger.error(f"write_dataframe_to_postgres_jdbc: Staging table approach failed: {e}")
+            logger.info("write_dataframe_to_postgres_jdbc: Falling back to direct write to entity table")
             
             # Fallback to direct write
             write_to_postgres(
@@ -204,7 +204,7 @@ def _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env, use_staging
             )
     else:
         # Direct write to production table (original behavior)
-        logger.info(f"_write_dataframe_to_postgres_jdbc: Using DIRECT WRITE to {table_name} table")
+        logger.info(f"write_dataframe_to_postgres_jdbc: Using DIRECT WRITE to {table_name} table")
         write_to_postgres(
             df, 
             data_set,
@@ -214,4 +214,4 @@ def _write_dataframe_to_postgres_jdbc(df, table_name, data_set, env, use_staging
             num_partitions=recommendations["num_partitions"]
         )
     
-    logger.info(f"_write_dataframe_to_postgres_jdbc: JDBC writing completed using {recommendations['method']} method")
+    logger.info(f"write_dataframe_to_postgres_jdbc: JDBC writing completed using {recommendations['method']} method")

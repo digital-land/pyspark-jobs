@@ -25,7 +25,7 @@ from pyspark.sql.window import Window
 # Import the new logging module
 from jobs.utils.logger_config import setup_logging, get_logger, log_execution_time, set_spark_log_level
 from jobs.utils.s3_writer_utils import write_to_s3, write_to_s3_format
-from jobs.utils.postgres_writer_utils import _write_dataframe_to_postgres_jdbc
+from jobs.utils.postgres_writer_utils import write_dataframe_to_postgres_jdbc
 
 #from utils.path_utils import load_json_from_repo
 
@@ -199,8 +199,6 @@ def transform_data(df, schema_name, data_set,spark):
         logger.error(f"Error transforming data: {e}")
         raise
 
-
-
 # -------------------- Main --------------------
 
 env = None
@@ -308,7 +306,7 @@ def main(args):
                 table_name = 'entity'
                 logger.info(f"Main: before writing to postgres, df_entity dataframe is below")
                 df_entity.show(5)
-                _write_dataframe_to_postgres_jdbc(df_entity, table_name, data_set, env, use_staging=True)
+                write_dataframe_to_postgres_jdbc(df_entity, table_name, data_set, env, use_staging=True)
             else:
                 logger.info("Main: df_entity is None, skipping Postgres write")
 
