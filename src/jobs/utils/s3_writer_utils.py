@@ -386,6 +386,9 @@ def wkt_to_geojson(wkt_string):
             elif depth > 0:
                 current_polygon += char
         
+        # Simplify single polygon MultiPolygon to Polygon
+        if len(polygons) == 1:
+            return {"type": "Polygon", "coordinates": polygons[0]}
         return {"type": "MultiPolygon", "coordinates": polygons}
     
     return None
