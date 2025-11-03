@@ -330,6 +330,66 @@ def cleanup_temp_path(env, dataset_name):
             s3_client.delete_objects(Bucket=bucket_name, Delete={'Objects': objects})
             logger.info(f"Deleted {len(objects)} objects from {prefix}")
   
+#------------------wkt to geojson converter-----------------
+def wkt_to_geojson(wkt_string):
+    """Convert WKT geometry string to GeoJSON geometry object."""
+    if not wkt_string:
+        return None
+    
+    import re
+    wkt_string = wkt_string.strip()
+    
+    # Parse POINT
+    if wkt_string.startswith('POINT'):
+        coords = re.findall(r'[-\d.]+', wkt_string)
+        return {"type": "Point", "coordinates": [float(coords[0]), float(coords[1])]}
+    
+    # Parse POLYGON
+    elif wkt_string.startswith('POLYGON'):
+        rings = re.findall(r'\(([^()]+)\)', wkt_string)
+        coordinates = []
+        for ring in rings:
+            points = []
+            coords = re.findall(r'([-\d.]+)\s+([-\d.]+)', ring)
+            for lon, lat in coords:
+                points.append([float(lon), float(lat)])
+            coordinates.append(points)
+        return {"type": "Polygon", "coordinates": coordinates}
+    
+    # Parse MULTIPOLYGON
+    elif wkt_string.startswith('MULTIPOLYGON'):
+        wkt_string = wkt_string.replace('MULTIPOLYGON ', '').strip()
+        polygons = []
+        depth = 0
+        current_polygon = ''
+        
+        for char in wkt_string:
+            if char == '(':
+                depth += 1
+                if depth > 1:
+                    current_polygon += char
+            elif char == ')':
+                depth -= 1
+                if depth > 0:
+                    current_polygon += char
+                elif depth == 0 and current_polygon:
+                    rings = re.findall(r'\(([^()]+)\)', current_polygon)
+                    coordinates = []
+                    for ring in rings:
+                        points = []
+                        coords = re.findall(r'([-\d.]+)\s+([-\d.]+)', ring)
+                        for lon, lat in coords:
+                            points.append([float(lon), float(lat)])
+                        coordinates.append(points)
+                    polygons.append(coordinates)
+                    current_polygon = ''
+            elif depth > 0:
+                current_polygon += char
+        
+        return {"type": "MultiPolygon", "coordinates": polygons}
+    
+    return None
+
 #------------------s3 writer format with csv and json-----------------
 def s3_rename_and_move(env, dataset_name, file_type,bucket_name):
     #get unique csv filename from temp_output_path and rename to datasetname.csv
@@ -450,7 +510,46 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
         s3_client.put_object(Bucket=f"{env}-collection-data", Key=target_key, Body=json_output)
         logger.info(f"write_to_s3_format: JSON file written to {target_key}")
 
-        logger.info(f"write_to_s3_format: csv and json files successfully written for dataset {dataset_name}")
+        # Write GeoJSON data
+        logger.info(f"write_to_s3_format: Writing geojson data for: {dataset_name}")
+        geojson_features = []
+        for row in temp_df.collect():
+            row_dict = row.asDict()
+            geometry_wkt = row_dict.pop('geometry', None)
+            row_dict.pop('point', None)
+            
+            geojson_geom = None
+            if geometry_wkt:
+                geojson_geom = wkt_to_geojson(geometry_wkt)
+            
+            feature = {
+                "type": "Feature",
+                "properties": row_dict,
+                "geometry": geojson_geom
+            }
+            geojson_features.append(feature)
+        
+        geojson_output = {
+            "type": "FeatureCollection",
+            "name": dataset_name,
+            "features": geojson_features
+        }
+        
+        import json
+        geojson_str = json.dumps(geojson_output)
+        target_key_geojson = f"dataset/{dataset_name}.geojson"
+        
+        try:
+            s3_client.head_object(Bucket=f"{env}-collection-data", Key=target_key_geojson)
+            s3_client.delete_object(Bucket=f"{env}-collection-data", Key=target_key_geojson)
+            logger.info(f"Deleted existing file: {target_key_geojson}")
+        except s3_client.exceptions.ClientError:
+            logger.info(f"No existing file to delete: {target_key_geojson}")
+        
+        s3_client.put_object(Bucket=f"{env}-collection-data", Key=target_key_geojson, Body=geojson_str)
+        logger.info(f"write_to_s3_format: GeoJSON file written to {target_key_geojson}")
+
+        logger.info(f"write_to_s3_format: csv, json and geojson files successfully written for dataset {dataset_name}")
         return df
     except Exception as e:
         logger.error(f"write_to_s3_format: Failed to write to S3: {e}", exc_info=True)
