@@ -518,6 +518,14 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
             geometry_wkt = row_dict.pop('geometry', None)
             row_dict.pop('point', None)
             
+            # Convert date/datetime objects to strings
+            from datetime import date, datetime
+            for key, value in row_dict.items():
+                if isinstance(value, (date, datetime)):
+                    row_dict[key] = value.isoformat() if value else ""
+                elif value is None:
+                    row_dict[key] = ""
+            
             geojson_geom = None
             if geometry_wkt:
                 geojson_geom = wkt_to_geojson(geometry_wkt)
