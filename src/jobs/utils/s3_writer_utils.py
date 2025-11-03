@@ -409,7 +409,9 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
         # Use "append" mode since we already cleaned up the specific dataset partition
         logger.info(f"write_to_s3_format: Writing csv data for: {dataset_name}") 
         temp_df.show(5)
+
         cleanup_temp_path(env, dataset_name)
+        
         temp_df.coalesce(1) \
           .write \
           .mode("overwrite")  \
