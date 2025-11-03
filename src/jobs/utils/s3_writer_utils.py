@@ -345,8 +345,8 @@ def s3_rename_and_move(env, dataset_name, file_type):
 
 # -------------------- S3 Writer Format--------------------
 def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
-    temp_output_path = f"s3://{env}-pd-batch-emr-studio-ws-bucket/temp/{dataset_name}/"
-    output_path = f"s3://{env}-pd-batch-emr-studio-ws-bucket/dataset/"
+    temp_output_path = f"s3://{env}-collection-data/dataset/temp/{dataset_name}/"
+    output_path = f"s3://{env}-collection-data/dataset//dataset/"
 
     df = normalise_dataframe_schema(df,table_name,dataset_name,spark)
     logger.info(f"write_to_s3_format: DataFrame after transformation for dataset {dataset_name} and table {table_name}")
