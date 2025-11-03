@@ -315,12 +315,25 @@ def write_to_s3(df, output_path, dataset_name, table_name):
     except Exception as e:
         logger.error(f"write_to_s3: Failed to write to S3: {e}", exc_info=True)
         raise
-    
+#--------------------delete existing temp files from s3 bucket--------------------
+def cleanup_temp_path(env, dataset_name):
+    """Delete all objects in the temp S3 path for a dataset."""
+    import boto3
+    s3_client = boto3.client("s3")
+    bucket_name = f"{env}-collection-data"
+    prefix = f"dataset/temp/{dataset_name}/"
+    # List and delete all objects
+    paginator = s3_client.get_paginator('list_objects_v2')
+    for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
+        if 'Contents' in page:
+            objects = [{'Key': obj['Key']} for obj in page['Contents']]
+            s3_client.delete_objects(Bucket=bucket_name, Delete={'Objects': objects})
+            logger.info(f"Deleted {len(objects)} objects from {prefix}")
+  
 #------------------s3 writer format with csv and json-----------------
-def s3_rename_and_move(env, dataset_name, file_type):
+def s3_rename_and_move(env, dataset_name, file_type,bucket_name):
     #get unique csv filename from temp_output_path and rename to datasetname.csv
         s3_client = boto3.client("s3")
-        bucket_name = f"{env}-pd-batch-emr-studio-ws-bucket"
         unique_data_filename = f"{dataset_name}.{file_type}"
         logger.info(f"Renaming {file_type} files for dataset: {dataset_name}")
         # List files matching pattern
@@ -346,7 +359,7 @@ def s3_rename_and_move(env, dataset_name, file_type):
 # -------------------- S3 Writer Format--------------------
 def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
     temp_output_path = f"s3://{env}-collection-data/dataset/temp/{dataset_name}/"
-    output_path = f"s3://{env}-collection-data/dataset/"
+    #output_path = f"s3://{env}-collection-data/dataset/"
 
     df = normalise_dataframe_schema(df,table_name,dataset_name,spark)
     logger.info(f"write_to_s3_format: DataFrame after transformation for dataset {dataset_name} and table {table_name}")
@@ -396,7 +409,7 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
         # Use "append" mode since we already cleaned up the specific dataset partition
         logger.info(f"write_to_s3_format: Writing csv data for: {dataset_name}") 
         temp_df.show(5)
-        
+        cleanup_temp_path(env, dataset_name)
         temp_df.coalesce(1) \
           .write \
           .mode("overwrite")  \
@@ -404,7 +417,7 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
           .csv(temp_output_path)
         
         logger.info(f"write_to_s3_format: Renaming csv for: {dataset_name}") 
-        s3_rename_and_move(env, dataset_name, "csv")
+        s3_rename_and_move(env, dataset_name, "csv",bucket_name=f"{env}-collection-data")
 
         # Write JSON data
         logger.info(f"write_to_s3_format: Writing json data for: {dataset_name}") 
@@ -418,7 +431,7 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
           .json(temp_output_path)
 
         logger.info(f"write_to_s3_format: Renaming json for: {dataset_name}")
-        s3_rename_and_move(env, dataset_name, "json")
+        s3_rename_and_move(env, dataset_name, "json",bucket_name=f"{env}-collection-data")
 
         logger.info(f"write_to_s3_format: csv and json files successfully written for dataset {dataset_name}")
         return df
