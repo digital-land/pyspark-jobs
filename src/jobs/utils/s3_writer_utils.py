@@ -378,11 +378,7 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
         s3_client = boto3.client("s3")
         bucket_name = f"{env}-pd-batch-emr-studio-ws-bucket"
         unique_csv_filename = f"{dataset_name}.csv"
-        s3_client.rename_object(
-            Bucket=bucket_name,
-            Key=f"temp/{dataset_name}/part-00000-*.csv",
-            NewKey=f"dataset/{unique_csv_filename}"
-        )
+        
         # List files matching pattern
         response = s3_client.list_objects_v2(
         Bucket=bucket_name, 
