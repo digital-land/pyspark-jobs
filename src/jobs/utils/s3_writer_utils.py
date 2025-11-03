@@ -13,6 +13,7 @@ from pyspark.sql.functions import (
 )
 from pyspark.sql.window import Window
 from jobs.utils.flatten_csv import flatten_json_column, flatten_geojson_column
+import boto3
 
 # Import geometry utilities
 from jobs.utils.geometry_utils import calculate_centroid
@@ -315,8 +316,8 @@ def write_to_s3(df, output_path, dataset_name, table_name):
 
 # -------------------- S3 Writer Format--------------------
 def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
-    csv_output_path = f"s3://{env}-pd-batch-emr-studio-ws-bucket/csv/{dataset_name}"
-    json_output_path=f"s3://{env}-pd-batch-emr-studio-ws-bucket/json/{dataset_name}"
+    temp_output_path = f"s3://{env}-pd-batch-emr-studio-ws-bucket/temp/{dataset_name}/"
+    output_path = f"s3://{env}-pd-batch-emr-studio-ws-bucket/dataset/"
 
     df = normalise_dataframe_schema(df,table_name,dataset_name,spark)
     logger.info(f"write_to_s3_format: DataFrame after transformation for dataset {dataset_name} and table {table_name}")
@@ -357,6 +358,11 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
         temp_df = flatten_json_column(temp_df)
         temp_df.show(5)
 
+        logger.info(f"write_to_s3_format: Normalising column names from kebab_case to snake-case")
+        for column in temp_df.columns:
+            if "_" in column:
+                temp_df = temp_df.withColumnRenamed(column, column.replace("_", "-"))
+
         # Write to S3 with multilevel partitioning
         # Use "append" mode since we already cleaned up the specific dataset partition
         logger.info(f"write_to_s3_format: Writing csv data for: {dataset_name}") 
@@ -366,17 +372,45 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
           .write \
           .mode("overwrite")  \
           .option("header", "true") \
-          .csv(csv_output_path)
+          .csv(temp_output_path)
+          
+        #get unique csv filename from temp_output_path and rename to datasetname.csv
+        s3_client = boto3.client("s3")
+        bucket_name = f"{env}-pd-batch-emr-studio-ws-bucket"
+        unique_csv_filename = f"{dataset_name}.csv"
+        s3_client.rename_object(
+            Bucket=bucket_name,
+            Key=f"temp/{dataset_name}/part-00000-*.csv",
+            NewKey=f"dataset/{unique_csv_filename}"
+        )
+        # List files matching pattern
+        response = s3_client.list_objects_v2(
+        Bucket=bucket_name, 
+        Prefix=f"temp/{dataset_name}/"
+        )
+        csv_files = [obj['Key'] for obj in response.get('Contents', []) 
+             if obj['Key'].endswith('.csv')]
+
+        # Copy and delete each file
+        for csv_file in csv_files:
+        # Copy to new location
+            s3_client.copy_object(
+            Bucket=bucket_name,
+            CopySource={'Bucket': bucket_name, 'Key': csv_file},
+            Key=f"dataset/{unique_csv_filename}"
+            )
+            # Delete original
+            s3_client.delete_object(Bucket=bucket_name, Key=csv_file)
+
 
         # Write JSON data
-        
         logger.info(f"write_to_s3_format: Writing json data for: {dataset_name}") 
         temp_df.show(5)
         temp_df.coalesce(1) \
           .write \
           .mode("overwrite")  \
           .option("header", "true") \
-          .json(json_output_path)
+          .json(temp_output_path)
 
         logger.info(f"write_to_s3_format: csv and json files successfully written for dataset {dataset_name}")
         return df
