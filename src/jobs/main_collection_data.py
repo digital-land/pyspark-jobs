@@ -204,6 +204,7 @@ def transform_data(df, schema_name, data_set,spark):
 env = None
 @log_execution_time
 def main(args):
+    global env, df_entity
     logger.info(f"Main: Initialize logging and invoking initialize_logging method")
 
     initialize_logging(args)  # Initialize logging with args
@@ -221,7 +222,6 @@ def main(args):
         load_type = args.load_type
         data_set = args.data_set
         s3_uri = args.path
-        global env
         env = args.env
         logger.info(f"Main: env variable for the dataset: {env}")
 
@@ -298,7 +298,6 @@ def main(args):
             logger.info("Main: Writing to target s3 output path: process completed")
 
             # Write dataframe to Postgres for Entity table
-            global df_entity 
             if df_entity is not None:
                 df_entity.show(5)
                 df_entity = df_entity.drop("processed_timestamp","year","month", "day")    
