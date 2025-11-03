@@ -335,7 +335,17 @@ def s3_rename_and_move(env, dataset_name, file_type,bucket_name):
     #get unique csv filename from temp_output_path and rename to datasetname.csv
         s3_client = boto3.client("s3")
         unique_data_filename = f"{dataset_name}.{file_type}"
+        target_key = f"dataset/{unique_data_filename}"
         logger.info(f"Renaming {file_type} files for dataset: {dataset_name}")
+        
+        # Delete existing file if it exists
+        try:
+            s3_client.head_object(Bucket=bucket_name, Key=target_key)
+            s3_client.delete_object(Bucket=bucket_name, Key=target_key)
+            logger.info(f"Deleted existing file: {target_key}")
+        except s3_client.exceptions.ClientError:
+            logger.info(f"No existing file to delete: {target_key}")
+        
         # List files matching pattern
         response = s3_client.list_objects_v2(
         Bucket=bucket_name, 
@@ -350,11 +360,11 @@ def s3_rename_and_move(env, dataset_name, file_type,bucket_name):
             s3_client.copy_object(
             Bucket=bucket_name,
             CopySource={'Bucket': bucket_name, 'Key': data_file},
-            Key=f"dataset/{unique_data_filename}"
+            Key=target_key
             )
             # Delete original
             s3_client.delete_object(Bucket=bucket_name, Key=data_file)
-            logger.info(f"Renamed: {data_file} -> dataset/{unique_data_filename}")
+            logger.info(f"Renamed: {data_file} -> {target_key}")
 
 # -------------------- S3 Writer Format--------------------
 def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
