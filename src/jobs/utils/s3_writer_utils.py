@@ -379,7 +379,7 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
           .json(json_output_path)
 
         logger.info(f"write_to_s3_format: csv and json files successfully written for dataset {dataset_name}")
-
+        return df
     except Exception as e:
         logger.error(f"write_to_s3_format: Failed to write to S3: {e}", exc_info=True)
         raise

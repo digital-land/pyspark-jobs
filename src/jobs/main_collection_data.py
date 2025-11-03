@@ -262,9 +262,10 @@ def main(args):
                     df.printSchema() 
                     logger.info(f"Main: Schema information for the loaded dataframe")
                     df.show(5)
+
                     if(table_name== 'entity'):
                         logger.info(f"Main: Invocation of write_to_s3_format method for {table_name} table")
-                        write_to_s3_format(df, f"{output_path}{table_name}", data_set,table_name,spark,env)
+                        df_entity = write_to_s3_format(df, f"{output_path}{table_name}", data_set,table_name,spark,env)
 
                     #TODO: revise this code and for converting spark session as singleton in future
                     processed_df = transform_data(df,table_name,data_set,spark)
@@ -274,8 +275,6 @@ def main(args):
                     # Write to S3 for Fact Resource table
                     write_to_s3(processed_df, f"{output_path}{table_name}", data_set,table_name)
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")
-                    #if(table_name== 'entity'):  
-                        #write_to_s3_format(processed_df, f"{output_path}{table_name}", data_set,table_name)  
                 elif(table_name== 'issue'):
                     full_path = f"{s3_uri}"+"/issue/"+data_set+"/*.csv"
                     logger.info(f"Main: Dataset input path including csv file path: {full_path}")
