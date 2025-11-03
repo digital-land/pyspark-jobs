@@ -14,6 +14,8 @@ from pyspark.sql.functions import (
 from pyspark.sql.window import Window
 from jobs.utils.flatten_csv import flatten_json_column, flatten_geojson_column
 import boto3
+from pyspark.sql.functions import monotonically_increasing_id, row_number
+from pyspark.sql.window import Window
 
 # Import geometry utilities
 from jobs.utils.geometry_utils import calculate_centroid
@@ -313,6 +315,33 @@ def write_to_s3(df, output_path, dataset_name, table_name):
     except Exception as e:
         logger.error(f"write_to_s3: Failed to write to S3: {e}", exc_info=True)
         raise
+    
+#------------------s3 writer format with csv and json-----------------
+def s3_rename_and_move(env, dataset_name, file_type):
+    #get unique csv filename from temp_output_path and rename to datasetname.csv
+        s3_client = boto3.client("s3")
+        bucket_name = f"{env}-pd-batch-emr-studio-ws-bucket"
+        unique_data_filename = f"{dataset_name}.{file_type}"
+        logger.info(f"Renaming {file_type} files for dataset: {dataset_name}")
+        # List files matching pattern
+        response = s3_client.list_objects_v2(
+        Bucket=bucket_name, 
+        Prefix=f"temp/{dataset_name}/"
+        )
+        data_files = [obj['Key'] for obj in response.get('Contents', []) 
+             if obj['Key'].endswith(f'.{file_type}')]
+        logger.info(f"Found {len(data_files)} {file_type} files to rename for dataset: {dataset_name}")
+        # Copy and delete each file
+        for data_file in data_files:
+        # Copy to new location
+            s3_client.copy_object(
+            Bucket=bucket_name,
+            CopySource={'Bucket': bucket_name, 'Key': data_file},
+            Key=f"dataset/{unique_data_filename}"
+            )
+            # Delete original
+            s3_client.delete_object(Bucket=bucket_name, Key=data_file)
+            logger.info(f"Renamed: {data_file} -> dataset/{unique_data_filename}")
 
 # -------------------- S3 Writer Format--------------------
 def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
@@ -373,43 +402,28 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
           .mode("overwrite")  \
           .option("header", "true") \
           .csv(temp_output_path)
-          
-        #get unique csv filename from temp_output_path and rename to datasetname.csv
-        s3_client = boto3.client("s3")
-        bucket_name = f"{env}-pd-batch-emr-studio-ws-bucket"
-        unique_csv_filename = f"{dataset_name}.csv"
         
-        # List files matching pattern
-        response = s3_client.list_objects_v2(
-        Bucket=bucket_name, 
-        Prefix=f"temp/{dataset_name}/"
-        )
-        csv_files = [obj['Key'] for obj in response.get('Contents', []) 
-             if obj['Key'].endswith('.csv')]
-
-        # Copy and delete each file
-        for csv_file in csv_files:
-        # Copy to new location
-            s3_client.copy_object(
-            Bucket=bucket_name,
-            CopySource={'Bucket': bucket_name, 'Key': csv_file},
-            Key=f"dataset/{unique_csv_filename}"
-            )
-            # Delete original
-            s3_client.delete_object(Bucket=bucket_name, Key=csv_file)
-
+        logger.info(f"write_to_s3_format: Renaming csv for: {dataset_name}") 
+        s3_rename_and_move(env, dataset_name, "csv")
 
         # Write JSON data
         logger.info(f"write_to_s3_format: Writing json data for: {dataset_name}") 
         temp_df.show(5)
+        temp_df = temp_df.withColumn("entities", row_number().over(Window.orderBy(monotonically_increasing_id())) - 1)
         temp_df.coalesce(1) \
           .write \
           .mode("overwrite")  \
           .option("header", "true") \
+          .option("ignoreNullFields", "false") \
           .json(temp_output_path)
+
+        logger.info(f"write_to_s3_format: Renaming json for: {dataset_name}")
+        s3_rename_and_move(env, dataset_name, "json")
 
         logger.info(f"write_to_s3_format: csv and json files successfully written for dataset {dataset_name}")
         return df
     except Exception as e:
         logger.error(f"write_to_s3_format: Failed to write to S3: {e}", exc_info=True)
         raise
+
+
