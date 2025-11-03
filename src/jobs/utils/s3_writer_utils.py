@@ -433,17 +433,22 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
 
         # Write JSON data
         logger.info(f"write_to_s3_format: Writing json data for: {dataset_name}") 
-        temp_df.show(5)
-        temp_df = temp_df.withColumn("entities", row_number().over(Window.orderBy(monotonically_increasing_id())) - 1)
-        temp_df.coalesce(1) \
-          .write \
-          .mode("overwrite")  \
-          .option("header", "true") \
-          .option("ignoreNullFields", "false") \
-          .json(temp_output_path)
-
-        logger.info(f"write_to_s3_format: Renaming json for: {dataset_name}")
-        s3_rename_and_move(env, dataset_name, "json",bucket_name=f"{env}-collection-data")
+        json_data = temp_df.toJSON().collect()
+        json_output = '{"entities": [' + ','.join(json_data) + ']}'
+        
+        s3_client = boto3.client("s3")
+        target_key = f"dataset/{dataset_name}.json"
+        
+        # Delete existing file if it exists
+        try:
+            s3_client.head_object(Bucket=f"{env}-collection-data", Key=target_key)
+            s3_client.delete_object(Bucket=f"{env}-collection-data", Key=target_key)
+            logger.info(f"Deleted existing file: {target_key}")
+        except s3_client.exceptions.ClientError:
+            logger.info(f"No existing file to delete: {target_key}")
+        
+        s3_client.put_object(Bucket=f"{env}-collection-data", Key=target_key, Body=json_output)
+        logger.info(f"write_to_s3_format: JSON file written to {target_key}")
 
         logger.info(f"write_to_s3_format: csv and json files successfully written for dataset {dataset_name}")
         return df
