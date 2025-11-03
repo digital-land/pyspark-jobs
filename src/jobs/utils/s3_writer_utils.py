@@ -349,7 +349,7 @@ def s3_rename_and_move(env, dataset_name, file_type,bucket_name):
         # List files matching pattern
         response = s3_client.list_objects_v2(
         Bucket=bucket_name, 
-        Prefix=f"temp/{dataset_name}/"
+        Prefix=f"dataset/temp/{dataset_name}/"
         )
         data_files = [obj['Key'] for obj in response.get('Contents', []) 
              if obj['Key'].endswith(f'.{file_type}')]
