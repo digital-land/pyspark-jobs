@@ -343,3 +343,9 @@ spark-defaults.conf
 # OS and Editor specific
 *.Zone.Identifier
 *:PG$Secure
+
+# Reports to be ignored
+reports/
+
+# Virtual environments
+*venv/
