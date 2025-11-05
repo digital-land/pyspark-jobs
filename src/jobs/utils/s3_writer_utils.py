@@ -496,8 +496,18 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
 
         # Write JSON data
         logger.info(f"write_to_s3_format: Writing json data for: {dataset_name}") 
-        json_data = temp_df.toJSON().collect()
-        json_output = '{"entities": [' + ','.join(json_data) + ']}'
+        import json
+        from datetime import date, datetime
+        
+        def convert_row(row):
+            row_dict = row.asDict()
+            for key, value in row_dict.items():
+                if isinstance(value, (date, datetime)):
+                    row_dict[key] = value.isoformat() if value else None
+            return row_dict
+        
+        json_data = [convert_row(row) for row in temp_df.collect()]
+        json_output = json.dumps({"entities": json_data})
         
         s3_client = boto3.client("s3")
         target_key = f"dataset/{dataset_name}.json"
@@ -546,7 +556,6 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
             "features": geojson_features
         }
         
-        import json
         geojson_str = json.dumps(geojson_output)
         target_key_geojson = f"dataset/{dataset_name}.geojson"
         
