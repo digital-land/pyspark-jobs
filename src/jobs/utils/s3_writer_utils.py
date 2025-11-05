@@ -503,7 +503,7 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
             row_dict = row.asDict()
             for key, value in row_dict.items():
                 if isinstance(value, (date, datetime)):
-                    row_dict[key] = value.isoformat() if value else None
+                    row_dict[key] = value.isoformat() if value else value
             return row_dict
         
         json_data = [convert_row(row) for row in temp_df.collect()]
