@@ -11,7 +11,7 @@ set -e  # Exit on any error
 # Configuration
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="$PROJECT_DIR/build_output"
-S3_BUCKET="development-pyspark-jobs-codepackage"
+S3_BUCKET="development-emr-serverless-pyspark-jobs-codepackage"
 PYTHON_VERSION="python3"
 PIP_CMD=""
 
@@ -380,7 +380,7 @@ generate_upload_script() {
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-S3_BUCKET="development-pyspark-jobs-codepackage"
+S3_BUCKET="development-emr-serverless-pyspark-jobs-codepackage"
 
 echo "Uploading files to S3..."
 

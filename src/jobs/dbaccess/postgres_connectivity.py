@@ -64,12 +64,16 @@ pyspark_entity_columns = {
 # read host, port,dbname,user, password
 
 
-def get_aws_secret():
+def get_aws_secret(environment="development"):
     """
     Retrieve AWS secrets for PostgreSQL connection with EMR Serverless compatibility.
     
     This function uses the EMR-compatible secret retrieval method that includes
     multiple fallback strategies to handle botocore issues in EMR environments.
+    
+    Args:
+        environment (str): Environment name (development, staging, production)
+                          Defaults to "development"
     
     Returns:
         dict: PostgreSQL connection parameters
@@ -78,8 +82,13 @@ def get_aws_secret():
         Exception: If secrets cannot be retrieved or parsed
     """
     try:
-        logger.info("Attempting to retrieve PostgreSQL secrets using EMR-compatible method")
-        aws_secrets_json = get_secret_emr_compatible("dev/pyspark/postgres")
+        logger.info(f"Attempting to retrieve PostgreSQL secrets using EMR-compatible method for environment: {environment}")
+        
+        # Construct secret path based on environment
+        secret_path = f"/{environment}-pd-batch/postgres-secret"
+        logger.info(f"Using secret path: {secret_path}")
+        
+        aws_secrets_json = get_secret_emr_compatible(secret_path)
         
         # Parse the JSON string
         secrets = json.loads(aws_secrets_json)
@@ -87,12 +96,12 @@ def get_aws_secret():
         # Extract required fields
         username = secrets.get("username")
         password = secrets.get("password")
-        dbName = secrets.get("dbName")
+        dbName = secrets.get("db_name")
         host = secrets.get("host")
         port = secrets.get("port")
         
         # Validate required fields
-        required_fields = ["username", "password", "dbName", "host", "port"]
+        required_fields = ["username", "password", "db_name", "host", "port"]
         missing_fields = [field for field in required_fields if not secrets.get(field)]
         
         if missing_fields:
@@ -770,6 +779,99 @@ def _prepare_geometry_columns(df):
             logger.info(f"_prepare_geometry_columns: Enhanced {geom_col} WKT handling with SRID for PostGIS compatibility")
     
     return processed_df
+
+def calculate_centroid_wkt(conn_params, target_table=None, max_retries=3):
+    """
+    Calculate centroids for geometries and update the point column.
+    Uses PostGIS ST_PointOnSurface for more accurate centroid calculation that 
+    ensures the point falls within the geometry.
+    
+    Args:
+        conn_params (dict): Database connection parameters
+        target_table (str): Optional target table name. If provided, updates this table
+                           instead of the main table. Used for staging table operations.
+        max_retries (int): Maximum number of retry attempts
+    
+    Returns:
+        int: Number of rows updated with calculated centroids
+    """
+    if pg8000:
+        from pg8000.exceptions import InterfaceError
+    else:
+        logger.warning("calculate_centroid_wkt: pg8000 not available")
+        InterfaceError = Exception
+    
+    # Determine which table to update
+    table_name = target_table if target_table else dbtable_name
+    
+    conn = None
+    cur = None
+    
+    for attempt in range(max_retries):
+        try:
+            logger.info(
+                f"calculate_centroid_wkt: Connecting to database to calculate "
+                f"centroids for table '{table_name}'"
+            )
+            conn = pg8000.connect(**conn_params)
+            cur = conn.cursor()
+            
+            # Set longer timeout for potentially long-running geometry operations
+            cur.execute("SET statement_timeout = '300000';")  # 5 minutes
+            
+            sql_update_pos = f"""
+            UPDATE {table_name} t
+            SET point = ST_PointOnSurface(
+                CASE 
+                    WHEN NOT ST_IsValid(t.geometry) 
+                    THEN ST_MakeValid(t.geometry) 
+                    ELSE t.geometry 
+                END
+            )::geometry(Point, 4326)
+            WHERE point IS NULL AND geometry IS NOT NULL;
+            """
+            
+            cur.execute(sql_update_pos)
+            rows_updated = cur.rowcount
+            conn.commit()
+            
+            logger.info(f"calculate_centroid_wkt: Updated {rows_updated} rows with calculated centroids")
+            return rows_updated
+            
+        except InterfaceError as e:
+            error_str = str(e).lower()
+            if attempt < max_retries - 1:
+                retry_delay = min(5 * (2 ** attempt), 30)
+                logger.error(f"calculate_centroid_wkt: Network error (attempt {attempt + 1}/{max_retries}): {e}")
+                logger.info(f"calculate_centroid_wkt: Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                raise
+        
+        except Exception as e:
+            if attempt < max_retries - 1:
+                retry_delay = min(5 * (2 ** attempt), 30)
+                logger.error(f"calculate_centroid_wkt: Error (attempt {attempt + 1}/{max_retries}): {e}")
+                logger.info(f"calculate_centroid_wkt: Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                raise
+                
+        finally:
+            if cur:
+                try:
+                    cur.close()
+                except Exception as e:
+                    logger.warning(f"calculate_centroid_wkt: Error closing cursor: {e}")
+            if conn:
+                try:
+                    conn.close()
+                except Exception as e:
+                    logger.warning(f"calculate_centroid_wkt: Error closing connection: {e}")
+            conn = None
+            cur = None
+
+
 
 # -------------------- PostgreSQL Writer --------------------
 

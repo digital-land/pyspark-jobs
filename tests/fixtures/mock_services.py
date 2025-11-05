@@ -39,7 +39,7 @@ class MockAWSServices:
         # Create test buckets
         test_buckets = [
             'development-collection-data',
-            'development-pyspark-assemble-parquet',
+            'development-collection-target-data',
             'test-bucket'
         ]
         

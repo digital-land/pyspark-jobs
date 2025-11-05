@@ -15,7 +15,7 @@ class TestPostgresConnectivity:
             "port": "5432"
         })
 
-        conn_params = get_aws_secret()
+        conn_params = get_aws_secret("development")
         assert conn_params["user"] == "postgres"
         assert conn_params["host"] == "localhost"
         assert conn_params["port"] == 5432

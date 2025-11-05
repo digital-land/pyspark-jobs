@@ -22,7 +22,7 @@ Usage:
     csv_path = write_dataframe_to_csv_s3(df, "s3://bucket/path/", "entity", "my-dataset")
     
     # Import CSV from S3 to Aurora using S3 import
-    import_csv_to_aurora(csv_path, "entity", use_s3_import=True)
+    import_csv_to_aurora(csv_path, "entity", "my-dataset", "development", use_s3_import=True)
 """
 
 import argparse
@@ -553,9 +553,12 @@ def read_csv_from_s3(spark, csv_path: str, infer_schema: bool = True) -> 'DataFr
 
 # ==================== AURORA S3 IMPORT ====================
 
-def get_aurora_connection_params() -> Dict[str, str]:
+def get_aurora_connection_params(env: str) -> Dict[str, str]:
     """
     Get Aurora PostgreSQL connection parameters from AWS Secrets Manager.
+    
+    Args:
+        env: Environment name (development, staging, production)
     
     Returns:
         Dict containing connection parameters
@@ -566,23 +569,28 @@ def get_aurora_connection_params() -> Dict[str, str]:
     try:
         logger.info("get_aurora_connection_params: Retrieving Aurora connection parameters")
         
-        # Use the existing secret retrieval method
-        aws_secrets_json = get_secret_emr_compatible("dev/pyspark/postgres")
+        # Use the existing secret retrieval method with dynamic environment
+        secret_path = f"{env}-pd-batch/postgres-secret"
+        aws_secrets_json = get_secret_emr_compatible(secret_path)
         secrets = json.loads(aws_secrets_json)
         
         # Extract required fields
         conn_params = {
             "host": secrets.get("host"),
             "port": secrets.get("port", "5432"),
-            "database": secrets.get("dbName"),
+            "database": secrets.get("db_name"),
             "username": secrets.get("username"),
             "password": secrets.get("password"),
         }
         
         # Validate required fields
-        missing_fields = [k for k, v in conn_params.items() if not v]
+        required_fields = ["username", "password", "db_name", "host", "port"]
+        missing_fields = [field for field in required_fields if not secrets.get(field)]
+        
         if missing_fields:
-            raise AuroraImportError(f"Missing connection parameters: {missing_fields}")
+            error_msg = f"Missing required secret fields: {missing_fields}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
         
         logger.info("get_aurora_connection_params: Successfully retrieved connection parameters")
         return conn_params
@@ -597,6 +605,7 @@ def import_csv_to_aurora(
     csv_s3_path: str,
     table_name: str,
     dataset_name: str,
+    env: str,
     use_s3_import: bool = True,
     truncate_table: bool = True
 ) -> Dict[str, Any]:
@@ -607,6 +616,7 @@ def import_csv_to_aurora(
         csv_s3_path: S3 path to CSV file(s)
         table_name: Target table name in Aurora
         dataset_name: Dataset name for filtering/cleanup
+        env: Environment name (development, staging, production)
         use_s3_import: Whether to use S3 import (True) or JDBC import (False)
         truncate_table: Whether to truncate table before import
         
@@ -641,14 +651,16 @@ def import_csv_to_aurora(
     try:
         if use_s3_import:
             logger.info("import_csv_to_aurora: Using Aurora S3 import method")
-            s3_result = _import_via_aurora_s3(csv_s3_path, table_name, dataset_name, truncate_table)
+            s3_result = _import_via_aurora_s3(
+                csv_s3_path, table_name, dataset_name, truncate_table, env
+            )
             results.update(s3_result)
             results["import_method_used"] = "aurora_s3"
             results["import_successful"] = True
             logger.info("import_csv_to_aurora: Aurora S3 import completed successfully")
         else:
             logger.info("import_csv_to_aurora: Using JDBC import method")
-            jdbc_result = _import_via_jdbc(csv_s3_path, table_name, dataset_name, truncate_table)
+            jdbc_result = _import_via_jdbc(csv_s3_path, table_name, dataset_name, env, truncate_table)
             results.update(jdbc_result)
             results["import_method_used"] = "jdbc"
             results["import_successful"] = True
@@ -683,7 +695,13 @@ def import_csv_to_aurora(
         raise
 
 
-def _import_via_aurora_s3(csv_s3_path: str, table_name: str, dataset_name: str, truncate_table: bool) -> Dict[str, Any]:
+def _import_via_aurora_s3(
+    csv_s3_path: str,
+    table_name: str,
+    dataset_name: str,
+    truncate_table: bool,
+    env: str
+) -> Dict[str, Any]:
     """Import CSV data using Aurora PostgreSQL S3 import feature."""
     logger.info("_import_via_aurora_s3: Starting Aurora S3 import")
     
@@ -694,7 +712,7 @@ def _import_via_aurora_s3(csv_s3_path: str, table_name: str, dataset_name: str, 
         raise AuroraImportError("pg8000 is required for Aurora S3 import but not available")
     
     # Get connection parameters
-    conn_params = get_aurora_connection_params()
+    conn_params = get_aurora_connection_params(env)
     
     # Parse S3 path
     s3_uri = urlparse(csv_s3_path)
@@ -796,7 +814,7 @@ def _import_via_aurora_s3(csv_s3_path: str, table_name: str, dataset_name: str, 
             conn.close()
 
 
-def _import_via_jdbc(csv_s3_path: str, table_name: str, dataset_name: str, truncate_table: bool) -> Dict[str, Any]:
+def _import_via_jdbc(csv_s3_path: str, table_name: str, dataset_name: str, env: str, truncate_table: bool) -> Dict[str, Any]:
     """Import CSV data using JDBC method (fallback)."""
     logger.info("_import_via_jdbc: Starting JDBC import")
     
@@ -817,7 +835,7 @@ def _import_via_jdbc(csv_s3_path: str, table_name: str, dataset_name: str, trunc
             row_count = df.count()
             
             # Use existing JDBC writer
-            write_to_postgres(df, dataset_name, get_aws_secret())
+            write_to_postgres(df, dataset_name, get_aws_secret(env))
             
             logger.info(f"_import_via_jdbc: Successfully imported {row_count} rows via JDBC")
             
@@ -899,6 +917,12 @@ Examples:
     )
     
     parser.add_argument(
+        "--env", "-e",
+        default="development",
+        help="Environment (development, staging, production). Defaults to development"
+    )
+    
+    parser.add_argument(
         "--verbose", "-v",
         action="store_true",
         help="Enable verbose logging"
@@ -935,6 +959,7 @@ Examples:
                     csv_path,
                     args.table,
                     args.dataset,
+                    args.env,
                     use_s3_import=not args.use_jdbc
                 )
                 
@@ -952,6 +977,7 @@ Examples:
                 args.import_csv,
                 args.table,
                 args.dataset,
+                args.env,
                 use_s3_import=not args.use_jdbc
             )
             

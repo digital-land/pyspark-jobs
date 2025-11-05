@@ -170,7 +170,7 @@ from jobs.dbaccess.postgres_connectivity import (
     get_aws_secret
 )
 
-conn_params = get_aws_secret()
+conn_params = get_aws_secret("development")
 data_set = "my-dataset"
 
 try:

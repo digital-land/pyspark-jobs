@@ -95,8 +95,8 @@ Aurora cluster needs S3 access:
                 "s3:ListBucket"
             ],
             "Resource": [
-                "arn:aws:s3:::development-pyspark-jobs-codepackage",
-                "arn:aws:s3:::development-pyspark-jobs-codepackage/*"
+                "arn:aws:s3:::development-emr-serverless-pyspark-jobs-codepackage",
+                "arn:aws:s3:::development-emr-serverless-pyspark-jobs-codepackage/*"
             ]
         }
     ]

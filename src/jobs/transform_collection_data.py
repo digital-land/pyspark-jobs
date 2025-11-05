@@ -1,8 +1,14 @@
 from jobs.utils.logger_config import get_logger
+from pyspark.sql.functions import (
+    row_number, lit, first, to_json, struct, col, when, to_date, desc, expr
+)
+import pyspark.sql.functions as F
+from pyspark.sql.window import Window
+from jobs.utils.s3_dataset_typology import get_dataset_typology
+# centroid computation is handled via Sedona when available; fall back to
+# the Python UDF in jobs.utils.point_utils at runtime if needed (lazy import).
 
 logger = get_logger(__name__)
-from pyspark.sql.functions import row_number, lit, first, to_json, struct, col, when, to_date
-from pyspark.sql.window import Window
 
 # -------------------- Transformation Processing --------------------
 def transform_data_fact(df):
@@ -55,102 +61,155 @@ def transform_data_issue(df):
         raise
 
 
-def transform_data_entity(df,data_set,spark):
-    try: 
-        logger.info("transform_data_entity:Transforming data for Entity table") 
-        # Pivot the dataset based on 'field' and 'value', grouped by 'entry-number'
-        #pivot_df = df.groupBy("entry_number","entity").pivot("field").agg(first("value"))
-        #pivot_df = pivot_df.drop("entry_number", "organisation")
-        #pivot_df=pivot_df.withColumn("topology", lit("geography")).withColumn("organisation_entity", lit("600010"))
-        # Create JSON column
-        #pivot_df = pivot_df.withColumn("json",to_json(struct("naptan_code","bus_stop_type" ,"transport_access_node_type")))
-        #pivot_df = pivot_df.drop("naptan_code","bus_stop_type","transport_access_node_type")
+def transform_data_entity(df,data_set,spark,env):
+    try:
+        logger.info("transform_data_entity:Transforming data for Entity table")
+        df.show(20)
+        # 1) Select the top record per (entity, field) using priority, entry_date, entry_number
+        # Fallback if 'priority' is missing: use entry_date, entry_number
+        if "priority" in df.columns:
+            ordering_cols = [desc("priority"), desc("entry_date"), desc("entry_number")]
+        else:
+            ordering_cols = [desc("entry_date"), desc("entry_number")]
 
-        # Pivot the transport-access-node based on 'field' and 'value', grouped by 'entry-number'
-        pivot_df = df.groupBy("entry_number","entity").pivot("field").agg(first("value"))
-        for column in pivot_df.columns:  # <-- changed from 'col' to 'column'
+        w = Window.partitionBy("entity", "field").orderBy(*ordering_cols)
+        df_ranked = df.withColumn("row_num", row_number().over(w)) \
+                      .filter(col("row_num") == 1) \
+                      .drop("row_num")
+
+        # 2) Pivot to get one row per entity
+        pivot_df = df_ranked.groupBy("entity").pivot("field").agg(first("value"))
+        pivot_df.show(5)
+
+        logger.info("transform_data_entity:Adding Typology data as the column missing after flattening")
+        # filtered_df = pivot_df.filter(col("field") == "typology").select("field", "value")
+
+        # Add a new column "typology" to the pivoted DataFrame by applying the get_dataset_typology function 
+        typology_value = get_dataset_typology(data_set)
+        logger.info(f"transform_data_entity: Fetched typology value from dataset specification for dataset: {data_set} is {typology_value}")
+
+        pivot_df = pivot_df.withColumn("typology", F.lit(typology_value))
+        pivot_df.show(5)
+        
+        # TODO: The following is going to be offloaded into Posgres for processing: Calculate point data (centroid) for Multipolygon values.
+        # TODO: Delete this codebock once moved to Postgres
+        # Prefer using Sedona (distributed). Fall back to Python UDF if Sedona
+        # is not available on the cluster. Ensure a `point` column exists.
+        # logger.info("transform_data_entity: Adding point column - by adding extra column after flattening ")
+        # if "geometry" in pivot_df.columns:
+        #     try:
+        #         from sedona.register import SedonaRegistrator
+        #         SedonaRegistrator.registerAll(spark)
+        #         pivot_df = pivot_df.withColumn(
+        #             "point",
+        #             expr("ST_AsText(ST_Centroid(ST_GeomFromWKT(geometry)))")
+        #         )
+        #         pivot_df.show(5)
+        #     except Exception as sedona_err:
+        #         logger.info(f"Sedona not available or failed to initialize: {sedona_err}. Falling back to Python UDF.")
+        #         try:
+        #             from jobs.utils.point_utils import centroid_udf  # lazy import
+        #         except Exception:
+        #             centroid_udf = None
+
+        #         if centroid_udf is not None:
+        #             try:
+        #                 pivot_df = pivot_df.withColumn("point", centroid_udf(pivot_df["geometry"]))
+        #                 pivot_df.show(5)
+        #             except Exception as e:
+        #                 logger.warning(f"transform_data_entity: Failed to compute centroid with Python UDF: {e}")
+        #                 pivot_df = pivot_df.withColumn("point", lit(None).cast("string"))
+        #         else:
+        #             logger.info("transform_data_entity: No centroid implementation available; point column set to None")
+        #             pivot_df = pivot_df.withColumn("point", lit(None).cast("string"))
+        # else:
+        #     logger.info("transform_data_entity: geometry column not present; skipping point column")
+        #     pivot_df = pivot_df.withColumn("point", lit(None).cast("string"))
+
+        # 3) Normalise column names (kebab-case -> snake_case)
+        logger.info(f"transform_data_entity: Normalising column names from kebab-case to snake_case")
+        for column in pivot_df.columns:
             if "-" in column:
-                new_col = column.replace("-", "_")
-                pivot_df = pivot_df.withColumnRenamed(column, new_col)
-        logger.info(f"transform_data_entity:Pivoted DataFrame columns: {pivot_df.columns}")
-        pivot_df = pivot_df.drop("entry_number")
-        logger.info(f"transform_data_entity:DataFrame after dropping 'entry_number': {pivot_df.columns}")
-        pivot_df=pivot_df.withColumn("dataset", lit(data_set))
-        logger.info(f"transform_data_entity:Final DataFrame after filtering: {pivot_df.columns}")
-        #Create JSON column
-        if 'geometry' not in pivot_df.columns:
-            pivot_df = pivot_df.withColumn('geometry', lit(None).cast("string"))
+                pivot_df = pivot_df.withColumnRenamed(column, column.replace("-", "_"))
 
-        pivot_df = pivot_df.drop("geojson")
-        
-        organisation_df = spark.read.option("header", "true").csv("s3://development-collection-data/organisation/dataset/organisation.csv")
-        pivot_df = pivot_df.join(organisation_df, pivot_df.organisation == organisation_df.organisation, "left") \
-            .select(pivot_df["*"], organisation_df["entity"].alias("organisation_entity"))
-        pivot_df = pivot_df.drop("organisation")
-        # Define standard columns
-        standard_column = ["dataset", "end_date", "entity", "entry_date", "geometry", "json", "name", "organisation_entity", "point", "prefix", "reference", "start_date", "typology"]
-        pivot_df_columns = pivot_df.columns
+        # 4) Set dataset and drop legacy geojson if present
+        logger.info(f"transform_data_entity: Setting dataset column to {data_set} and dropping geojson column if exists")
+        pivot_df = pivot_df.withColumn("dataset", lit(data_set))
+        if "geojson" in pivot_df.columns:
+            pivot_df = pivot_df.drop("geojson")
 
-        #Find difference columns
-        difference_columns = list(set(pivot_df_columns) - set(standard_column))
+        # 5) Organisation join to fetch organisation_entity
+        logger.info(f"transform_data_entity: Joining organisation to get organisation_entity")
+        organisation_df = spark.read.option("header", "true").csv(f"s3://{env}-collection-data/organisation/dataset/organisation.csv")
+        pivot_df = pivot_df.join(
+            organisation_df,
+            pivot_df.organisation == organisation_df.organisation,
+            "left"
+        ).select(
+            pivot_df["*"],
+            organisation_df["entity"].alias("organisation_entity")
+        ).drop("organisation")
 
-        # Dynamically create a struct of difference columns and convert to JSON
-        pivot_df_with_json = pivot_df.withColumn("json", to_json(struct(*[col(c) for c in difference_columns])))
+        # 6) Join typology from dataset specification
+        # (Step removed: typology already retrieved earlier)
 
-        dataset_df = spark.read.option("header", "true").csv("s3://development-collection-data/emr-data-processing/specification/dataset/dataset.csv")
+        # 7) Build json from any non-standard columns
+        standard_columns = {
+            "dataset", "end_date", "entity", "entry_date", "geometry", "json",
+            "name", "organisation_entity", "point", "prefix", "reference",
+            "start_date", "typology"
+        }
+        if "geometry" not in pivot_df.columns:
+            pivot_df = pivot_df.withColumn("geometry", lit(None).cast("string"))
+        # Ensure expected columns exist before projection
+        if "end_date" not in pivot_df.columns:
+            pivot_df = pivot_df.withColumn("end_date", lit(None).cast("date"))
+        if "start_date" not in pivot_df.columns:
+            pivot_df = pivot_df.withColumn("start_date", lit(None).cast("date"))
+        if "name" not in pivot_df.columns:
+            pivot_df = pivot_df.withColumn("name", lit("").cast("string"))
+        if "point" not in pivot_df.columns:
+            pivot_df = pivot_df.withColumn("point", lit(None).cast("string"))
+        diff_columns = [c for c in pivot_df.columns if c not in standard_columns]
+        if diff_columns:
+            pivot_df = pivot_df.withColumn("json", to_json(struct(*[col(c) for c in diff_columns])))
+        else:
+            pivot_df = pivot_df.withColumn("json", lit("{}"))
 
-        pivot_df_with_json = pivot_df_with_json.join(dataset_df, pivot_df_with_json.dataset == dataset_df.dataset, "left") \
-            .select(pivot_df_with_json["*"], dataset_df["typology"])
-        
-        pivot_df_with_json.select("typology").show(5, truncate=False)
-
-        logger.info(f"transform_data_entity:Final DataFrame after filtering: {pivot_df_with_json.show(5, truncate=False)}")
-
-        # Add missing columns with default values
-        if 'end_date' not in pivot_df_with_json.columns:
-            pivot_df_with_json = pivot_df_with_json.withColumn('end_date', lit(None).cast("date"))
-        if 'start_date' not in pivot_df_with_json.columns:
-            pivot_df_with_json = pivot_df_with_json.withColumn('start_date', lit(None).cast("date"))
-        if 'name' not in pivot_df_with_json.columns:
-            pivot_df_with_json = pivot_df_with_json.withColumn('name', lit("").cast("string"))
-        if 'point' not in pivot_df_with_json.columns:
-            pivot_df_with_json = pivot_df_with_json.withColumn('point', lit(None).cast("string"))
-
-        # Fix date and geometry columns: convert empty strings to NULL for PostgreSQL compatibility
-        logger.info("transform_data_entity: Fixing date and geometry columns for PostgreSQL compatibility")
-        
-        # Handle date columns
-        date_columns = ["end_date", "entry_date", "start_date"]
-        for date_col in date_columns:
-            if date_col in pivot_df_with_json.columns:
-                logger.info(f"transform_data_entity: Processing date column: {date_col}")
-                pivot_df_with_json = pivot_df_with_json.withColumn(
-                    date_col, 
+        # 8) Normalise date columns
+        for date_col in ["end_date", "entry_date", "start_date"]:
+            if date_col in pivot_df.columns:
+                pivot_df = pivot_df.withColumn(
+                    date_col,
                     when(col(date_col) == "", None)
                     .when(col(date_col).isNull(), None)
                     .otherwise(to_date(col(date_col), "yyyy-MM-dd"))
                 )
-        
-        # Handle geometry columns: convert empty strings to NULL and format WKT for PostgreSQL
-        geometry_columns = ["geometry", "point"]
-        for geom_col in geometry_columns:
-            if geom_col in pivot_df_with_json.columns:
-                logger.info(f"transform_data_entity: Processing geometry column: {geom_col}")
-                pivot_df_with_json = pivot_df_with_json.withColumn(
+
+        # 9) Normalise geometry columns
+        for geom_col in ["geometry", "point"]:
+            if geom_col in pivot_df.columns:
+                pivot_df = pivot_df.withColumn(
                     geom_col,
                     when(col(geom_col) == "", None)
                     .when(col(geom_col).isNull(), None)
-                    .when(col(geom_col).startswith("POINT"), col(geom_col))  # Keep valid WKT as-is
-                    .when(col(geom_col).startswith("POLYGON"), col(geom_col))  # Keep valid WKT as-is  
-                    .when(col(geom_col).startswith("MULTIPOLYGON"), col(geom_col))  # Keep valid WKT as-is
-                    .otherwise(None)  # Invalid geometry → NULL
+                    .when(col(geom_col).startswith("POINT"), col(geom_col))
+                    .when(col(geom_col).startswith("POLYGON"), col(geom_col))
+                    .when(col(geom_col).startswith("MULTIPOLYGON"), col(geom_col))
+                    .otherwise(None)
                 )
-        
-        pivot_df_with_json = pivot_df_with_json.select("dataset", "end_date", "entity", "entry_date", "geometry", "json", "name", "organisation_entity", "point", "prefix", "reference", "start_date", "typology")
 
-        #pivot_df_with_json.write.mode("overwrite").option("header", True) \
-        #.csv("/home/lakshmi/entity_testing/pivoted_entity_data.csv")
-        return pivot_df_with_json
+        # 10) Final projection and safety dedupe
+        out = pivot_df.select(
+            "dataset", "end_date", "entity", "entry_date", "geometry", "json",
+            "name", "organisation_entity", "point", "prefix", "reference",
+            "start_date", "typology"
+        ).dropDuplicates(["entity"])
+
+        logger.info("transform_data_entity:Transform data for Entity table after pivoting and normalization")
+        out.show(5)
+
+        return out
     except Exception as e:
         logger.error(f"transform_data_entity:Error occurred - {e}")
         raise

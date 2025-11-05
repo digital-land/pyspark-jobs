@@ -195,6 +195,7 @@ import_result = import_csv_to_aurora(
     csv_s3_path=csv_path,
     table_name="entity",
     dataset_name="transport-access-node",
+    env="development",
     use_s3_import=True,
     truncate_table=True
 )

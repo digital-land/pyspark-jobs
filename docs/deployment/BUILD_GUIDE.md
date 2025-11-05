@@ -47,9 +47,9 @@ build_output/
 
 The script uploads files to these S3 locations:
 
-- **Wheel Package**: `s3://development-pyspark-jobs-codepackage/pkg/whl_pkg/`
-- **Dependencies**: `s3://development-pyspark-jobs-codepackage/pkg/dependencies/`
-- **Entry Scripts**: `s3://development-pyspark-jobs-codepackage/pkg/entry_script/`
+- **Wheel Package**: `s3://development-emr-serverless-pyspark-jobs-codepackage/pkg/whl_pkg/`
+- **Dependencies**: `s3://development-emr-serverless-pyspark-jobs-codepackage/pkg/dependencies/`
+- **Entry Scripts**: `s3://development-emr-serverless-pyspark-jobs-codepackage/pkg/entry_script/`
 
 ## EMR Serverless Configuration
 
@@ -57,8 +57,8 @@ Use the configuration from `deployment_manifest.json` for your EMR Serverless jo
 
 ```json
 {
-  "entryPoint": "s3://development-pyspark-jobs-codepackage/pkg/entry_script/run_main.py",
-  "sparkSubmitParameters": "--py-files s3://development-pyspark-jobs-codepackage/pkg/whl_pkg/pyspark_jobs-0.1.0-py3-none-any.whl,s3://development-pyspark-jobs-codepackage/pkg/dependencies/dependencies.zip"
+  "entryPoint": "s3://development-emr-serverless-pyspark-jobs-codepackage/pkg/entry_script/run_main.py",
+  "sparkSubmitParameters": "--py-files s3://development-emr-serverless-pyspark-jobs-codepackage/pkg/whl_pkg/pyspark_jobs-0.1.0-py3-none-any.whl,s3://development-emr-serverless-pyspark-jobs-codepackage/pkg/dependencies/dependencies.zip"
 }
 ```
 
@@ -98,9 +98,9 @@ cd build_output
 Or upload files individually:
 
 ```bash
-aws s3 cp build_output/whl_pkg/*.whl s3://development-pyspark-jobs-codepackage/pkg/whl_pkg/
-aws s3 cp build_output/dependencies/dependencies.zip s3://development-pyspark-jobs-codepackage/pkg/dependencies/
-aws s3 cp build_output/entry_script/run_main.py s3://development-pyspark-jobs-codepackage/pkg/entry_script/
+aws s3 cp build_output/whl_pkg/*.whl s3://development-emr-serverless-pyspark-jobs-codepackage/pkg/whl_pkg/
+aws s3 cp build_output/dependencies/dependencies.zip s3://development-emr-serverless-pyspark-jobs-codepackage/pkg/dependencies/
+aws s3 cp build_output/entry_script/run_main.py s3://development-emr-serverless-pyspark-jobs-codepackage/pkg/entry_script/
 ```
 
 ## Customization

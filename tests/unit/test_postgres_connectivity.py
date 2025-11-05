@@ -43,7 +43,7 @@ def test_get_aws_secret(mock_get_secret):
         "port": "5432"
     }
     '''
-    conn_params = pg_module.get_aws_secret()
+    conn_params = pg_module.get_aws_secret("development")
     assert conn_params["user"] == "test_user"
     assert conn_params["host"] == "localhost"
 
