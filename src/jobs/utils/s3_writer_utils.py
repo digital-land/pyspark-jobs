@@ -399,7 +399,7 @@ def fetch_dataset_schema_fields(dataset_name):
         return []
 
 def ensure_schema_fields(df, dataset_name):
-    """Ensure DataFrame has all required fields from schema specification in correct order."""
+    """Ensure DataFrame has all required fields from schema specification with empty columns at end."""
     try:
         schema_fields = fetch_dataset_schema_fields(dataset_name)
         if not schema_fields:
@@ -410,21 +410,17 @@ def ensure_schema_fields(df, dataset_name):
         missing_fields = [field for field in schema_fields if field not in current_columns]
         
         if missing_fields:
-            logger.info(f"Adding {len(missing_fields)} missing fields: {missing_fields}")
+            logger.info(f"Adding {len(missing_fields)} missing fields at end: {missing_fields}")
+            # Keep existing column order and add missing fields at the end
+            existing_cols = df.columns
             for field in missing_fields:
                 df = df.withColumn(field, lit(""))
+            # Reorder: existing columns first, then missing fields
+            final_columns = existing_cols + missing_fields
+            df = df.select(final_columns)
+            logger.info(f"Column order preserved with {len(missing_fields)} empty columns added at end")
         else:
             logger.info(f"All schema fields already present in DataFrame")
-        
-        # Reorder columns to match specification order
-        # Keep extra columns that aren't in the spec at the end
-        extra_columns = [col for col in df.columns if col not in schema_fields]
-        ordered_columns = schema_fields + extra_columns
-        
-        # Only select columns that exist in the dataframe
-        final_columns = [col for col in ordered_columns if col in df.columns]
-        df = df.select(final_columns)
-        logger.info(f"Reordered columns to match specification: {final_columns[:10]}...")
         
         return df
     except Exception as e:
