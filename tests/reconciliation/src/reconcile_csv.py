@@ -16,8 +16,8 @@ csv.field_size_limit(10485760)  # 10MB
 os.makedirs("reports", exist_ok=True)
 
 # File paths
-file1 = "data/central-activities-zone_new.csv"
-file2 = "data/central-activities-zone_original.csv"
+file1 = "data/title-boundary_target.csv"
+file2 = "data/title-boundary_original.csv"
 # file1 = "data/central_activities_zone_entity.csv"
 # file2 = "data/central_activities_zone_pyspark_entity.csv"
 #file1 = "data/title_boundary_entity.csv"
@@ -37,9 +37,30 @@ data2 = read_csv(file2)
 columns1 = set(data1[0].keys()) if data1 else set()
 columns2 = set(data2[0].keys()) if data2 else set()
 
-# Create entity lookup
-entities1 = {row['entity']: row for row in data1}
-entities2 = {row['entity']: row for row in data2}
+# Create entity lookup and detect duplicates
+entities1 = {}
+duplicates1 = defaultdict(int)
+for row in data1:
+    entity = row['entity']
+    if entity in entities1:
+        duplicates1[entity] += 1
+    else:
+        entities1[entity] = row
+        duplicates1[entity] = 1
+
+entities2 = {}
+duplicates2 = defaultdict(int)
+for row in data2:
+    entity = row['entity']
+    if entity in entities2:
+        duplicates2[entity] += 1
+    else:
+        entities2[entity] = row
+        duplicates2[entity] = 1
+
+# Filter to only actual duplicates (count > 1)
+duplicates1 = {k: v for k, v in duplicates1.items() if v > 1}
+duplicates2 = {k: v for k, v in duplicates2.items() if v > 1}
 
 # Reconciliation
 only_in_file1 = set(entities1.keys()) - set(entities2.keys())
@@ -92,6 +113,8 @@ with open(output, 'w') as f:
     
     f.write(f"Total records in File 1: {len(data1)}\n")
     f.write(f"Total records in File 2: {len(data2)}\n")
+    f.write(f"Unique entities in File 1: {len(entities1)}\n")
+    f.write(f"Unique entities in File 2: {len(entities2)}\n")
     f.write(f"Common entities: {len(common)}\n\n")
     
     f.write("-" * 80 + "\n")
@@ -107,6 +130,21 @@ with open(output, 'w') as f:
         f.write(f"\nOnly in File 1: {sorted(only_in_cols1)}\n")
     if only_in_cols2:
         f.write(f"Only in File 2: {sorted(only_in_cols2)}\n")
+    f.write("\n")
+    
+    f.write("-" * 80 + "\n")
+    f.write("DUPLICATE ENTITIES\n")
+    f.write("-" * 80 + "\n")
+    f.write(f"Duplicate entities in File 1: {len(duplicates1)}\n")
+    if duplicates1:
+        f.write("  Entity (Count):\n")
+        for entity, count in sorted(duplicates1.items()):
+            f.write(f"    {entity}: {count} occurrences\n")
+    f.write(f"\nDuplicate entities in File 2: {len(duplicates2)}\n")
+    if duplicates2:
+        f.write("  Entity (Count):\n")
+        for entity, count in sorted(duplicates2.items()):
+            f.write(f"    {entity}: {count} occurrences\n")
     f.write("\n")
     
     f.write("-" * 80 + "\n")
@@ -142,10 +180,12 @@ with open(output, 'w') as f:
     f.write("\n" + "=" * 80 + "\n")
     f.write("SUMMARY\n")
     f.write("=" * 80 + "\n")
-    if not only_in_file1 and not only_in_file2 and not differences:
+    if not only_in_file1 and not only_in_file2 and not differences and not duplicates1 and not duplicates2:
         f.write("✓ Files are identical\n")
     else:
         f.write(f"✗ Files have differences:\n")
+        f.write(f"  - {len(duplicates1)} duplicate entities in File 1 ({sum(duplicates1.values())} total duplicate records)\n")
+        f.write(f"  - {len(duplicates2)} duplicate entities in File 2 ({sum(duplicates2.values())} total duplicate records)\n")
         f.write(f"  - {len(only_in_file1)} records only in File 1\n")
         f.write(f"  - {len(only_in_file2)} records only in File 2\n")
         f.write(f"  - {len(differences)} records with field differences\n")
