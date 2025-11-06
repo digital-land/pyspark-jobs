@@ -26,6 +26,7 @@ from pyspark.sql.window import Window
 from jobs.utils.logger_config import setup_logging, get_logger, log_execution_time, set_spark_log_level
 from jobs.utils.s3_writer_utils import write_to_s3, write_to_s3_format
 from jobs.utils.postgres_writer_utils import write_dataframe_to_postgres_jdbc
+from jobs.utils.df_utils import show_df
 
 #from utils.path_utils import load_json_from_repo
 
@@ -149,7 +150,7 @@ def transform_data(df, schema_name, data_set,spark):
         logger.info(f"transform_data: Transforming data for table: {schema_name} using schema from {dataset_json_transformed_path}")
         json_data = load_metadata(dataset_json_transformed_path)
         logger.info(f"transform_data: Transforming data with schema with json data: {json_data}")
-        df.show(5)
+        show_df(df, 5, env)
 
         # Extract the list of fields
         fields = []
@@ -168,7 +169,7 @@ def transform_data(df, schema_name, data_set,spark):
         logger.info(f"transform_data: DataFrame columns after renaming hyphens: {df.columns}")
         df.printSchema()
         logger.info(f"transform_data: DataFrame schema after renaming hyphens")
-        df.show(5)
+        show_df(df, 5, env)
 
         # Get actual DataFrame columns
         df_columns = df.columns
@@ -187,7 +188,7 @@ def transform_data(df, schema_name, data_set,spark):
             return transform_data_fact(df)
         elif schema_name == 'entity':
             logger.info("transform_data: Transforming data for Entity table")
-            df.show(5)
+            show_df(df, 5, env)
             return transform_data_entity(df,data_set,spark,env)
         elif schema_name == 'issue':
             logger.info("transform_data: Transforming data for Issue table")
@@ -261,7 +262,7 @@ def main(args):
                     # Show schema and sample data 
                     df.printSchema() 
                     logger.info(f"Main: Schema information for the loaded dataframe")
-                    df.show(5)
+                    show_df(df, 5, env)
 
                     if(table_name== 'entity'):
                         logger.info(f"Main: Invocation of write_to_s3_format method for {table_name} table")
@@ -270,7 +271,7 @@ def main(args):
                     #TODO: revise this code and for converting spark session as singleton in future
                     processed_df = transform_data(df,table_name,data_set,spark)
                     logger.info(f"Main: Transforming data for {table_name} table completed")
-                    df.show(5)
+                    show_df(df, 5, env)
 
                     # Write to S3 for Fact Resource table
                     write_to_s3(processed_df, f"{output_path}{table_name}", data_set,table_name)
@@ -286,7 +287,7 @@ def main(args):
                     # Show schema and sample data 
                     df.printSchema() 
                     logger.info(f"Main: Schema information for the loaded dataframe")
-                    df.show(5)
+                    show_df(df, 5, env)
                     processed_df = transform_data(df,table_name,data_set,spark)                                      
 
                     logger.info(f"Main: Transforming data for {table_name} table completed")
@@ -299,11 +300,11 @@ def main(args):
 
             # Write dataframe to Postgres for Entity table
             if df_entity is not None:
-                df_entity.show(5)
+                show_df(df_entity, 5, env)
                 df_entity = df_entity.drop("processed_timestamp","year","month", "day")    
                 table_name = 'entity'
                 logger.info(f"Main: before writing to postgres, df_entity dataframe is below")
-                df_entity.show(5)
+                show_df(df_entity, 5, env)
                 write_dataframe_to_postgres_jdbc(df_entity, table_name, data_set, env, use_staging=True)
             else:
                 logger.info("Main: df_entity is None, skipping Postgres write")

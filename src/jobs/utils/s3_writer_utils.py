@@ -4,6 +4,7 @@ from jobs.utils.s3_dataset_typology import get_dataset_typology
 from jobs.utils.s3_format_utils import flatten_s3_json, s3_csv_format
 from jobs.utils.s3_utils import cleanup_dataset_data
 from jobs.utils.logger_config import setup_logging, get_logger, log_execution_time, set_spark_log_level
+from jobs.utils.df_utils import show_df
 from pyspark.sql.functions import lit
 from pyspark.sql.types import TimestampType
 from datetime import datetime
@@ -25,10 +26,10 @@ logger = get_logger(__name__)
 df_entity = None
 @log_execution_time
 
-def transform_data_entity_format(df,data_set,spark):
+def transform_data_entity_format(df,data_set,spark,env=None):
     try:
         logger.info("transform_data_entity:Transforming data for Entity table")
-        df.show(20)
+        show_df(df, 20, env)
         # 1) Select the top record per (entity, field) using priority, entry_date, entry_number
         # Fallback if 'priority' is missing: use entry_date, entry_number
         if "priority" in df.columns:
@@ -43,7 +44,7 @@ def transform_data_entity_format(df,data_set,spark):
 
         # 2) Pivot to get one row per entity
         pivot_df = df_ranked.groupBy("entity").pivot("field").agg(first("value"))
-        pivot_df.show(5)
+        show_df(pivot_df, 5, env)
 
         logger.info("transform_data_entity:Adding Typology data as the column missing after flattening")
         # filtered_df = pivot_df.filter(col("field") == "typology").select("field", "value")
@@ -53,7 +54,7 @@ def transform_data_entity_format(df,data_set,spark):
         logger.info(f"transform_data_entity: Fetched typology value from dataset specification for dataset: {data_set} is {typology_value}")
 
         pivot_df = pivot_df.withColumn("typology", lit(typology_value))
-        pivot_df.show(5)
+        show_df(pivot_df, 5, env)
         
         
         # 3) Normalise column names (kebab-case -> snake_case)
@@ -137,7 +138,7 @@ def transform_data_entity_format(df,data_set,spark):
         ).dropDuplicates(["entity"])
 
         logger.info("transform_data_entity:Transform data for Entity table after pivoting and normalization")
-        out.show(5)
+        show_df(out, 5, env)
 
         return out
     except Exception as e:
@@ -146,14 +147,14 @@ def transform_data_entity_format(df,data_set,spark):
 @log_execution_time
 
 
-def normalise_dataframe_schema(df, schema_name, data_set,spark):      
+def normalise_dataframe_schema(df, schema_name, data_set,spark,env=None):      
     try:
         from jobs.main_collection_data import load_metadata
         dataset_json_transformed_path = "config/transformed_source.json"
         logger.info(f"normalise_dataframe_schema: Transforming data for table: {schema_name} using schema from {dataset_json_transformed_path}")
         json_data = load_metadata(dataset_json_transformed_path)
         logger.info(f"normalise_dataframe_schema: Transforming data with schema with json data: {json_data}")
-        df.show(5)
+        show_df(df, 5, env)
 
         # Extract the list of fields
         fields = []
@@ -172,7 +173,7 @@ def normalise_dataframe_schema(df, schema_name, data_set,spark):
         logger.info(f"normalise_dataframe_schema: DataFrame columns after renaming hyphens: {df.columns}")
         df.printSchema()
         logger.info(f"normalise_dataframe_schema: DataFrame schema after renaming hyphens")
-        df.show(5)
+        show_df(df, 5, env)
 
         # Get actual DataFrame columns
         df_columns = df.columns
@@ -185,8 +186,8 @@ def normalise_dataframe_schema(df, schema_name, data_set,spark):
             
         if schema_name == 'entity':
             logger.info("normalise_dataframe_schema: Transforming data for Entity table")
-            df.show(5)
-            return transform_data_entity_format(df,data_set,spark)        
+            show_df(df, 5, env)
+            return transform_data_entity_format(df,data_set,spark,env)        
         else:
             raise ValueError(f"Unknown table name: {schema_name}")
 
@@ -262,7 +263,7 @@ def normalise_dataframe_schema(df, schema_name, data_set,spark):
 # -------------------- S3 Writer --------------------
 df_entity = None
 @log_execution_time
-def write_to_s3(df, output_path, dataset_name, table_name):
+def write_to_s3(df, output_path, dataset_name, table_name, env=None):
     try:   
         logger.info(f"write_to_s3: Writing data to S3 at {output_path} for dataset {dataset_name}") 
         
@@ -292,12 +293,12 @@ def write_to_s3(df, output_path, dataset_name, table_name):
         #adding time stamp to the dataframe for parquet file
         df = df.withColumn("processed_timestamp", lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()))
         logger.info(f"write_to_s3: DataFrame after adding processed_timestamp column")
-        df.show(5)
+        show_df(df, 5, env)
     
 
         if table_name == 'entity':
             global df_entity
-            df_entity.show(5) if df_entity else logger.info("write_to_s3: df_entity is None")
+            show_df(df_entity, 5, env) if df_entity else logger.info("write_to_s3: df_entity is None")
             df_entity = df
 
         # Write to S3 with multilevel partitioning
@@ -434,9 +435,9 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
     temp_output_path = f"s3://{env}-collection-data/dataset/temp/{dataset_name}/"
     #output_path = f"s3://{env}-collection-data/dataset/"
 
-    df = normalise_dataframe_schema(df,table_name,dataset_name,spark)
+    df = normalise_dataframe_schema(df,table_name,dataset_name,spark,env)
     logger.info(f"write_to_s3_format: DataFrame after transformation for dataset {dataset_name} and table {table_name}")
-    df.show(5)
+    show_df(df, 5, env)
 
     try:   
         logger.info(f"write_to_s3_format: Writing data to S3 at {output_path} for dataset {dataset_name}") 
@@ -451,7 +452,7 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
         # Add dataset as partition column
         logger.info(f"write_to_s3_format: Adding dataset column with value {dataset_name}")
         df = df.withColumn("dataset", lit(dataset_name))
-        df.show(5)
+        show_df(df, 5, env)
                      
         # Calculate optimal partitions based on data size
         logger.info(f"write_to_s3_format: Calculating optimal partitions based on data size")
@@ -465,13 +466,13 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
 
         logger.info(f"write_to_s3_format: Invocation of calculate_centroid method for {table_name} table")
         df = calculate_centroid(df)
-        df.show(5)
+        show_df(df, 5, env)
 
         temp_df = df
 
         logger.info(f"write_to_s3_format: Flattening json data for: {dataset_name}") 
         temp_df = flatten_json_column(temp_df)
-        temp_df.show(5)
+        show_df(temp_df, 5, env)
 
         logger.info(f"write_to_s3_format: Normalising column names from kebab_case to snake-case")
         for column in temp_df.columns:
@@ -481,7 +482,7 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
         # Write to S3 with multilevel partitioning
         # Use "append" mode since we already cleaned up the specific dataset partition
         logger.info(f"write_to_s3_format: Writing csv data for: {dataset_name}") 
-        temp_df.show(5)
+        show_df(temp_df, 5, env)
 
         cleanup_temp_path(env, dataset_name)
         

@@ -1,4 +1,5 @@
 from jobs.utils.logger_config import get_logger
+from jobs.utils.df_utils import show_df
 from pyspark.sql.functions import (
     row_number, lit, first, to_json, struct, col, when, to_date, desc, expr
 )
@@ -64,7 +65,7 @@ def transform_data_issue(df):
 def transform_data_entity(df,data_set,spark,env):
     try:
         logger.info("transform_data_entity:Transforming data for Entity table")
-        df.show(20)
+        show_df(df, 20, env)
         # 1) Select the top record per (entity, field) using priority, entry_date, entry_number
         # Fallback if 'priority' is missing: use entry_date, entry_number
         if "priority" in df.columns:
@@ -79,7 +80,7 @@ def transform_data_entity(df,data_set,spark,env):
 
         # 2) Pivot to get one row per entity
         pivot_df = df_ranked.groupBy("entity").pivot("field").agg(first("value"))
-        pivot_df.show(5)
+        show_df(pivot_df, 5, env)
 
         logger.info("transform_data_entity:Adding Typology data as the column missing after flattening")
         # filtered_df = pivot_df.filter(col("field") == "typology").select("field", "value")
@@ -89,7 +90,7 @@ def transform_data_entity(df,data_set,spark,env):
         logger.info(f"transform_data_entity: Fetched typology value from dataset specification for dataset: {data_set} is {typology_value}")
 
         pivot_df = pivot_df.withColumn("typology", F.lit(typology_value))
-        pivot_df.show(5)
+        show_df(pivot_df, 5, env)
         
         # TODO: The following is going to be offloaded into Posgres for processing: Calculate point data (centroid) for Multipolygon values.
         # TODO: Delete this codebock once moved to Postgres
@@ -207,7 +208,7 @@ def transform_data_entity(df,data_set,spark,env):
         ).dropDuplicates(["entity"])
 
         logger.info("transform_data_entity:Transform data for Entity table after pivoting and normalization")
-        out.show(5)
+        show_df(out, 5, env)
 
         return out
     except Exception as e:
