@@ -17,6 +17,8 @@ from jobs.utils.flatten_csv import flatten_json_column, flatten_geojson_column
 import boto3
 from pyspark.sql.functions import monotonically_increasing_id, row_number
 from pyspark.sql.window import Window
+import requests
+import re
 
 # Import geometry utilities
 from jobs.utils.geometry_utils import calculate_centroid
@@ -394,6 +396,59 @@ def wkt_to_geojson(wkt_string):
     
     return None
 
+#------------------fetch schema from github specification-----------------
+def fetch_dataset_schema_fields(dataset_name):
+    """Fetch dataset schema fields from GitHub specification."""
+    try:
+        url = f"https://raw.githubusercontent.com/digital-land/specification/refs/heads/main/content/dataset/{dataset_name}.md"
+        logger.info(f"Fetching schema from: {url}")
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        
+        content = response.text
+        fields = []
+        in_fields_section = False
+        
+        for line in content.split('\n'):
+            if '## Fields' in line or '## fields' in line:
+                in_fields_section = True
+                continue
+            if in_fields_section and line.startswith('##'):
+                break
+            if in_fields_section and line.strip().startswith('*'):
+                match = re.search(r'\*\s*\[([^\]]+)\]', line)
+                if match:
+                    fields.append(match.group(1))
+        
+        logger.info(f"Fetched {len(fields)} fields from specification: {fields}")
+        return fields
+    except Exception as e:
+        logger.warning(f"Failed to fetch schema from GitHub: {e}")
+        return []
+
+def ensure_schema_fields(df, dataset_name):
+    """Ensure DataFrame has all required fields from schema specification."""
+    try:
+        schema_fields = fetch_dataset_schema_fields(dataset_name)
+        if not schema_fields:
+            logger.info(f"No schema fields fetched, returning DataFrame as-is")
+            return df
+        
+        current_columns = set(df.columns)
+        missing_fields = [field for field in schema_fields if field not in current_columns]
+        
+        if missing_fields:
+            logger.info(f"Adding {len(missing_fields)} missing fields: {missing_fields}")
+            for field in missing_fields:
+                df = df.withColumn(field, lit(""))
+        else:
+            logger.info(f"All schema fields already present in DataFrame")
+        
+        return df
+    except Exception as e:
+        logger.error(f"Error ensuring schema fields: {e}")
+        return df
+
 #------------------s3 writer format with csv and json-----------------
 def s3_rename_and_move(env, dataset_name, file_type,bucket_name):
     #get unique csv filename from temp_output_path and rename to datasetname.csv
@@ -478,6 +533,10 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
         for column in temp_df.columns:
             if "_" in column:
                 temp_df = temp_df.withColumnRenamed(column, column.replace("_", "-"))
+
+        # Ensure all schema fields are present
+        logger.info(f"write_to_s3_format: Ensuring schema fields for dataset: {dataset_name}")
+        temp_df = ensure_schema_fields(temp_df, dataset_name)
 
         # Write to S3 with multilevel partitioning
         # Use "append" mode since we already cleaned up the specific dataset partition
