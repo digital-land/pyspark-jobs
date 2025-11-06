@@ -35,15 +35,9 @@ from jobs.utils.df_utils import show_df
 def initialize_logging(args):
     setup_logging(
         log_level=os.getenv("LOG_LEVEL", "INFO"),
-        # Note: In EMR Serverless, console logs are automatically captured by CloudWatch
-        # File logging is optional for local debugging
         log_file=os.getenv("LOG_FILE") if os.getenv("LOG_FILE") else None,
-        #environment=os.getenv("ENVIRONMENT", args.load_type)
-        #TODO : need to remove below 2 lines once after testing
-        temp=os.getenv("ENVIRONMENT", args.load_type)
-        print("Initializing logging with load type:", temp)
         environment=args.env
-)
+    )
 
 logger = get_logger(__name__)
 df_entity = None
@@ -275,7 +269,7 @@ def main(args):
                     show_df(df, 5, env)
 
                     # Write to S3 for Fact Resource table
-                    write_to_s3(processed_df, f"{output_path}{table_name}", data_set,table_name)
+                    write_to_s3(processed_df, f"{output_path}{table_name}", data_set,table_name,env)
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")
                 elif(table_name== 'issue'):
                     full_path = f"{s3_uri}"+"/issue/"+data_set+"/*.csv"
@@ -294,7 +288,7 @@ def main(args):
                     logger.info(f"Main: Transforming data for {table_name} table completed")
 
                     # Write to S3 for Fact table
-                    write_to_s3(processed_df, f"{output_path}{table_name}", data_set, table_name)
+                    write_to_s3(processed_df, f"{output_path}{table_name}", data_set, table_name, env)
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")              
 
             logger.info("Main: Writing to target s3 output path: process completed")
