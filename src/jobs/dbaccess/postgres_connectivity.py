@@ -15,7 +15,7 @@
 #   - Table creation logic
 # ================================================================================
 
-ENTITY_TABLE_NAME = "pyspark_entity"  # TODO: TEMPORARY - change to "entity" when ready
+ENTITY_TABLE_NAME = "entity"
 
 # -------------------- Postgres table creation --------------------
 

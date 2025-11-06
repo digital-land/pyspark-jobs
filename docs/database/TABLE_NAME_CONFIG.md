@@ -8,20 +8,6 @@ To switch between `pyspark_entity` (temporary) and `entity` (production):
 
 **File:** `src/jobs/dbaccess/postgres_connectivity.py`
 
-**Line:** 18
-
-**Current (Temporary):**
-```python
-ENTITY_TABLE_NAME = "pyspark_entity"  # TODO: TEMPORARY - change to "entity" when ready
-```
-
-**To Revert to Production:**
-```python
-ENTITY_TABLE_NAME = "entity"  # Production table name
-```
-
----
-
 ## ✅ What This Changes
 
 Changing `ENTITY_TABLE_NAME` automatically updates:
