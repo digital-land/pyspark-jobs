@@ -543,40 +543,9 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
 
         # Write GeoJSON data
         logger.info(f"write_to_s3_format: Writing geojson data for: {dataset_name}")
-        geojson_features = []
-        for row in temp_df.collect():
-            row_dict = row.asDict()
-            geometry_wkt = row_dict.pop('geometry', None)
-            row_dict.pop('point', None)
-            
-            # Convert date/datetime objects to strings
-            from datetime import date, datetime
-            for key, value in row_dict.items():
-                if isinstance(value, (date, datetime)):
-                    row_dict[key] = value.isoformat() if value else ""
-                elif value is None:
-                    row_dict[key] = ""
-            
-            geojson_geom = None
-            if geometry_wkt:
-                geojson_geom = wkt_to_geojson(geometry_wkt)
-            
-            feature = {
-                "type": "Feature",
-                "properties": row_dict,
-                "geometry": geojson_geom
-            }
-            geojson_features.append(feature)
-        
-        geojson_output = {
-            "type": "FeatureCollection",
-            "name": dataset_name,
-            "features": geojson_features
-        }
-        
-        geojson_str = json.dumps(geojson_output)
         target_key_geojson = f"dataset/{dataset_name}.geojson"
         
+        # Delete existing file
         try:
             s3_client.head_object(Bucket=f"{env}-collection-data", Key=target_key_geojson)
             s3_client.delete_object(Bucket=f"{env}-collection-data", Key=target_key_geojson)
@@ -584,7 +553,59 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
         except s3_client.exceptions.ClientError:
             logger.info(f"No existing file to delete: {target_key_geojson}")
         
-        s3_client.put_object(Bucket=f"{env}-collection-data", Key=target_key_geojson, Body=geojson_str)
+        # Use multipart upload for efficient streaming
+        mpu = s3_client.create_multipart_upload(Bucket=f"{env}-collection-data", Key=target_key_geojson)
+        parts = []
+        part_num = 1
+        
+        # Write header
+        header = '{"type":"FeatureCollection","name":"' + dataset_name + '","features":['
+        buffer = header
+        
+        # Process in batches
+        batch_size = 50000
+        total_batches = (row_count + batch_size - 1) // batch_size
+        
+        for batch_num in range(total_batches):
+            logger.info(f"Processing GeoJSON batch {batch_num + 1}/{total_batches}")
+            batch_rows = temp_df.limit(batch_size).offset(batch_num * batch_size).collect()
+            
+            for idx, row in enumerate(batch_rows):
+                row_dict = row.asDict()
+                geometry_wkt = row_dict.pop('geometry', None)
+                row_dict.pop('point', None)
+                
+                from datetime import date, datetime
+                for key, value in row_dict.items():
+                    if isinstance(value, (date, datetime)):
+                        row_dict[key] = value.isoformat() if value else ""
+                    elif value is None:
+                        row_dict[key] = ""
+                
+                geojson_geom = wkt_to_geojson(geometry_wkt) if geometry_wkt else None
+                feature = {"type": "Feature", "properties": row_dict, "geometry": geojson_geom}
+                
+                if batch_num > 0 or idx > 0:
+                    buffer += ','
+                buffer += json.dumps(feature)
+                
+                # Upload part when buffer reaches 5MB
+                if len(buffer.encode('utf-8')) > 5 * 1024 * 1024:
+                    part = s3_client.upload_part(Bucket=f"{env}-collection-data", Key=target_key_geojson, 
+                                                  PartNumber=part_num, UploadId=mpu['UploadId'], Body=buffer)
+                    parts.append({'PartNumber': part_num, 'ETag': part['ETag']})
+                    part_num += 1
+                    buffer = ''
+        
+        # Write footer and remaining buffer
+        buffer += ']}'
+        part = s3_client.upload_part(Bucket=f"{env}-collection-data", Key=target_key_geojson,
+                                      PartNumber=part_num, UploadId=mpu['UploadId'], Body=buffer)
+        parts.append({'PartNumber': part_num, 'ETag': part['ETag']})
+        
+        # Complete multipart upload
+        s3_client.complete_multipart_upload(Bucket=f"{env}-collection-data", Key=target_key_geojson,
+                                             UploadId=mpu['UploadId'], MultipartUpload={'Parts': parts})
         logger.info(f"write_to_s3_format: GeoJSON file written to {target_key_geojson}")
 
         logger.info(f"write_to_s3_format: csv, json and geojson files successfully written for dataset {dataset_name}")
