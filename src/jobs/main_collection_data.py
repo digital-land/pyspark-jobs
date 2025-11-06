@@ -38,7 +38,11 @@ def initialize_logging(args):
         # Note: In EMR Serverless, console logs are automatically captured by CloudWatch
         # File logging is optional for local debugging
         log_file=os.getenv("LOG_FILE") if os.getenv("LOG_FILE") else None,
-        environment=os.getenv("ENVIRONMENT", args.load_type)
+        #environment=os.getenv("ENVIRONMENT", args.load_type)
+        #TODO : need to remove below 2 lines once after testing
+        temp=os.getenv("ENVIRONMENT", args.load_type)
+        print("Initializing logging with load type:", temp)
+        environment=args.env
 )
 
 logger = get_logger(__name__)
@@ -236,9 +240,6 @@ def main(args):
             raise Exception("Failed to create Spark session")
         logger.info(f"Main: Spark session created successfully for dataset: {data_set}")
         
-        #TODO :remove below line after testing
-        #sedona_test()
-
         if(load_type == 'full'):
             #invoke full load logic
             logger.info(f"Main: Load type is {load_type} and dataset is {data_set} and path is {s3_uri}")

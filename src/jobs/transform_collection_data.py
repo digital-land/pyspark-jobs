@@ -92,41 +92,6 @@ def transform_data_entity(df,data_set,spark,env):
         pivot_df = pivot_df.withColumn("typology", F.lit(typology_value))
         show_df(pivot_df, 5, env)
         
-        # TODO: The following is going to be offloaded into Posgres for processing: Calculate point data (centroid) for Multipolygon values.
-        # TODO: Delete this codebock once moved to Postgres
-        # Prefer using Sedona (distributed). Fall back to Python UDF if Sedona
-        # is not available on the cluster. Ensure a `point` column exists.
-        # logger.info("transform_data_entity: Adding point column - by adding extra column after flattening ")
-        # if "geometry" in pivot_df.columns:
-        #     try:
-        #         from sedona.register import SedonaRegistrator
-        #         SedonaRegistrator.registerAll(spark)
-        #         pivot_df = pivot_df.withColumn(
-        #             "point",
-        #             expr("ST_AsText(ST_Centroid(ST_GeomFromWKT(geometry)))")
-        #         )
-        #         pivot_df.show(5)
-        #     except Exception as sedona_err:
-        #         logger.info(f"Sedona not available or failed to initialize: {sedona_err}. Falling back to Python UDF.")
-        #         try:
-        #             from jobs.utils.point_utils import centroid_udf  # lazy import
-        #         except Exception:
-        #             centroid_udf = None
-
-        #         if centroid_udf is not None:
-        #             try:
-        #                 pivot_df = pivot_df.withColumn("point", centroid_udf(pivot_df["geometry"]))
-        #                 pivot_df.show(5)
-        #             except Exception as e:
-        #                 logger.warning(f"transform_data_entity: Failed to compute centroid with Python UDF: {e}")
-        #                 pivot_df = pivot_df.withColumn("point", lit(None).cast("string"))
-        #         else:
-        #             logger.info("transform_data_entity: No centroid implementation available; point column set to None")
-        #             pivot_df = pivot_df.withColumn("point", lit(None).cast("string"))
-        # else:
-        #     logger.info("transform_data_entity: geometry column not present; skipping point column")
-        #     pivot_df = pivot_df.withColumn("point", lit(None).cast("string"))
-
         # 3) Normalise column names (kebab-case -> snake_case)
         logger.info(f"transform_data_entity: Normalising column names from kebab-case to snake_case")
         for column in pivot_df.columns:
