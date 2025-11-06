@@ -361,25 +361,36 @@ def round_point_coordinates(df):
 def fetch_dataset_schema_fields(dataset_name):
     """Fetch dataset schema fields from GitHub specification."""
     try:
-        url = f"https://raw.githubusercontent.com/digital-land/specification/refs/heads/main/content/dataset/{dataset_name}.md"
+        url = f"https://raw.githubusercontent.com/digital-land/specification/main/content/dataset/{dataset_name}.md"
         logger.info(f"Fetching schema from: {url}")
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         
         content = response.text
         fields = []
+        
+        # Parse YAML frontmatter format
+        in_frontmatter = False
         in_fields_section = False
         
         for line in content.split('\n'):
-            if '## Fields' in line or '## fields' in line:
-                in_fields_section = True
+            if line.strip() == '---':
+                if not in_frontmatter:
+                    in_frontmatter = True
+                else:
+                    break  # End of frontmatter
                 continue
-            if in_fields_section and line.startswith('##'):
-                break
-            if in_fields_section and line.strip().startswith('*'):
-                match = re.search(r'\*\s*\[([^\]]+)\]', line)
-                if match:
-                    fields.append(match.group(1))
+            
+            if in_frontmatter:
+                if line.startswith('fields:'):
+                    in_fields_section = True
+                    continue
+                if in_fields_section:
+                    if line.startswith('- field:'):
+                        field_name = line.split('- field:')[1].strip()
+                        fields.append(field_name)
+                    elif not line.startswith(' ') and not line.startswith('-'):
+                        in_fields_section = False
         
         logger.info(f"Fetched {len(fields)} fields from specification: {fields}")
         return fields
