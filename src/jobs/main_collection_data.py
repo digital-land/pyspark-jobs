@@ -121,7 +121,11 @@ def load_metadata(uri: str) -> dict:
                     else:
                         # Construct the absolute path relative to the script's location
                         script_dir = os.path.dirname(os.path.abspath(__file__))
-                        filepath = os.path.join(script_dir, uri)
+                        filepath = os.path.normpath(os.path.join(script_dir, uri))
+                        
+                        # Validate path doesn't escape base directory
+                        if not filepath.startswith(script_dir):
+                            raise ValueError(f"Invalid file path: path traversal detected in {uri}")
 
                     logger.info(f"Attempting to load from file system with filepath: {filepath}")
                     with open(filepath, 'r') as f:
