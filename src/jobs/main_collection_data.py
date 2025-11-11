@@ -145,6 +145,12 @@ def read_data(spark, input_path):
 @log_execution_time
 def transform_data(df, schema_name, data_set,spark):      
     try:
+        # Validate DataFrame
+        if df is None:
+            raise ValueError("DataFrame is None")
+        if df.rdd.isEmpty():
+            raise ValueError("DataFrame is empty")
+        
         dataset_json_transformed_path = "config/transformed_source.json"
         logger.info(f"transform_data: Transforming data for table: {schema_name} using schema from {dataset_json_transformed_path}")
         json_data = load_metadata(dataset_json_transformed_path)
@@ -201,6 +207,16 @@ def transform_data(df, schema_name, data_set,spark):
 
 # -------------------- Main --------------------
 
+# -------------------- Input Validation --------------------
+def validate_s3_path(s3_path):
+    """Validate S3 path format."""
+    if not s3_path or not isinstance(s3_path, str):
+        raise ValueError("S3 path must be a non-empty string")
+    if not s3_path.startswith('s3://'):
+        raise ValueError(f"Invalid S3 path format: {s3_path}. Must start with s3://")
+    if len(s3_path) <= 5:
+        raise ValueError(f"Invalid S3 path: {s3_path}. Path too short")
+
 env = None
 @log_execution_time
 def main(args):
@@ -208,6 +224,29 @@ def main(args):
     logger.info(f"Main: Initialize logging and invoking initialize_logging method")
 
     initialize_logging(args)  # Initialize logging with args
+
+    # Validate input arguments
+    if not hasattr(args, 'load_type') or not args.load_type:
+        raise ValueError("main:load_type is required")
+    if not hasattr(args, 'data_set') or not args.data_set:
+        raise ValueError("main:data_set is required")
+    if not hasattr(args, 'path') or not args.path:
+        raise ValueError("main:path is required")
+    if not hasattr(args, 'env') or not args.env:
+        raise ValueError("main:env is required")
+    
+    # Validate load_type
+    allowed_load_types = ['full', 'delta', 'sample']
+    if args.load_type not in allowed_load_types:
+        raise ValueError(f"Invalid load_type: {args.load_type}. Must be one of {allowed_load_types}")
+    
+    # Validate environment
+    allowed_envs = ['development', 'staging', 'production', 'local']
+    if args.env not in allowed_envs:
+        raise ValueError(f"Invalid env: {args.env}. Must be one of {allowed_envs}")
+    
+    # Validate S3 path
+    validate_s3_path(args.path)
 
     # Determine import method from command line argument
     use_jdbc = hasattr(args, 'use_jdbc') and args.use_jdbc
