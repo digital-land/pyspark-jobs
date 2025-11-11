@@ -104,9 +104,9 @@ def load_metadata(uri: str) -> dict:
                     return json.loads(data.decode('utf-8'))
                 else:
                     raise FileNotFoundError(f"pkgutil.get_data could not find {uri}")
-            except Exception as e:
+            except (FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError, AttributeError) as e:
                 # If pkgutil fails, try to load from the file system
-                logger.warning(f"pkgutil.get_data failed: {e}, attempting to read from file system. Error: {e}")
+                logger.warning(f"pkgutil.get_data failed: {e}, attempting to read from file system")
                 try:
                     # Check if the path is absolute
                     if os.path.isabs(uri):
@@ -122,6 +122,9 @@ def load_metadata(uri: str) -> dict:
                         return json.load(f)
                 except FileNotFoundError as e:
                     logger.error(f"Configuration file not found in file system: {e}")
+                    raise
+                except (json.JSONDecodeError, IOError) as e:
+                    logger.error(f"Error reading or parsing file: {e}")
                     raise
     except FileNotFoundError as e:
         logger.error(f"Configuration file not found: {e}")
