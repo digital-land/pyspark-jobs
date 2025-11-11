@@ -33,11 +33,18 @@ from jobs.utils.df_utils import show_df
 # -------------------- Logging Setup --------------------
 # Setup logging for EMR Serverless (console output goes to CloudWatch automatically)
 def initialize_logging(args):
-    setup_logging(
-        log_level=os.getenv("LOG_LEVEL", "INFO"),
-        log_file=os.getenv("LOG_FILE") if os.getenv("LOG_FILE") else None,
-        environment=args.env
-    )
+    try:
+        setup_logging(
+            log_level=os.getenv("LOG_LEVEL", "INFO"),
+            log_file=os.getenv("LOG_FILE") if os.getenv("LOG_FILE") else None,
+            environment=args.env
+        )
+    except AttributeError as e:
+        print(f"Error: Missing required argument attribute: {e}")
+        raise
+    except Exception as e:
+        print(f"Error initializing logging: {e}")
+        raise
 
 logger = get_logger(__name__)
 df_entity = None
