@@ -381,8 +381,12 @@ def main(args):
             logger.error(f"Main: Invalid load type specified: {load_type}")
             raise ValueError(f"Invalid load type: {load_type}")        
 
-    except Exception as e:
+    except (ValueError, AttributeError, KeyError) as e:
         logger.exception("Main: An error occurred during the ETL process: %s", str(e))
+        raise
+    except Exception as e:
+        logger.exception("Main: Unexpected error during the ETL process: %s", str(e))
+        raise
     finally:
         if 'spark' in locals() and spark is not None:
             try:
