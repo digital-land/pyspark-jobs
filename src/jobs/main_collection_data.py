@@ -197,8 +197,11 @@ def transform_data(df, schema_name, data_set,spark):
         else:
             raise ValueError(f"Unknown table name: {schema_name}")
 
+    except (ValueError, KeyError, AttributeError) as e:
+        logger.error(f"transform_data:Error transforming data: {e}")
+        raise
     except Exception as e:
-        logger.error(f"Error transforming data: {e}")
+        logger.error(f"transform_data: Unexpected error transforming data: {e}", exc_info=True)
         raise
 
 # -------------------- Main --------------------
@@ -381,21 +384,20 @@ def main(args):
     except Exception as e:
         logger.exception("Main: An error occurred during the ETL process: %s", str(e))
     finally:
-        if 'spark' in locals():
+        if 'spark' in locals() and spark is not None:
             try:
                 spark.stop()
-                logger.info(f"Main: Spark session stopped")
-            except:
-                logger.warning("Main: Error stopping Spark session")
+                logger.info("Main: Spark session stopped")
+            except (AttributeError, Exception) as e:
+                logger.warning(f"Main: Error stopping Spark session: {e}")
             
-        if 'start_time' in locals():
+        if 'start_time' in locals() and start_time is not None:
             try:
                 end_time = datetime.now()
                 logger.info(f"Spark session ended at: {end_time}")
-                # Duration
                 duration = end_time - start_time
                 logger.info(f"Total duration: {duration}")
-            except:
-                logger.warning("Main: Error calculating duration")
+            except (AttributeError, TypeError) as e:
+                logger.warning(f"Main: Error calculating duration: {e}")
         else:
             logger.info("Main: ETL process completed (no timing information available)")
