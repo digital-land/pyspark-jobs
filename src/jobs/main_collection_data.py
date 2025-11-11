@@ -1,4 +1,3 @@
-import configparser
 import os
 import boto3
 import pkgutil
@@ -7,28 +6,16 @@ import sys
 import argparse
 from jobs.transform_collection_data import (transform_data_fact, transform_data_fact_res,
                                       transform_data_issue, transform_data_entity) 
-from jobs.dbaccess.postgres_connectivity import (create_table, write_to_postgres, get_aws_secret,
-                                                  create_and_prepare_staging_table, commit_staging_to_production,
-                                                  calculate_centroid_wkt, ENTITY_TABLE_NAME)
-#from jobs.utils.point_sedona import sedona_test
 from jobs.utils.s3_utils import cleanup_dataset_data
-from jobs.csv_s3_writer import write_dataframe_to_csv_s3, import_csv_to_aurora, cleanup_temp_csv_files
-#import sqlite3
 from datetime import datetime
-from dataclasses import fields
-#from jobs import transform_collection_data
+
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import (coalesce,collect_list,concat_ws,dayofmonth,expr,first,month,to_date,year,row_number,lit)
-from pyspark.sql.types import (StringType,StructField,StructType,TimestampType)
-from pyspark.sql.window import Window
 
 # Import the new logging module
 from jobs.utils.logger_config import setup_logging, get_logger, log_execution_time, set_spark_log_level
 from jobs.utils.s3_writer_utils import write_to_s3, write_to_s3_format
 from jobs.utils.postgres_writer_utils import write_dataframe_to_postgres_jdbc
 from jobs.utils.df_utils import show_df
-
-#from utils.path_utils import load_json_from_repo
 
 # -------------------- Logging Setup --------------------
 # Setup logging for EMR Serverless (console output goes to CloudWatch automatically)
@@ -182,9 +169,6 @@ def transform_data(df, schema_name, data_set,spark):
         df.printSchema()
         logger.info(f"transform_data: DataFrame schema after renaming hyphens")
         show_df(df, 5, env)
-
-        # Get actual DataFrame columns
-        df_columns = df.columns
 
         # Find fields that are present in both DataFrame and json    
         if set(fields) == set(df.columns):
