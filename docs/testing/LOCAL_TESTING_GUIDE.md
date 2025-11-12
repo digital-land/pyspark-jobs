@@ -216,7 +216,7 @@ All AWS services are mocked using `moto`:
 ```python
 def test_with_s3(mock_s3):
     # S3 operations are automatically mocked
-    # Buckets: development-collection-data, development-collection-target-data
+    # Buckets: development-collection-data, development-parquet-datasets
     mock_s3.list_objects_v2(Bucket='development-collection-data')
 ```
 
