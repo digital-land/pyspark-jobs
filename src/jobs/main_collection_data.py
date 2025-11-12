@@ -159,7 +159,7 @@ def transform_data(df, schema_name, data_set,spark):
 
         # Extract the list of fields
         fields = []
-        if (schema_name == 'fact' or schema_name == 'fact_res' or schema_name == 'entity'):
+        if (schema_name == 'fact' or schema_name == 'fact_resource' or schema_name == 'entity'):
             fields = json_data.get("schema_fact_res_fact_entity", [])
             logger.info(f"transform_data: Fields to select from json data {fields} for {schema_name}")
         elif (schema_name == 'issue'):
@@ -182,7 +182,7 @@ def transform_data(df, schema_name, data_set,spark):
         else:
             logger.warning("transform_data: Some fields are missing in the DataFrame")
             
-        if schema_name == 'fact_res':
+        if schema_name == 'fact_resource':
             logger.info("transform_data: Transforming data for Fact Resource table")
             return transform_data_fact_res(df)
         elif schema_name == 'fact':
@@ -266,7 +266,7 @@ def main(args):
 
         s3_uri = s3_uri + data_set + "-collection"
 
-        table_names=["fact","fact_res","entity","issue"]
+        table_names=["fact","fact_resource","entity","issue"]
         
         spark = create_spark_session()
 
@@ -284,7 +284,7 @@ def main(args):
             df = None  # Initialise df to avoid UnboundLocalError
             
             for table_name in table_names:
-                if(table_name== 'fact' or table_name== 'fact_res' or table_name== 'entity'):
+                if(table_name== 'fact' or table_name== 'fact_resource' or table_name== 'entity'):
                     full_path = f"{s3_uri}"+"/transformed/"+data_set+"/*.csv"
                     logger.info(f"Main: Dataset input path including csv file path: {full_path}")
                 
@@ -361,7 +361,7 @@ def main(args):
         #     df = None  # Initialise df to avoid UnboundLocalError
             
         #     for table_name in table_names:
-        #         if(table_name== 'fact' or table_name== 'fact_res' or table_name== 'entity'):
+        #         if(table_name== 'fact' or table_name== 'fact_resource' or table_name== 'entity'):
         #             full_path = f"{s3_uri}"+"/transformed/sample-"+data_set+"/*.csv"
         #             logger.info(f"Main: Dataset input path including csv file path: {full_path}")
                     
