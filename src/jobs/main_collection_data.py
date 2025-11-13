@@ -42,21 +42,15 @@ def create_spark_session(app_name="EMR Transform Job"):
     try:
         logger.info(f"Creating Spark session with app name: {app_name}")
 
-        # PostgreSQL JDBC driver path in EMR Serverless container
-        jdbc_jar_path = "/usr/lib/spark/jars/postgresql-42.7.4.jar"
-        
-        # Configure PostgreSQL JDBC driver for EMR Serverless 7.9.0
-        # Optimized configurations for EMR 7.9.0 (Spark 3.5.x, Java 17)
+        # Configure Spark for EMR Serverless 7.9.0 (Spark 3.5.x, Java 17)
+        # PostgreSQL JDBC driver is configured via --jars in Airflow DAG sparkSubmitParameters
         spark_session = (SparkSession.builder
             .appName(app_name)
-            .config("spark.jars", jdbc_jar_path)
             .config("spark.sql.adaptive.enabled", "true")
             .config("spark.sql.adaptive.coalescePartitions.enabled", "true")
             .config("spark.sql.adaptive.skewJoin.enabled", "true")
             .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
             .getOrCreate())
-        
-        logger.info(f"Spark session configured with PostgreSQL JDBC driver: {jdbc_jar_path}")
         
         # Set Spark logging level to reduce verbosity
         #set_spark_log_level("WARN")
