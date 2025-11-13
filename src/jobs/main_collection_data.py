@@ -50,8 +50,6 @@ def create_spark_session(app_name="EMR Transform Job"):
         spark_session = (SparkSession.builder
             .appName(app_name)
             .config("spark.jars", jdbc_jar_path)
-            .config("spark.driver.extraClassPath", jdbc_jar_path)
-            .config("spark.executor.extraClassPath", jdbc_jar_path)
             .config("spark.sql.adaptive.enabled", "true")
             .config("spark.sql.adaptive.coalescePartitions.enabled", "true")
             .config("spark.sql.adaptive.skewJoin.enabled", "true")
