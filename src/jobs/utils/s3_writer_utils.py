@@ -470,11 +470,14 @@ def s3_rename_and_move(env, dataset_name, file_type,bucket_name):
 def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
     try: 
         # Load bake data from S3 and join with main dataframe to enrich with json column
-        path_bake = f"s3://{env}-collection-data/dataset/{dataset_name}.csv"
+        path_bake = f"s3://{env}-collection-data/{dataset_name}-collection/dataset/{dataset_name}.csv"
         logger.info(f"Reading bake data from {path_bake}")
         df_bake = read_csv_from_s3(spark, path_bake)
-        logger.info(f"Selecting entity and json columns from backup dataframe")
+        logger.info(f"Selecting entity and json columns from bake dataframe")
+        show_df(df_bake, 5, env)
         df_bake = df_bake.select("entity", "json")
+        show_df(df_bake, 5, env)
+        
         logger.info(f"Performing left join on entity column")
         df = df.join(df_bake, df["entity"] == df_bake["entity"], how="left").drop(df_bake["entity"])
         logger.info(f"Join completed, showing result dataframe")
