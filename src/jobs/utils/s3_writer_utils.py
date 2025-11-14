@@ -552,10 +552,13 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
         # Write JSON data
         logger.info(f"write_to_s3_format: Writing json data for: {dataset_name}") 
         
+        # Import for nested function scope
+        from datetime import date as date_type, datetime as datetime_type
+        
         def convert_row(row):
             row_dict = row.asDict()
             for key, value in row_dict.items():
-                if isinstance(value, (date, datetime)):
+                if isinstance(value, (date_type, datetime_type)):
                     row_dict[key] = value.isoformat() if value else ""
                 elif value is None:
                     row_dict[key] = ""
@@ -618,7 +621,6 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
                     geometry_wkt = row_dict.pop('geometry', None)
                     row_dict.pop('point', None)
                     
-                    from datetime import date, datetime
                     for key, value in row_dict.items():
                         if isinstance(value, (date, datetime)):
                             row_dict[key] = value.isoformat() if value else ""
