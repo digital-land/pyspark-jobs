@@ -1,5 +1,6 @@
 from jobs.transform_collection_data import transform_data_issue
 from jobs.transform_collection_data import transform_data_entity, transform_data_fact, transform_data_fact_res
+from jobs.utils.s3_utils import read_csv_from_s3
 from jobs.utils.s3_dataset_typology import get_dataset_typology
 from jobs.utils.s3_format_utils import flatten_s3_json, s3_csv_format
 from jobs.utils.s3_utils import cleanup_dataset_data
@@ -19,6 +20,8 @@ from pyspark.sql.functions import monotonically_increasing_id, row_number
 from pyspark.sql.window import Window
 import requests
 import re
+import json
+from datetime import date, datetime
 
 # Import geometry utilities
 from jobs.utils.geometry_utils import calculate_centroid
@@ -465,24 +468,35 @@ def s3_rename_and_move(env, dataset_name, file_type,bucket_name):
 
 # -------------------- S3 Writer Format--------------------
 def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
-    temp_output_path = f"s3://{env}-collection-data/dataset/temp/{dataset_name}/"
-    #output_path = f"s3://{env}-collection-data/dataset/"
+    try: 
+        # Load bake data from S3 and join with main dataframe to enrich with json column
+        path_bake = f"s3://{env}-collection-data/dataset/{dataset_name}.csv"
+        logger.info(f"Reading bake data from {path_bake}")
+        df_bake = read_csv_from_s3(spark, path_bake)
+        logger.info(f"Selecting entity and json columns from backup dataframe")
+        df_bake = df_bake.select("entity", "json")
+        logger.info(f"Performing left join on entity column")
+        df = df.join(df_bake, df["entity"] == df_bake["entity"], how="left").drop(df_bake["entity"])
+        logger.info(f"Join completed, showing result dataframe")
+        show_df(df, 5, env)
 
-    df = normalise_dataframe_schema(df,table_name,dataset_name,spark,env)
-    logger.info(f"write_to_s3_format: DataFrame after transformation for dataset {dataset_name} and table {table_name}")
-    show_df(df, 5, env)
+        temp_output_path = f"s3://{env}-collection-data/dataset/temp/{dataset_name}/"
 
-    try:   
+        # Normalise dataframe schema
+        df = normalise_dataframe_schema(df,table_name,dataset_name,spark,env)
+        logger.info(f"write_to_s3_format: DataFrame after transformation for dataset {dataset_name} and table {table_name}")
+        show_df(df, 5, env)
+    
         logger.info(f"write_to_s3_format: Writing data to S3 at {output_path} for dataset {dataset_name}") 
         
-        # Check and clean up existing data for this dataset before writing
+        # Check and clean up (deleting old files) existing data for this dataset before writing
         cleanup_summary = cleanup_dataset_data(output_path, dataset_name)
         logger.info(f"write_to_s3_format: Cleaned up {cleanup_summary['objects_deleted']} objects for dataset '{dataset_name}'")
         if cleanup_summary['errors']:
             logger.warning(f"write_to_s3_format: Cleanup had {len(cleanup_summary['errors'])} errors: {cleanup_summary['errors']}")
         logger.debug(f"write_to_s3_format: Full cleanup summary: {cleanup_summary}")
 
-        # Add dataset as partition column
+        # Add dataset_name as a column
         logger.info(f"write_to_s3_format: Adding dataset column with value {dataset_name}")
         df = df.withColumn("dataset", lit(dataset_name))
         show_df(df, 5, env)
@@ -492,16 +506,20 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
         row_count = df.count()
         optimal_partitions = max(1, min(200, row_count // 1000000))  # ~1M records per partition
 
+        #Calculate centroid with 6 decimal places 
         logger.info(f"write_to_s3_format: Calculating centroid with 6 decimal places for {table_name} table")
         df = calculate_centroid(df)
         show_df(df, 5, env)
 
+        #taking copy of main dataframe to temp dataframe for further processing
         temp_df = df
 
+        # Flatten JSON columns
         logger.info(f"write_to_s3_format: Flattening json data for: {dataset_name}") 
         temp_df = flatten_json_column(temp_df)
         show_df(temp_df, 5, env)
 
+        # Normalise column names (kebab-case -> snake_case)
         logger.info(f"write_to_s3_format: Normalising column names from kebab_case to snake-case")
         for column in temp_df.columns:
             if "_" in column:
@@ -511,7 +529,7 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
         logger.info(f"write_to_s3_format: Ensuring schema fields for dataset: {dataset_name}")
         temp_df = ensure_schema_fields(temp_df, dataset_name)
         
-        # Write to S3 with multilevel partitioning
+        # Write csv to S3 path
         # Use "append" mode since we already cleaned up the specific dataset partition
         logger.info(f"write_to_s3_format: Writing csv data for: {dataset_name}") 
         show_df(temp_df, 5, env)
@@ -524,13 +542,12 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
           .option("header", "true") \
           .csv(temp_output_path)
         
+        # Rename the csv file to dataset_name.csv
         logger.info(f"write_to_s3_format: Renaming csv for: {dataset_name}") 
         s3_rename_and_move(env, dataset_name, "csv",bucket_name=f"{env}-collection-data")
 
         # Write JSON data
         logger.info(f"write_to_s3_format: Writing json data for: {dataset_name}") 
-        import json
-        from datetime import date, datetime
         
         def convert_row(row):
             row_dict = row.asDict()
