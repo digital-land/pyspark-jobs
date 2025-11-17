@@ -1,9 +1,11 @@
 from jobs.transform_collection_data import transform_data_issue
 from jobs.transform_collection_data import transform_data_entity, transform_data_fact, transform_data_fact_res
+from jobs.utils.s3_utils import read_csv_from_s3
 from jobs.utils.s3_dataset_typology import get_dataset_typology
 from jobs.utils.s3_format_utils import flatten_s3_json, s3_csv_format
 from jobs.utils.s3_utils import cleanup_dataset_data
 from jobs.utils.logger_config import setup_logging, get_logger, log_execution_time, set_spark_log_level
+from jobs.utils.df_utils import show_df
 from pyspark.sql.functions import lit
 from pyspark.sql.types import TimestampType
 from datetime import datetime
@@ -16,6 +18,10 @@ from jobs.utils.flatten_csv import flatten_json_column, flatten_geojson_column
 import boto3
 from pyspark.sql.functions import monotonically_increasing_id, row_number
 from pyspark.sql.window import Window
+import requests
+import re
+import json
+from datetime import date, datetime
 
 # Import geometry utilities
 from jobs.utils.geometry_utils import calculate_centroid
@@ -25,10 +31,10 @@ logger = get_logger(__name__)
 df_entity = None
 @log_execution_time
 
-def transform_data_entity_format(df,data_set,spark):
+def transform_data_entity_format(df,data_set,spark,env=None):
     try:
         logger.info("transform_data_entity:Transforming data for Entity table")
-        df.show(20)
+        show_df(df, 20, env)
         # 1) Select the top record per (entity, field) using priority, entry_date, entry_number
         # Fallback if 'priority' is missing: use entry_date, entry_number
         if "priority" in df.columns:
@@ -43,7 +49,7 @@ def transform_data_entity_format(df,data_set,spark):
 
         # 2) Pivot to get one row per entity
         pivot_df = df_ranked.groupBy("entity").pivot("field").agg(first("value"))
-        pivot_df.show(5)
+        show_df(pivot_df, 5, env)
 
         logger.info("transform_data_entity:Adding Typology data as the column missing after flattening")
         # filtered_df = pivot_df.filter(col("field") == "typology").select("field", "value")
@@ -53,7 +59,7 @@ def transform_data_entity_format(df,data_set,spark):
         logger.info(f"transform_data_entity: Fetched typology value from dataset specification for dataset: {data_set} is {typology_value}")
 
         pivot_df = pivot_df.withColumn("typology", lit(typology_value))
-        pivot_df.show(5)
+        show_df(pivot_df, 5, env)
         
         
         # 3) Normalise column names (kebab-case -> snake_case)
@@ -137,7 +143,7 @@ def transform_data_entity_format(df,data_set,spark):
         ).dropDuplicates(["entity"])
 
         logger.info("transform_data_entity:Transform data for Entity table after pivoting and normalization")
-        out.show(5)
+        show_df(out, 5, env)
 
         return out
     except Exception as e:
@@ -146,14 +152,14 @@ def transform_data_entity_format(df,data_set,spark):
 @log_execution_time
 
 
-def normalise_dataframe_schema(df, schema_name, data_set,spark):      
+def normalise_dataframe_schema(df, schema_name, data_set,spark,env=None):      
     try:
         from jobs.main_collection_data import load_metadata
         dataset_json_transformed_path = "config/transformed_source.json"
         logger.info(f"normalise_dataframe_schema: Transforming data for table: {schema_name} using schema from {dataset_json_transformed_path}")
         json_data = load_metadata(dataset_json_transformed_path)
         logger.info(f"normalise_dataframe_schema: Transforming data with schema with json data: {json_data}")
-        df.show(5)
+        show_df(df, 5, env)
 
         # Extract the list of fields
         fields = []
@@ -172,7 +178,7 @@ def normalise_dataframe_schema(df, schema_name, data_set,spark):
         logger.info(f"normalise_dataframe_schema: DataFrame columns after renaming hyphens: {df.columns}")
         df.printSchema()
         logger.info(f"normalise_dataframe_schema: DataFrame schema after renaming hyphens")
-        df.show(5)
+        show_df(df, 5, env)
 
         # Get actual DataFrame columns
         df_columns = df.columns
@@ -185,8 +191,8 @@ def normalise_dataframe_schema(df, schema_name, data_set,spark):
             
         if schema_name == 'entity':
             logger.info("normalise_dataframe_schema: Transforming data for Entity table")
-            df.show(5)
-            return transform_data_entity_format(df,data_set,spark)        
+            show_df(df, 5, env)
+            return transform_data_entity_format(df,data_set,spark,env)        
         else:
             raise ValueError(f"Unknown table name: {schema_name}")
 
@@ -194,75 +200,10 @@ def normalise_dataframe_schema(df, schema_name, data_set,spark):
         logger.error(f"Error transforming data: {e}")
         raise
 
-
-
-# # -------------------- S3 Writer Format--------------------
-# def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
-#     df = normalise_dataframe_schema(df,table_name,dataset_name,spark)
-#     logger.info(f"write_to_s3_format: DataFrame after transformation for dataset {dataset_name} and table {table_name}")
-#     df.show(5)
-#     output_path=f"s3://{env}-pd-batch-emr-studio-ws-bucket/csv/{dataset_name}.csv"
-#     output_path1=f"s3://{env}-pd-batch-emr-studio-ws-bucket/json/{dataset_name}.json"
-
-#     #output_path=f"s3://{env}-collection-data/dataset/{dataset_name}_test.csv"
-#     try:   
-#         logger.info(f"write_to_s3_format: Writing data to S3 at {output_path} for dataset {dataset_name}") 
-        
-#         # Check and clean up existing data for this dataset before writing
-#         cleanup_summary = cleanup_dataset_data(output_path, dataset_name)
-#         logger.info(f"write_to_s3_format: Cleaned up {cleanup_summary['objects_deleted']} objects for dataset '{dataset_name}'")
-#         if cleanup_summary['errors']:
-#             logger.warning(f"write_to_s3_format: Cleanup had {len(cleanup_summary['errors'])} errors: {cleanup_summary['errors']}")
-#         logger.debug(f"write_to_s3_format: Full cleanup summary: {cleanup_summary}")
-
-#         # Add dataset as partition column
-#         df = df.withColumn("dataset", lit(dataset_name))
-                
-#         # Convert entry-date to date type and use it for partitioning       
-#         # Calculate optimal partitions based on data size
-#         row_count = df.count()
-#         optimal_partitions = max(1, min(200, row_count // 1000000))  # ~1M records per partition
-        
-#         #adding time stamp to the dataframe for parquet file
-#         df = df.withColumn("processed_timestamp", lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()))
-#         logger.info(f"write_to_s3_format: DataFrame after adding processed_timestamp column")
-#         df.show(5)
-    
-
-#         if table_name == 'entity':
-#             global df_entity
-#             df_entity.show(5) if df_entity else logger.info("write_to_s3_format: df_entity is None")
-#             df_entity = df
-
-#         logger.info(f"write_to_s3_format: Invoking s3_csv_format for dataset {dataset_name}") 
-
-#         df_csv = s3_csv_format(df)
-#         # Write to S3 with multilevel partitioning
-#         # Use "append" mode since we already cleaned up the specific dataset partition
-#         df_csv.show(5)
-#         df_csv.coalesce(1) \
-#           .write \
-#           .mode("overwrite")  \
-#           .option("header", "true") \
-#           .csv(output_path)
-        
-#         df_json=flatten_s3_json(df)
-#         df_json.show(5)
-#         df_json.coalesce(1) \
-#           .write \
-#           .mode("overwrite") \
-#           .json(output_path1)
-
-#         logger.info(f"write_to_s3_format: Successfully wrote {row_count} rows to {output_path} with {optimal_partitions} partitions")
-
-#     except Exception as e:
-#         logger.error(f"write_to_s3_format: Failed to write to S3: {e}", exc_info=True)
-#         raise
-
 # -------------------- S3 Writer --------------------
 df_entity = None
 @log_execution_time
-def write_to_s3(df, output_path, dataset_name, table_name):
+def write_to_s3(df, output_path, dataset_name, table_name, env=None):
     try:   
         logger.info(f"write_to_s3: Writing data to S3 at {output_path} for dataset {dataset_name}") 
         
@@ -292,12 +233,12 @@ def write_to_s3(df, output_path, dataset_name, table_name):
         #adding time stamp to the dataframe for parquet file
         df = df.withColumn("processed_timestamp", lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()))
         logger.info(f"write_to_s3: DataFrame after adding processed_timestamp column")
-        df.show(5)
+        show_df(df, 5, env)
     
 
         if table_name == 'entity':
             global df_entity
-            df_entity.show(5) if df_entity else logger.info("write_to_s3: df_entity is None")
+            show_df(df_entity, 5, env) if df_entity else logger.info("write_to_s3: df_entity is None")
             df_entity = df
 
         # Write to S3 with multilevel partitioning
@@ -393,6 +334,102 @@ def wkt_to_geojson(wkt_string):
     
     return None
 
+#------------------round point coordinates to 6 decimal places-----------------
+def round_point_coordinates(df):
+    """Round POINT coordinates to 6 decimal places."""
+    from pyspark.sql.functions import udf, col
+    from pyspark.sql.types import StringType
+    
+    def round_point_udf(point_str):
+        if not point_str or not point_str.startswith('POINT'):
+            return point_str
+        try:
+            coords = re.findall(r'[-\d.]+', point_str)
+            if len(coords) == 2:
+                lon = round(float(coords[0]), 6)
+                lat = round(float(coords[1]), 6)
+                return f"POINT ({lon} {lat})"
+        except:
+            pass
+        return point_str
+    
+    round_udf = udf(round_point_udf, StringType())
+    
+    if 'point' in df.columns:
+        df = df.withColumn('point', round_udf(col('point')))
+    
+    return df
+
+#------------------fetch schema from github specification-----------------
+def fetch_dataset_schema_fields(dataset_name):
+    """Fetch dataset schema fields from GitHub specification."""
+    try:
+        url = f"https://raw.githubusercontent.com/digital-land/specification/main/content/dataset/{dataset_name}.md"
+        logger.info(f"Fetching schema from: {url}")
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        
+        content = response.text
+        fields = []
+        
+        # Parse YAML frontmatter format
+        in_frontmatter = False
+        in_fields_section = False
+        
+        for line in content.split('\n'):
+            if line.strip() == '---':
+                if not in_frontmatter:
+                    in_frontmatter = True
+                else:
+                    break  # End of frontmatter
+                continue
+            
+            if in_frontmatter:
+                if line.startswith('fields:'):
+                    in_fields_section = True
+                    continue
+                if in_fields_section:
+                    if line.startswith('- field:'):
+                        field_name = line.split('- field:')[1].strip()
+                        fields.append(field_name)
+                    elif not line.startswith(' ') and not line.startswith('-'):
+                        in_fields_section = False
+        
+        logger.info(f"Fetched {len(fields)} fields from specification: {fields}")
+        return fields
+    except Exception as e:
+        logger.warning(f"Failed to fetch schema from GitHub: {e}")
+        return []
+
+def ensure_schema_fields(df, dataset_name):
+    """Ensure DataFrame has all required fields from schema specification with empty columns at end."""
+    try:
+        schema_fields = fetch_dataset_schema_fields(dataset_name)
+        if not schema_fields:
+            logger.info(f"No schema fields fetched, returning DataFrame as-is")
+            return df
+        
+        current_columns = set(df.columns)
+        missing_fields = [field for field in schema_fields if field not in current_columns]
+        
+        if missing_fields:
+            logger.info(f"Adding {len(missing_fields)} missing fields at end: {missing_fields}")
+            # Keep existing column order and add missing fields at the end
+            existing_cols = df.columns
+            for field in missing_fields:
+                df = df.withColumn(field, lit(""))
+            # Reorder: existing columns first, then missing fields
+            final_columns = existing_cols + missing_fields
+            df = df.select(final_columns)
+            logger.info(f"Column order preserved with {len(missing_fields)} empty columns added at end")
+        else:
+            logger.info(f"All schema fields already present in DataFrame")
+        
+        return df
+    except Exception as e:
+        logger.error(f"Error ensuring schema fields: {e}")
+        return df
+
 #------------------s3 writer format with csv and json-----------------
 def s3_rename_and_move(env, dataset_name, file_type,bucket_name):
     #get unique csv filename from temp_output_path and rename to datasetname.csv
@@ -431,57 +468,74 @@ def s3_rename_and_move(env, dataset_name, file_type,bucket_name):
 
 # -------------------- S3 Writer Format--------------------
 def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
-    temp_output_path = f"s3://{env}-collection-data/dataset/temp/{dataset_name}/"
-    #output_path = f"s3://{env}-collection-data/dataset/"
+    try: 
+        # Load bake data from S3 and join with main dataframe to enrich with json column
+        path_bake = f"s3://{env}-collection-data/{dataset_name}-collection/dataset/{dataset_name}.csv"
+        logger.info(f"Reading bake data from {path_bake}")
+        df_bake = read_csv_from_s3(spark, path_bake)
+        logger.info(f"Selecting entity and json columns from bake dataframe")
+        show_df(df_bake, 5, env)
+        df_bake = df_bake.select("entity", "json")
+        show_df(df_bake, 5, env)
+        
+        logger.info(f"Performing left join on entity column")
+        df = df.join(df_bake, df["entity"] == df_bake["entity"], how="left").drop(df_bake["entity"])
+        logger.info(f"Join completed, showing result dataframe")
+        show_df(df, 5, env)
 
-    df = normalise_dataframe_schema(df,table_name,dataset_name,spark)
-    logger.info(f"write_to_s3_format: DataFrame after transformation for dataset {dataset_name} and table {table_name}")
-    df.show(5)
+        temp_output_path = f"s3://{env}-collection-data/dataset/temp/{dataset_name}/"
 
-    try:   
+        # Normalise dataframe schema
+        df = normalise_dataframe_schema(df,table_name,dataset_name,spark,env)
+        logger.info(f"write_to_s3_format: DataFrame after transformation for dataset {dataset_name} and table {table_name}")
+        show_df(df, 5, env)
+    
         logger.info(f"write_to_s3_format: Writing data to S3 at {output_path} for dataset {dataset_name}") 
         
-        # Check and clean up existing data for this dataset before writing
+        # Check and clean up (deleting old files) existing data for this dataset before writing
         cleanup_summary = cleanup_dataset_data(output_path, dataset_name)
         logger.info(f"write_to_s3_format: Cleaned up {cleanup_summary['objects_deleted']} objects for dataset '{dataset_name}'")
         if cleanup_summary['errors']:
             logger.warning(f"write_to_s3_format: Cleanup had {len(cleanup_summary['errors'])} errors: {cleanup_summary['errors']}")
         logger.debug(f"write_to_s3_format: Full cleanup summary: {cleanup_summary}")
 
-        # Add dataset as partition column
+        # Add dataset_name as a column
         logger.info(f"write_to_s3_format: Adding dataset column with value {dataset_name}")
         df = df.withColumn("dataset", lit(dataset_name))
-        df.show(5)
+        show_df(df, 5, env)
                      
         # Calculate optimal partitions based on data size
         logger.info(f"write_to_s3_format: Calculating optimal partitions based on data size")
         row_count = df.count()
         optimal_partitions = max(1, min(200, row_count // 1000000))  # ~1M records per partition
-        
-        # Adding time stamp to the dataframe for parquet file
-        # df = df.withColumn("processed_timestamp", lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()))
-        # logger.info(f"write_to_s3_format: DataFrame after adding processed_timestamp column")
-        # df.show(5)
 
-        logger.info(f"write_to_s3_format: Invocation of calculate_centroid method for {table_name} table")
+        #Calculate centroid with 6 decimal places 
+        logger.info(f"write_to_s3_format: Calculating centroid with 6 decimal places for {table_name} table")
         df = calculate_centroid(df)
-        df.show(5)
+        show_df(df, 5, env)
 
+        # Create a copy of the main dataframe to a temporary dataframe for further processing
         temp_df = df
 
+        # Flatten JSON columns
         logger.info(f"write_to_s3_format: Flattening json data for: {dataset_name}") 
         temp_df = flatten_json_column(temp_df)
-        temp_df.show(5)
+        show_df(temp_df, 5, env)
 
+        # Normalise column names (kebab-case -> snake_case)
         logger.info(f"write_to_s3_format: Normalising column names from kebab_case to snake-case")
         for column in temp_df.columns:
             if "_" in column:
                 temp_df = temp_df.withColumnRenamed(column, column.replace("_", "-"))
 
-        # Write to S3 with multilevel partitioning
+        # Ensure all schema fields are present
+        logger.info(f"write_to_s3_format: Ensuring schema fields for dataset: {dataset_name}")
+        temp_df = ensure_schema_fields(temp_df, dataset_name)
+        
+        # Write csv to S3 path
         # Use "append" mode since we already cleaned up the specific dataset partition
         logger.info(f"write_to_s3_format: Writing csv data for: {dataset_name}") 
-        temp_df.show(5)
+        show_df(temp_df, 5, env)
 
         cleanup_temp_path(env, dataset_name)
         
@@ -491,18 +545,20 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
           .option("header", "true") \
           .csv(temp_output_path)
         
+        # Rename the csv file to dataset_name.csv
         logger.info(f"write_to_s3_format: Renaming csv for: {dataset_name}") 
         s3_rename_and_move(env, dataset_name, "csv",bucket_name=f"{env}-collection-data")
 
         # Write JSON data
         logger.info(f"write_to_s3_format: Writing json data for: {dataset_name}") 
-        import json
-        from datetime import date, datetime
+        
+        # Import for nested function scope
+        from datetime import date as date_type, datetime as datetime_type
         
         def convert_row(row):
             row_dict = row.asDict()
             for key, value in row_dict.items():
-                if isinstance(value, (date, datetime)):
+                if isinstance(value, (date_type, datetime_type)):
                     row_dict[key] = value.isoformat() if value else ""
                 elif value is None:
                     row_dict[key] = ""
@@ -527,40 +583,9 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
 
         # Write GeoJSON data
         logger.info(f"write_to_s3_format: Writing geojson data for: {dataset_name}")
-        geojson_features = []
-        for row in temp_df.collect():
-            row_dict = row.asDict()
-            geometry_wkt = row_dict.pop('geometry', None)
-            row_dict.pop('point', None)
-            
-            # Convert date/datetime objects to strings
-            from datetime import date, datetime
-            for key, value in row_dict.items():
-                if isinstance(value, (date, datetime)):
-                    row_dict[key] = value.isoformat() if value else ""
-                elif value is None:
-                    row_dict[key] = ""
-            
-            geojson_geom = None
-            if geometry_wkt:
-                geojson_geom = wkt_to_geojson(geometry_wkt)
-            
-            feature = {
-                "type": "Feature",
-                "properties": row_dict,
-                "geometry": geojson_geom
-            }
-            geojson_features.append(feature)
-        
-        geojson_output = {
-            "type": "FeatureCollection",
-            "name": dataset_name,
-            "features": geojson_features
-        }
-        
-        geojson_str = json.dumps(geojson_output)
         target_key_geojson = f"dataset/{dataset_name}.geojson"
         
+        # Delete existing file
         try:
             s3_client.head_object(Bucket=f"{env}-collection-data", Key=target_key_geojson)
             s3_client.delete_object(Bucket=f"{env}-collection-data", Key=target_key_geojson)
@@ -568,13 +593,86 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
         except s3_client.exceptions.ClientError:
             logger.info(f"No existing file to delete: {target_key_geojson}")
         
-        s3_client.put_object(Bucket=f"{env}-collection-data", Key=target_key_geojson, Body=geojson_str)
-        logger.info(f"write_to_s3_format: GeoJSON file written to {target_key_geojson}")
+        # Use multipart upload for efficient streaming
+        mpu = s3_client.create_multipart_upload(Bucket=f"{env}-collection-data", Key=target_key_geojson)
+        parts = []
+        part_num = 1
+        
+        try:
+            # Write header
+            header = '{"type":"FeatureCollection","name":"' + dataset_name + '","features":['
+            buffer = header
+            
+            # Process in batches
+            batch_size = 50000
+            total_batches = (row_count + batch_size - 1) // batch_size
+            
+            # Collect all rows once
+            all_rows = temp_df.collect()
+            
+            for batch_num in range(total_batches):
+                logger.info(f"Processing GeoJSON batch {batch_num + 1}/{total_batches}")
+                start_idx = batch_num * batch_size
+                end_idx = min(start_idx + batch_size, row_count)
+                batch_rows = all_rows[start_idx:end_idx]
+                
+                for idx, row in enumerate(batch_rows):
+                    row_dict = row.asDict()
+                    geometry_wkt = row_dict.pop('geometry', None)
+                    row_dict.pop('point', None)
+                    
+                    for key, value in row_dict.items():
+                        if isinstance(value, (date, datetime)):
+                            row_dict[key] = value.isoformat() if value else ""
+                        elif value is None:
+                            row_dict[key] = ""
+                    
+                    geojson_geom = wkt_to_geojson(geometry_wkt) if geometry_wkt else None
+                    feature = {"type": "Feature", "properties": row_dict, "geometry": geojson_geom}
+                    
+                    if batch_num > 0 or idx > 0:
+                        buffer += ','
+                    buffer += json.dumps(feature)
+                    
+                    # Upload part when buffer reaches 5MB
+                    if len(buffer.encode('utf-8')) > 5 * 1024 * 1024:
+                        part = s3_client.upload_part(Bucket=f"{env}-collection-data", Key=target_key_geojson, 
+                                                      PartNumber=part_num, UploadId=mpu['UploadId'], Body=buffer)
+                        parts.append({'PartNumber': part_num, 'ETag': part['ETag']})
+                        part_num += 1
+                        buffer = ''
+            
+            # Write footer and remaining buffer
+            buffer += ']}'
+            part = s3_client.upload_part(Bucket=f"{env}-collection-data", Key=target_key_geojson,
+                                          PartNumber=part_num, UploadId=mpu['UploadId'], Body=buffer)
+            parts.append({'PartNumber': part_num, 'ETag': part['ETag']})
+            
+            # Complete multipart upload
+            s3_client.complete_multipart_upload(Bucket=f"{env}-collection-data", Key=target_key_geojson,
+                                                 UploadId=mpu['UploadId'], MultipartUpload={'Parts': parts})
+            logger.info(f"write_to_s3_format: GeoJSON file written to {target_key_geojson}")
+        except Exception as e:
+            logger.error(f"Error during GeoJSON multipart upload: {e}")
+            s3_client.abort_multipart_upload(Bucket=f"{env}-collection-data", Key=target_key_geojson, UploadId=mpu['UploadId'])
+            raise
 
-        logger.info(f"write_to_s3_format: csv, json and geojson files successfully written for dataset {dataset_name}")
+        logger.info(f"write_to_s3_format: csv, json and geojson files successfully written for dataset: {dataset_name}")
+
+        # Drop the json column no longer needed before returning for wrting to postgres
+        if "json" in df.columns:
+            df = df.drop("json")
+
         return df
     except Exception as e:
         logger.error(f"write_to_s3_format: Failed to write to S3: {e}", exc_info=True)
         raise
+    finally:
+        # Clean up temp_df if it exists
+        if 'temp_df' in locals() and temp_df is not None:
+            try:
+                temp_df.unpersist()
+            except Exception:
+                pass
 
 

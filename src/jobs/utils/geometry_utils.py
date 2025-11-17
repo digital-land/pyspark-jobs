@@ -27,8 +27,12 @@ def calculate_centroid(df: DataFrame) -> DataFrame:
     return df.sparkSession.sql("""
         SELECT *, 
                ST_AsText(
-                   ST_Centroid(
-                       ST_GeomFromWKT(geometry)
+                   ST_SetSRID(
+                       ST_Point(
+                           ROUND(ST_X(ST_Centroid(ST_GeomFromWKT(geometry))), 6),
+                           ROUND(ST_Y(ST_Centroid(ST_GeomFromWKT(geometry))), 6)
+                       ),
+                       4326
                    )
                ) as point
         FROM temp_geometry

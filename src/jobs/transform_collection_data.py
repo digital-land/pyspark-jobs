@@ -1,4 +1,5 @@
 from jobs.utils.logger_config import get_logger
+from jobs.utils.df_utils import show_df
 from pyspark.sql.functions import (
     row_number, lit, first, to_json, struct, col, when, to_date, desc, expr
 )
@@ -64,7 +65,7 @@ def transform_data_issue(df):
 def transform_data_entity(df,data_set,spark,env):
     try:
         logger.info("transform_data_entity:Transforming data for Entity table")
-        df.show(20)
+        show_df(df, 20, env)
         # 1) Select the top record per (entity, field) using priority, entry_date, entry_number
         # Fallback if 'priority' is missing: use entry_date, entry_number
         if "priority" in df.columns:
@@ -79,7 +80,7 @@ def transform_data_entity(df,data_set,spark,env):
 
         # 2) Pivot to get one row per entity
         pivot_df = df_ranked.groupBy("entity").pivot("field").agg(first("value"))
-        pivot_df.show(5)
+        show_df(pivot_df, 5, env)
 
         logger.info("transform_data_entity:Adding Typology data as the column missing after flattening")
         # filtered_df = pivot_df.filter(col("field") == "typology").select("field", "value")
@@ -89,43 +90,8 @@ def transform_data_entity(df,data_set,spark,env):
         logger.info(f"transform_data_entity: Fetched typology value from dataset specification for dataset: {data_set} is {typology_value}")
 
         pivot_df = pivot_df.withColumn("typology", F.lit(typology_value))
-        pivot_df.show(5)
+        show_df(pivot_df, 5, env)
         
-        # TODO: The following is going to be offloaded into Posgres for processing: Calculate point data (centroid) for Multipolygon values.
-        # TODO: Delete this codebock once moved to Postgres
-        # Prefer using Sedona (distributed). Fall back to Python UDF if Sedona
-        # is not available on the cluster. Ensure a `point` column exists.
-        # logger.info("transform_data_entity: Adding point column - by adding extra column after flattening ")
-        # if "geometry" in pivot_df.columns:
-        #     try:
-        #         from sedona.register import SedonaRegistrator
-        #         SedonaRegistrator.registerAll(spark)
-        #         pivot_df = pivot_df.withColumn(
-        #             "point",
-        #             expr("ST_AsText(ST_Centroid(ST_GeomFromWKT(geometry)))")
-        #         )
-        #         pivot_df.show(5)
-        #     except Exception as sedona_err:
-        #         logger.info(f"Sedona not available or failed to initialize: {sedona_err}. Falling back to Python UDF.")
-        #         try:
-        #             from jobs.utils.point_utils import centroid_udf  # lazy import
-        #         except Exception:
-        #             centroid_udf = None
-
-        #         if centroid_udf is not None:
-        #             try:
-        #                 pivot_df = pivot_df.withColumn("point", centroid_udf(pivot_df["geometry"]))
-        #                 pivot_df.show(5)
-        #             except Exception as e:
-        #                 logger.warning(f"transform_data_entity: Failed to compute centroid with Python UDF: {e}")
-        #                 pivot_df = pivot_df.withColumn("point", lit(None).cast("string"))
-        #         else:
-        #             logger.info("transform_data_entity: No centroid implementation available; point column set to None")
-        #             pivot_df = pivot_df.withColumn("point", lit(None).cast("string"))
-        # else:
-        #     logger.info("transform_data_entity: geometry column not present; skipping point column")
-        #     pivot_df = pivot_df.withColumn("point", lit(None).cast("string"))
-
         # 3) Normalise column names (kebab-case -> snake_case)
         logger.info(f"transform_data_entity: Normalising column names from kebab-case to snake_case")
         for column in pivot_df.columns:
@@ -207,7 +173,7 @@ def transform_data_entity(df,data_set,spark,env):
         ).dropDuplicates(["entity"])
 
         logger.info("transform_data_entity:Transform data for Entity table after pivoting and normalization")
-        out.show(5)
+        show_df(out, 5, env)
 
         return out
     except Exception as e:

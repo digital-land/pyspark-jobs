@@ -1,3 +1,0 @@
-DATASETS:
-  transport-access-node: "transport-access-node-collection/transformed/transport-access-node/"
-  #title-boundary: "title-boundary/*.csv"

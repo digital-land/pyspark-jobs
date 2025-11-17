@@ -29,6 +29,22 @@ class S3UtilsError(Exception):
     """Custom exception for S3 utilities related errors."""
     pass
 
+def read_csv_from_s3(spark, s3_path, header=True, infer_schema=True, **options):
+    """
+    Read CSV file(s) from S3 into a PySpark DataFrame.
+    
+    Args:
+        spark: SparkSession instance
+        s3_path: S3 path to CSV file(s) (e.g., 's3://bucket/path/file.csv')
+        header: Whether CSV has header row (default: True)
+        infer_schema: Whether to infer schema automatically (default: True)
+        **options: Additional Spark CSV reader options
+    
+    Returns:
+        PySpark DataFrame
+    """
+    return spark.read.csv(s3_path, header=header, inferSchema=infer_schema, **options)
+ 
 
 def parse_s3_path(s3_path: str) -> Tuple[str, str]:
     """

@@ -39,7 +39,7 @@ class MockAWSServices:
         # Create test buckets
         test_buckets = [
             'development-collection-data',
-            'development-collection-target-data',
+            'development-parquet-datasets',
             'test-bucket'
         ]
         
