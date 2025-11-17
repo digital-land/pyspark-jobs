@@ -3,6 +3,27 @@ import json
 import pytest
 from datetime import date
 
+# Check if PostgreSQL is available
+def is_postgres_available():
+    try:
+        conn = pg8000.connect(
+            host="localhost",
+            port=5432,
+            database="postgres",
+            user="postgres",
+            password="postgres",
+            timeout=2
+        )
+        conn.close()
+        return True
+    except Exception:
+        return False
+
+pytestmark = pytest.mark.skipif(
+    not is_postgres_available(),
+    reason="PostgreSQL not available on localhost:5432"
+)
+
 # Define table schema
 TABLE_NAME = "entity_test"
 COLUMNS = {
@@ -76,7 +97,6 @@ def insert_sql():
     placeholders = ", ".join(["%s"] * len(COLUMNS))
     return f"INSERT INTO {TABLE_NAME} ({columns}) VALUES ({placeholders});"
 
-@pytest.mark.integration
 def test_create_table():
     conn = pg8000.connect(**TEST_CONN_PARAMS)
     cursor = conn.cursor()
@@ -85,7 +105,6 @@ def test_create_table():
     cursor.close()
     conn.close()
 
-@pytest.mark.integration
 def test_insert_sample_data():
     conn = pg8000.connect(**TEST_CONN_PARAMS)
     cursor = conn.cursor()
@@ -97,7 +116,6 @@ def test_insert_sample_data():
     cursor.close()
     conn.close()
 
-@pytest.mark.integration
 def test_verify_table_exists():
     conn = pg8000.connect(**TEST_CONN_PARAMS)
     cursor = conn.cursor()
@@ -107,7 +125,6 @@ def test_verify_table_exists():
     cursor.close()
     conn.close()
 
-@pytest.mark.integration
 def test_verify_data_inserted():
     conn = pg8000.connect(**TEST_CONN_PARAMS)
     cursor = conn.cursor()
