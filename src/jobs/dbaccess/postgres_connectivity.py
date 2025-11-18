@@ -44,7 +44,7 @@ dbtable_name = ENTITY_TABLE_NAME  # Use centralized config above
 pyspark_entity_columns = {   
     "dataset": "TEXT",
     "end_date": "DATE",
-    "entity": "TEXT",
+    "entity": "BIGINT",
     "entry_date": "DATE",
     "geojson": "JSONB",
     "geometry": "GEOMETRY(MULTIPOLYGON, 4326)",
@@ -55,7 +55,8 @@ pyspark_entity_columns = {
     "prefix": "TEXT",
     "reference": "TEXT",
     "start_date": "DATE", 
-    "typology": "TEXT"
+    "typology": "TEXT",
+    "quality": "TEXT"
     #"processed_timestamp": "TIMESTAMP"  # New column for processing timestamp
 }
 
@@ -143,6 +144,100 @@ def get_aws_secret(environment="development"):
 
 # -------------------- Staging Table Pattern --------------------
 
+def cleanup_old_staging_tables(conn_params, max_age_hours=24, max_retries=3):
+    """
+    Clean up old staging tables that may have been left behind from failed jobs.
+    
+    Args:
+        conn_params (dict): Database connection parameters
+        max_age_hours (int): Maximum age in hours for staging tables to keep
+        max_retries (int): Maximum number of connection attempts
+    """
+    import time
+    if pg8000:
+        from pg8000.exceptions import InterfaceError, DatabaseError
+    else:
+        logger.warning("cleanup_old_staging_tables: pg8000 not available")
+        return
+    
+    conn = None
+    cur = None
+    
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"cleanup_old_staging_tables: Starting cleanup (attempt {attempt + 1}/{max_retries})")
+            
+            conn = pg8000.connect(**conn_params)
+            cur = conn.cursor()
+            
+            # Find old staging tables
+            find_staging_query = f"""
+                SELECT tablename 
+                FROM pg_tables 
+                WHERE schemaname = 'public' 
+                  AND tablename LIKE '{dbtable_name}_staging_%'
+                  AND tablename ~ '{dbtable_name}_staging_[a-f0-9]{{8}}_[0-9]{{8}}_[0-9]{{6}}$'
+            """
+            
+            cur.execute(find_staging_query)
+            staging_tables = [row[0] for row in cur.fetchall()]
+            
+            if not staging_tables:
+                logger.info("cleanup_old_staging_tables: No staging tables found")
+                return
+            
+            logger.info(f"cleanup_old_staging_tables: Found {len(staging_tables)} staging tables")
+            
+            # Check age and drop old tables
+            dropped_count = 0
+            for table_name in staging_tables:
+                try:
+                    # Extract timestamp from table name
+                    parts = table_name.split('_')
+                    if len(parts) >= 4:
+                        timestamp_str = f"{parts[-2]}_{parts[-1]}"
+                        # Validate timestamp format before parsing
+                        if len(timestamp_str) == 15 and timestamp_str[8] == '_' and timestamp_str[:8].isdigit() and timestamp_str[9:].isdigit():
+                            table_time = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
+                            age_hours = (datetime.now() - table_time).total_seconds() / 3600
+                            
+                            if age_hours > max_age_hours:
+                                cur.execute(f"DROP TABLE IF EXISTS {table_name};")
+                                dropped_count += 1
+                                logger.info(f"cleanup_old_staging_tables: Dropped old staging table {table_name} (age: {age_hours:.1f}h)")
+                            else:
+                                logger.debug(f"cleanup_old_staging_tables: Keeping recent staging table {table_name} (age: {age_hours:.1f}h)")
+                        else:
+                            logger.debug(f"cleanup_old_staging_tables: Skipping table with invalid timestamp format: {table_name}")
+                except Exception as e:
+                    logger.warning(f"cleanup_old_staging_tables: Error processing table {table_name}: {e}")
+            
+            conn.commit()
+            logger.info(f"cleanup_old_staging_tables: Cleanup complete - dropped {dropped_count} old staging tables")
+            return
+            
+        except Exception as e:
+            if attempt < max_retries - 1:
+                retry_delay = min(5 * (2 ** attempt), 30)
+                logger.error(f"cleanup_old_staging_tables: Error (attempt {attempt + 1}/{max_retries}): {e}")
+                logger.info(f"cleanup_old_staging_tables: Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                logger.error(f"cleanup_old_staging_tables: All {max_retries} attempts failed: {e}")
+        finally:
+            if cur:
+                try:
+                    cur.close()
+                except Exception as e:
+                    logger.warning(f"cleanup_old_staging_tables: Error closing cursor: {e}")
+            if conn:
+                try:
+                    conn.close()
+                except Exception as e:
+                    logger.warning(f"cleanup_old_staging_tables: Error closing connection: {e}")
+            conn = None
+            cur = None
+
 def create_and_prepare_staging_table(conn_params, dataset_value, max_retries=3):
     """
     Create a temporary staging table for data loading.
@@ -184,16 +279,21 @@ def create_and_prepare_staging_table(conn_params, dataset_value, max_retries=3):
             if not pg8000:
                 raise ImportError("pg8000 required for direct database connections")
             
+            # Clean up old staging tables before creating new one
+            if attempt == 0:  # Only on first attempt
+                try:
+                    cleanup_old_staging_tables(conn_params)
+                except Exception as e:
+                    logger.warning(f"create_and_prepare_staging_table: Cleanup warning (non-critical): {e}")
+            
             conn = pg8000.connect(**conn_params)
             cur = conn.cursor()
             
             # Set shorter timeout for staging table operations (no large deletes)
             cur.execute("SET statement_timeout = '60000';")  # 1 minute
             
-            # Create staging table with TEXT columns for JSONB (since PySpark writes as TEXT)
-            # We'll cast to JSONB during the final INSERT to entity table
-            # NOTE: We use a regular table (not TEMP) because PySpark's JDBC connection
-            # is in a different session and can't see TEMP tables from this pg8000 session
+            # Create staging table with same schema as production table
+            # DataFrame is pre-cast so no type conversion needed
             staging_columns = []
             for col, dtype in pyspark_entity_columns.items():
                 if 'JSONB' in dtype.upper():
@@ -221,6 +321,9 @@ def create_and_prepare_staging_table(conn_params, dataset_value, max_retries=3):
             create_entity_query = f"CREATE TABLE IF NOT EXISTS {dbtable_name} ({entity_column_defs});"
             cur.execute(create_entity_query)
             conn.commit()
+            
+            # Add a function to cast staging table columns after data load
+            logger.info(f"create_and_prepare_staging_table: Staging table ready for data load and casting")
             
             # Create index on dataset column if it doesn't exist (critical for fast DELETE)
             logger.info(f"create_and_prepare_staging_table: Ensuring index on dataset column for fast deletion")
@@ -268,6 +371,12 @@ def create_and_prepare_staging_table(conn_params, dataset_value, max_retries=3):
                     logger.warning(f"create_and_prepare_staging_table: Error closing connection: {e}")
             conn = None
             cur = None
+    
+    # If we reach here, all attempts failed - try to clean up any staging table that might have been created
+    try:
+        cleanup_old_staging_tables(conn_params, max_age_hours=0)  # Clean up immediately on failure
+    except Exception as e:
+        logger.warning(f"create_and_prepare_staging_table: Final cleanup warning: {e}")
 
 
 def commit_staging_to_production(conn_params, staging_table_name, dataset_value, max_retries=3):
@@ -348,24 +457,18 @@ def commit_staging_to_production(conn_params, staging_table_name, dataset_value,
             logger.info(f"commit_staging_to_production: Inserting data from staging to entity table")
             start_insert = time.time()
             
-            # Build column list with explicit casts for JSONB columns and table qualification
-            # PySpark writes JSONB as TEXT, so we need to cast during insert
-            # We also need to qualify columns with alias since 'entity' is both table and column name
+            # Build INSERT with JSONB casting only (entity already cast at DataFrame level)
             select_columns = []
             for col_name, col_type in pyspark_entity_columns.items():
                 if 'JSONB' in col_type.upper():
-                    # Cast TEXT to JSONB for json columns, with table qualification
-                    select_columns.append(f"s.{col_name}::jsonb")
+                    select_columns.append(f"{col_name}::jsonb")
                 else:
-                    # Qualify column with table alias
-                    select_columns.append(f"s.{col_name}")
+                    select_columns.append(col_name)
             
             select_str = ", ".join(select_columns)
-            
             insert_query = f"""
                 INSERT INTO {dbtable_name}
-                SELECT {select_str}
-                FROM {staging_table_name} AS s;
+                SELECT {select_str} FROM {staging_table_name};
             """
             
             cur.execute(insert_query)
@@ -741,42 +844,43 @@ def create_table(conn_params, dataset_value, max_retries=5):
 
 def _prepare_geometry_columns(df):
     """
-    Prepare geometry columns for PostgreSQL insertion with optimized WKT handling.
-    Convert WKT strings to format that PostgreSQL can handle via JDBC.
+    Prepare DataFrame for PostgreSQL insertion with proper data type casting.
     
     Args:
         df (pyspark.sql.DataFrame): DataFrame with potential geometry columns
         
     Returns:
-        pyspark.sql.DataFrame: DataFrame with properly formatted geometry columns
+        pyspark.sql.DataFrame: DataFrame with properly cast columns
     """
     from pyspark.sql.functions import when, col, expr
+    from pyspark.sql.types import LongType
     
-    logger.info("_prepare_geometry_columns: Processing DataFrame for optimized PostgreSQL geometry compatibility")
-    
-    # List of geometry columns that need special handling
-    geometry_columns = ["geometry", "point"]
+    logger.info("_prepare_geometry_columns: Processing DataFrame for PostgreSQL compatibility")
     
     processed_df = df
+    
+    # Cast entity column to LongType (maps to BIGINT in PostgreSQL)
+    if "entity" in df.columns:
+        logger.info("_prepare_geometry_columns: Casting entity column to LongType")
+        processed_df = processed_df.withColumn("entity", col("entity").cast(LongType()))
+    
+    # Process geometry columns
+    geometry_columns = ["geometry", "point"]
     for geom_col in geometry_columns:
         if geom_col in df.columns:
             logger.info(f"_prepare_geometry_columns: Processing geometry column: {geom_col}")
-            
-            # Use PostgreSQL ST_GeomFromText function for proper WKT conversion
-            # This preserves geometry data instead of converting to NULL
             processed_df = processed_df.withColumn(
                 geom_col,
                 when(col(geom_col).isNull(), None)
                 .when(col(geom_col) == "", None)
                 .when(col(geom_col).startswith("POINT"), 
-                      expr(f"concat('SRID=4326;', {geom_col})"))  # Add SRID for PostGIS
+                      expr(f"concat('SRID=4326;', {geom_col})"))
                 .when(col(geom_col).startswith("POLYGON"), 
                       expr(f"concat('SRID=4326;', {geom_col})"))
                 .when(col(geom_col).startswith("MULTIPOLYGON"), 
                       expr(f"concat('SRID=4326;', {geom_col})"))
                 .otherwise(col(geom_col))
             )
-            logger.info(f"_prepare_geometry_columns: Enhanced {geom_col} WKT handling with SRID for PostGIS compatibility")
     
     return processed_df
 
