@@ -457,8 +457,10 @@ def commit_staging_to_production(conn_params, staging_table_name, dataset_value,
             logger.info(f"commit_staging_to_production: Inserting data from staging to entity table")
             start_insert = time.time()
             
-            # Build INSERT with proper type casting for all columns
+            # Build INSERT with explicit column names and proper type casting
+            column_names = list(pyspark_entity_columns.keys())
             select_columns = []
+            
             for col_name, col_type in pyspark_entity_columns.items():
                 if 'JSONB' in col_type.upper():
                     select_columns.append(f"NULLIF({col_name}, '')::jsonb")
@@ -467,12 +469,15 @@ def commit_staging_to_production(conn_params, staging_table_name, dataset_value,
                 else:
                     select_columns.append(col_name)
             
+            column_list = ", ".join(column_names)
             select_str = ", ".join(select_columns)
             insert_query = f"""
-                INSERT INTO {dbtable_name}
+                INSERT INTO {dbtable_name} ({column_list})
                 SELECT {select_str} FROM {staging_table_name};
             """
             
+            logger.info(f"commit_staging_to_production: Executing INSERT with explicit columns and casts")
+            logger.debug(f"commit_staging_to_production: Query: {insert_query[:500]}...")
             cur.execute(insert_query)
             inserted_count = cur.rowcount
             
