@@ -292,12 +292,12 @@ def create_and_prepare_staging_table(conn_params, dataset_value, max_retries=3):
             # Set shorter timeout for staging table operations (no large deletes)
             cur.execute("SET statement_timeout = '60000';")  # 1 minute
             
-            # Create staging table with same schema as production table
-            # DataFrame is pre-cast so no type conversion needed
+            # Create staging table - use TEXT for columns that JDBC writes as TEXT
+            # JDBC with stringtype=unspecified writes BIGINT and JSONB as TEXT
             staging_columns = []
             for col, dtype in pyspark_entity_columns.items():
-                if 'JSONB' in dtype.upper():
-                    # Use TEXT for JSONB columns since PySpark writes them as TEXT
+                if 'JSONB' in dtype.upper() or 'BIGINT' in dtype.upper():
+                    # Use TEXT for JSONB and BIGINT since PySpark JDBC writes them as TEXT
                     staging_columns.append(f"{col} TEXT")
                 else:
                     staging_columns.append(f"{col} {dtype}")
@@ -457,11 +457,13 @@ def commit_staging_to_production(conn_params, staging_table_name, dataset_value,
             logger.info(f"commit_staging_to_production: Inserting data from staging to entity table")
             start_insert = time.time()
             
-            # Build INSERT with JSONB casting only (entity already cast at DataFrame level)
+            # Build INSERT with proper type casting for all columns
             select_columns = []
             for col_name, col_type in pyspark_entity_columns.items():
                 if 'JSONB' in col_type.upper():
                     select_columns.append(f"{col_name}::jsonb")
+                elif 'BIGINT' in col_type.upper():
+                    select_columns.append(f"{col_name}::bigint")
                 else:
                     select_columns.append(col_name)
             
