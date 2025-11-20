@@ -461,9 +461,9 @@ def commit_staging_to_production(conn_params, staging_table_name, dataset_value,
             select_columns = []
             for col_name, col_type in pyspark_entity_columns.items():
                 if 'JSONB' in col_type.upper():
-                    select_columns.append(f"{col_name}::jsonb")
+                    select_columns.append(f"NULLIF({col_name}, '')::jsonb")
                 elif 'BIGINT' in col_type.upper():
-                    select_columns.append(f"{col_name}::bigint")
+                    select_columns.append(f"NULLIF({col_name}, '')::bigint")
                 else:
                     select_columns.append(col_name)
             
