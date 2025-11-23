@@ -1,7 +1,13 @@
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import expr
 from pyspark.sql import SparkSession
-from sedona.spark import SedonaContext
+
+try:
+    from sedona.spark import SedonaContext
+    SEDONA_AVAILABLE = True
+except ImportError:
+    SEDONA_AVAILABLE = False
+    SedonaContext = None
 
 
 def calculate_centroid(df: DataFrame) -> DataFrame:
@@ -14,6 +20,9 @@ def calculate_centroid(df: DataFrame) -> DataFrame:
     Returns:
         DataFrame with added 'point' column containing centroid as WKT point
     """
+    if not SEDONA_AVAILABLE:
+        raise ImportError("Sedona is required for geometry operations. Install with: pip install apache-sedona")
+    
     # Initialize Sedona context to register spatial functions
     SedonaContext.create(df.sparkSession)
     
@@ -40,6 +49,9 @@ def calculate_centroid(df: DataFrame) -> DataFrame:
     """)
 
 def sedona_unit_test():
+    if not SEDONA_AVAILABLE:
+        raise ImportError("Sedona is required for geometry operations. Install with: pip install apache-sedona")
+    
     # Create (or reuse) the SparkSession first
     spark = SparkSession.builder.getOrCreate()
 
