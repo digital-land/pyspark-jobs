@@ -110,7 +110,7 @@ def get_aws_secret(environment="development"):
             logger.error(error_msg)
             raise ValueError(error_msg)
         
-        logger.info(f"get_aws_secret: Retrieved secrets for {dbName} at {host}:{port} with user {username}")
+        logger.info("get_aws_secret: Successfully retrieved database credentials from AWS Secrets Manager")
         
         # Create proper SSL context for Aurora PostgreSQL
         import ssl
@@ -340,7 +340,6 @@ def create_and_prepare_staging_table(conn_params, dataset_value, max_retries=3):
             return staging_table_name
             
         except InterfaceError as e:
-            error_str = str(e).lower()
             if attempt < max_retries - 1:
                 retry_delay = min(5 * (2 ** attempt), 30)
                 logger.error(f"create_and_prepare_staging_table: Network error (attempt {attempt + 1}/{max_retries}): {e}")
@@ -528,14 +527,13 @@ def commit_staging_to_production(conn_params, staging_table_name, dataset_value,
             }
             
         except InterfaceError as e:
-            error_str = str(e).lower()
             logger.error(f"commit_staging_to_production: Network error (attempt {attempt + 1}/{max_retries}): {e}")
             
             if conn:
                 try:
                     conn.rollback()
-                except:
-                    pass
+                except Exception:
+                    pass  # Rollback failure is non-critical in cleanup
             
             if attempt < max_retries - 1:
                 retry_delay = min(5 * (2 ** attempt), 30)
@@ -551,8 +549,8 @@ def commit_staging_to_production(conn_params, staging_table_name, dataset_value,
                 try:
                     conn.rollback()
                     logger.info("commit_staging_to_production: Transaction rolled back")
-                except:
-                    pass
+                except Exception:
+                    pass  # Rollback failure is non-critical in cleanup
             
             if attempt < max_retries - 1:
                 retry_delay = min(5 * (2 ** attempt), 30)
@@ -633,7 +631,7 @@ def create_table(conn_params, dataset_value, max_retries=5):
                     try:
                         cur.execute(f"SELECT pg_terminate_backend({pid});")
                         logger.info(f"create_table: Terminated stuck DELETE operation (PID {pid})")
-                    except Exception as e:
+                    except (DatabaseError, InterfaceError) as e:
                         logger.warning(f"create_table: Could not terminate PID {pid}: {e}")
                 conn.commit()
                 logger.info("create_table: Cleaned up stuck DELETE operations, proceeding with fresh attempt")
@@ -950,7 +948,6 @@ def calculate_centroid_wkt(conn_params, target_table=None, max_retries=3):
             return rows_updated
             
         except InterfaceError as e:
-            error_str = str(e).lower()
             if attempt < max_retries - 1:
                 retry_delay = min(5 * (2 ** attempt), 30)
                 logger.error(f"calculate_centroid_wkt: Network error (attempt {attempt + 1}/{max_retries}): {e}")
@@ -1061,9 +1058,13 @@ def _write_to_postgres_optimized(df, dataset, conn_params, batch_size=None, num_
     else:
         logger.info(f"_write_to_postgres_optimized: Writing to staging table '{target_table}', skipping create_table")
 
+    # Calculate row count once if needed for auto-calculations
+    row_count = None
+    if batch_size is None or num_partitions is None:
+        row_count = df.count()
+    
     # Auto-calculate optimal batch size if not specified
     if batch_size is None:
-        row_count = df.count()
         if row_count < 10000:
             batch_size = 1000      # Small datasets
         elif row_count < 100000:
@@ -1078,7 +1079,6 @@ def _write_to_postgres_optimized(df, dataset, conn_params, batch_size=None, num_
     
     # Auto-calculate optimal number of partitions if not specified
     if num_partitions is None:
-        row_count = df.count()
         # Use one partition per 50k rows, minimum 1, maximum 20
         num_partitions = max(1, min(20, row_count // 50000))
         logger.info(f"_write_to_postgres_optimized: Auto-calculated partitions: {num_partitions} for {row_count} rows")

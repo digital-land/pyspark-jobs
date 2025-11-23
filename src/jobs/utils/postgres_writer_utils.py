@@ -97,7 +97,7 @@ def write_dataframe_to_postgres(df, table_name, data_set, env, use_jdbc=False):
         else:
             # For non-entity tables, use traditional JDBC method
             logger.info(f"Write_PG: Using JDBC method for non-entity table: {table_name}")
-            write_dataframe_to_postgres_jdbc(df, table_name, data_set)
+            write_dataframe_to_postgres_jdbc(df, table_name, data_set, env)
              
     except Exception as e:
         logger.error(f"Write_PG: Failed to write to Postgres: {e}", exc_info=True)
@@ -115,6 +115,7 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env, use_staging=
         df: PySpark DataFrame to write
         table_name: Logical table identifier (e.g., 'entity', 'fact')
         data_set: Dataset name
+        env: Environment name (development, staging, production)
         use_staging: If True, uses staging table pattern (recommended for high-load scenarios)
     """
     from jobs.dbaccess.postgres_connectivity import get_performance_recommendations
