@@ -339,7 +339,7 @@ def main(args):
                 table_name = 'entity'
                 logger.info(f"Main: before writing to postgres, df_entity dataframe is below")
                 show_df(df_entity, 5, env)
-                write_dataframe_to_postgres_jdbc(df_entity, table_name, data_set, env, use_staging=True)
+                write_dataframe_to_postgres_jdbc(df_entity, table_name, data_set, env)
             else:
                 logger.info("Main: df_entity is None, skipping Postgres write")
 

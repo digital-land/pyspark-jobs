@@ -76,7 +76,7 @@ def transform_data_entity_format(df,data_set,spark,env=None):
 
         # 5) Organisation join to fetch organisation_entity
         logger.info(f"transform_data_entity: Joining organisation to get organisation_entity")
-        organisation_df = spark.read.option("header", "true").csv("s3://development-collection-data/organisation/dataset/organisation.csv")
+        organisation_df = spark.read.option("header", "true").csv(f"s3://{env}-collection-data/organisation/dataset/organisation.csv")
         pivot_df = pivot_df.join(
             organisation_df,
             pivot_df.organisation == organisation_df.organisation,

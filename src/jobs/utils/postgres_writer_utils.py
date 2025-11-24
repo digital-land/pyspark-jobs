@@ -8,210 +8,176 @@ from jobs.dbaccess.postgres_connectivity import (
     ENTITY_TABLE_NAME
 )
 from jobs.csv_s3_writer import write_dataframe_to_csv_s3, import_csv_to_aurora, cleanup_temp_csv_files
+from jobs.utils.df_utils import show_df
+from pyspark.sql.functions import col, lit, to_json
 
 logger = get_logger(__name__)
 
-# -------------------- Enhanced Postgres Writer with CSV S3 Import --------------------
-@log_execution_time
-def write_dataframe_to_postgres(df, table_name, data_set, env, use_jdbc=False):
+def _ensure_required_columns(df, required_cols, defaults=None, logger=None):
     """
-    Write DataFrame to PostgreSQL using either Aurora S3 import or JDBC.
-    
+    Ensures all required columns exist in df. Adds missing columns as NULL (or default values).
     Args:
-        df: PySpark DataFrame to write
-        table_name: Target table name
-        data_set: Dataset name
-        env: Environment name 
-        use_jdbc: If True, use JDBC method; if False, use Aurora S3 import (default)
+        df: Spark DataFrame
+        required_cols: list[str] of column names expected downstream
+        defaults: dict[str, any] optional default values per missing column
+        logger: optional logger
+    Returns:
+        DataFrame with all required columns present
     """
-    try:
-        method = "JDBC" if use_jdbc else "Aurora S3 Import"
-        logger.info(f"Write_PG: Writing to Postgres using {method} for table: {table_name}")
-        
-        # Only process entity table for now (can be extended to other tables)
-        if table_name == 'entity':
-            row_count = df.count()
-            logger.info(f"Write_PG: Processing {row_count} rows for {table_name} table")
-            
-            if use_jdbc:
-                # Use traditional JDBC method
-                logger.info("Write_PG: Using JDBC import method")
-                write_dataframe_to_postgres_jdbc(df, table_name, data_set, env)
-            else:
-                # Use Aurora S3 import method
-                logger.info("Write_PG: Using Aurora S3 import method")
-                
-                # Determine S3 CSV output path (under the same parquet path)
-                csv_output_path = f"s3://{env}-parquet-datasets/csv-temp/"
-                logger.info(f"Write_PG: CSV output path: {csv_output_path}")
-                
-                csv_path = None
-                try:
-                    # Step 1: Write DataFrame to temporary CSV in S3
-                    csv_path = write_dataframe_to_csv_s3(
-                        df, 
-                        csv_output_path, 
-                        table_name, 
-                        data_set,
-                        cleanup_existing=True
-                    )
-                    logger.info(f"Write_PG: Successfully wrote temporary CSV to S3: {csv_path}")
-                    
-                    # Step 2: Import CSV from S3 to Aurora (this includes automatic cleanup)
-                    # Use actual database table name (ENTITY_TABLE_NAME) instead of logical name
-                    import_result = import_csv_to_aurora(
-                        csv_path,
-                        ENTITY_TABLE_NAME,  # Use actual DB table name (configured in postgres_connectivity.py)
-                        data_set,
-                        env,
-                        use_s3_import=True,
-                        truncate_table=True  # Clean existing data for this dataset
-                    )
-                    
-                    if import_result["import_successful"]:
-                        logger.info(f"Write_PG: Aurora S3 import completed successfully")
-                        logger.info(f"Write_PG: Method used: {import_result['import_method_used']}")
-                        logger.info(f"Write_PG: Rows imported: {import_result['rows_imported']}")
-                        logger.info(f"Write_PG: Duration: {import_result['import_duration']:.2f} seconds")
-                        logger.info("Write_PG: Temporary CSV files have been cleaned up")
-                        
-                        if import_result.get("warnings"):
-                            logger.warning(f"Write_PG: Import warnings: {import_result['warnings']}")
-                    else:
-                        logger.error(f"Write_PG: Aurora S3 import failed: {import_result['errors']}")
-                        logger.info("Write_PG: Falling back to JDBC method")
-                        # CSV cleanup happens in import_csv_to_aurora function
-                        write_dataframe_to_postgres_jdbc(df, table_name, data_set, env)
-                        
-                except Exception as e:
-                    logger.error(f"Write_PG: Aurora S3 import failed: {e}")
-                    logger.info("Write_PG: Falling back to JDBC method")
-                    
-                    # Clean up temporary CSV files if they were created but import failed
-                    if csv_path:
-                        logger.info("Write_PG: Cleaning up temporary CSV files after S3 import failure")
-                        cleanup_temp_csv_files(csv_path)
-                    
-                    write_dataframe_to_postgres_jdbc(df, table_name, data_set, env)
-                        
+    defaults = defaults or {}
+    existing = set(df.columns)
+
+    missing = [c for c in required_cols if c not in existing]
+    extra   = [c for c in df.columns if c not in set(required_cols)]
+
+    if logger:
+        if missing:
+            logger.warning(f"PG writer: Missing columns will be set to NULL/defaults: {missing}")
+        if extra:
+            logger.info(f"PG writer: Extra columns present (ignored by select): {extra}")
+
+    for c in missing:
+        default_val = defaults.get(c, None)
+       
+        # Safe type casting for JDBC
+        if c in ["entity", "organisation_entity"]:
+            df = df.withColumn(c, lit(default_val).cast("bigint"))
+        elif c in ["json", "geojson", "geometry", "point", "quality", "name", "prefix", "reference", "typology", "dataset"]:
+            df = df.withColumn(c, lit(default_val).cast("string"))
+        elif c in ["entry_date", "start_date", "end_date"]:
+            df = df.withColumn(c, lit(default_val).cast("date"))
         else:
-            # For non-entity tables, use traditional JDBC method
-            logger.info(f"Write_PG: Using JDBC method for non-entity table: {table_name}")
-            write_dataframe_to_postgres_jdbc(df, table_name, data_set)
-             
+            df = df.withColumn(c, lit(default_val).cast("string"))
+
+    return df
+
+
+def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
+    """
+    Write DataFrame to PostgreSQL using staging table and atomic transaction with retry logic.
+    JDBC write and transaction block are retried on transient failures.
+    """
+    import time
+    import hashlib
+    from datetime import datetime
+    import pg8000
+    from pyspark.sql.functions import col
+    from pyspark.sql.types import LongType
+
+    logger.info("write_dataframe_to_postgres_jdbc: Show df:")
+    show_df(df, 5, env)
+
+    conn_params = get_aws_secret(env)
+    row_count = df.count()
+    logger.info(f"write_dataframe_to_postgres_jdbc: Writing {row_count:,} rows for {data_set}")
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dataset_hash = hashlib.md5(data_set.encode()).hexdigest()[:8]
+    staging_table = f"entity_staging_{dataset_hash}_{timestamp}"
+
+    # Step 1: Create staging table
+    try:
+        conn_params["timeout"] = 1800  # 30 minutes
+        conn = pg8000.connect(**conn_params)
+
+        cur = conn.cursor()
+        cur.execute(f"""
+        CREATE TABLE {staging_table} (
+            entity BIGINT, name TEXT, entry_date DATE, start_date DATE, end_date DATE,
+            dataset TEXT, json JSONB, organisation_entity BIGINT, prefix TEXT,
+            reference TEXT, typology TEXT, geojson JSONB,
+            geometry GEOMETRY(MULTIPOLYGON, 4326), point GEOMETRY(POINT, 4326), quality TEXT
+        );
+        """)
+        conn.commit()
+        cur.close()
+        conn.close()
+        logger.info(f"write_dataframe_to_postgres_jdbc: Created {staging_table}")
     except Exception as e:
-        logger.error(f"Write_PG: Failed to write to Postgres: {e}", exc_info=True)
+        logger.error(f"Failed to create staging table: {e}")
         raise
 
+    # Step 2: Prepare DataFrame
+    required_cols = [
+        "entity", "name", "entry_date", "start_date", "end_date", "dataset",
+        "json", "organisation_entity", "prefix", "reference", "typology",
+        "geojson", "geometry", "point", "quality"
+    ]
 
-def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env, use_staging=True):
-    """
-    JDBC writer with optional staging table support.
-    
-    This method can write directly to the entity table or use a staging table
-    to minimize lock contention on the production entity table.
-    
-    Args:
-        df: PySpark DataFrame to write
-        table_name: Logical table identifier (e.g., 'entity', 'fact')
-        data_set: Dataset name
-        use_staging: If True, uses staging table pattern (recommended for high-load scenarios)
-    """
-    from jobs.dbaccess.postgres_connectivity import get_performance_recommendations
-    
-    # Get performance recommendations based on dataset size
-    row_count = df.count()
-    recommendations = get_performance_recommendations(row_count)
-    logger.info(f"write_dataframe_to_postgres_jdbc: Performance recommendations for {row_count} rows: {recommendations}")
-    
-    conn_params = get_aws_secret(env)
-    
-    # Use staging pattern for entity table (logical name comparison is correct here)
-    if use_staging and table_name == 'entity':
-        logger.info("write_dataframe_to_postgres_jdbc: Using STAGING TABLE pattern for entity table")
-        logger.info("write_dataframe_to_postgres_jdbc: This minimizes lock contention on production table")
-        
+    df_typed = _ensure_required_columns(df, required_cols, defaults=None, logger=logger)
+    df_typed = df_typed.select(*required_cols) \
+        .withColumn("entity", col("entity").cast(LongType())) \
+        .withColumn("organisation_entity", col("organisation_entity").cast(LongType()))
+
+    url = f"jdbc:postgresql://{conn_params['host']}:{conn_params['port']}/{conn_params['database']}"
+    num_partitions = max(1, min(20, row_count // 50000))
+
+    # Retry logic for JDBC write
+    max_attempts = 3
+    attempt = 0
+    while attempt < max_attempts:
         try:
-            # Step 1: Create staging table
-            logger.info("write_dataframe_to_postgres_jdbc: Step 1/3 - Creating staging table")
-            staging_table_name = create_and_prepare_staging_table(
-                conn_params=conn_params,
-                dataset_value=data_set
+            df_typed.repartition(num_partitions).write.jdbc(
+                url=url,
+                table=staging_table,
+                mode="append",
+                properties={
+                    "user": conn_params["user"],
+                    "password": conn_params["password"],
+                    "driver": "org.postgresql.Driver",
+                    "stringtype": "unspecified",
+                    "batchsize": "5000",
+                    "reWriteBatchedInserts": "true",
+                    "numPartitions": str(num_partitions),
+                },
             )
-            logger.info(f"write_dataframe_to_postgres_jdbc: Created staging table: {staging_table_name}")
-            
-            # Step 2: Write data to staging table
-            logger.info(f"write_dataframe_to_postgres_jdbc: Step 2/3 - Writing {row_count:,} rows to staging table")
-            write_to_postgres(
-                df, 
-                data_set,
-                conn_params,
-                method=recommendations["method"],
-                batch_size=recommendations["batch_size"],
-                num_partitions=recommendations["num_partitions"],
-                target_table=staging_table_name  # Write to staging table
-            )
-            logger.info(f"write_dataframe_to_postgres_jdbc: Successfully wrote data to staging table '{staging_table_name}'")
-
-            # Step 2b: Calculate the centroid of the multiplygon data into the point field
-            # logger.info(
-            #     "_write_dataframe_to_postgres_jdbc: "
-            #     f"Calculating centroids for multipolygon geometries in {staging_table_name}"
-            # )
-            # rows_updated = calculate_centroid_wkt(
-            #     conn_params,
-            #     target_table=staging_table_name  # Update centroids in staging table
-            # )
-            # logger.info(
-            #     "_write_dataframe_to_postgres_jdbc: "
-            #     f"Updated {rows_updated} centroids in staging table"
-            # )
-            
-            # Step 3: Atomically commit staging data to production entity table
-            logger.info("write_dataframe_to_postgres_jdbc: Step 3/3 - Committing staging data to production entity table")
-            commit_result = commit_staging_to_production(
-                conn_params=conn_params,
-                staging_table_name=staging_table_name,
-                dataset_value=data_set
-            )
-            
-            if commit_result["success"]:
-                logger.info(
-                    f"write_dataframe_to_postgres_jdbc: ✓ STAGING COMMIT SUCCESSFUL - "
-                    f"Deleted {commit_result['rows_deleted']:,} old rows, "
-                    f"Inserted {commit_result['rows_inserted']:,} new rows in {commit_result['total_duration']:.2f}s"
-                )
-                logger.info(
-                    f"write_dataframe_to_postgres_jdbc: Lock time on entity table: "
-                    f"~{commit_result['total_duration']:.2f}s (vs. several minutes with direct write)"
-                )
-            else:
-                logger.error(f"write_dataframe_to_postgres_jdbc: Staging commit failed: {commit_result.get('error')}")
-                raise Exception(f"Staging commit failed: {commit_result.get('error')}")
-            
+            logger.info(f"write_dataframe_to_postgres_jdbc: JDBC write successful on attempt {attempt+1}")
+            break
         except Exception as e:
-            logger.error(f"write_dataframe_to_postgres_jdbc: Staging table approach failed: {e}")
-            logger.info("write_dataframe_to_postgres_jdbc: Falling back to direct write to entity table")
-            
-            # Fallback to direct write
-            write_to_postgres(
-                df, 
-                data_set,
-                conn_params,
-                method=recommendations["method"],
-                batch_size=recommendations["batch_size"],
-                num_partitions=recommendations["num_partitions"]
-            )
-    else:
-        # Direct write to production table (original behavior)
-        logger.info(f"write_dataframe_to_postgres_jdbc: Using DIRECT WRITE to {table_name} table")
-        write_to_postgres(
-            df, 
-            data_set,
-            conn_params,
-            method=recommendations["method"],
-            batch_size=recommendations["batch_size"],
-            num_partitions=recommendations["num_partitions"]
-        )
-    
-    logger.info(f"write_dataframe_to_postgres_jdbc: JDBC writing completed using {recommendations['method']} method")
+            attempt += 1
+            logger.warning(f"JDBC write failed (attempt {attempt}): {e}")
+            if attempt < max_attempts:
+                sleep_time = 5 * attempt
+                logger.info(f"Retrying JDBC write in {sleep_time}s...")
+                time.sleep(sleep_time)
+            else:
+                logger.error("Max retries reached for JDBC write. Failing job.")
+                raise
+
+    # Retry logic for atomic transaction
+    attempt = 0
+    while attempt < max_attempts:
+        try:
+            conn_params["timeout"] = 1800  # 30 minutes
+            conn = pg8000.connect(**conn_params)
+
+            cur = conn.cursor()
+            cur.execute("SET statement_timeout = '1800000';")
+            cur.execute("BEGIN;")
+            cur.execute("DELETE FROM entity WHERE dataset = %s;", (data_set,))
+            deleted = cur.rowcount
+            cur.execute(f"INSERT INTO entity SELECT * FROM {staging_table};")
+            inserted = cur.rowcount
+            cur.execute(f"DROP TABLE {staging_table};")
+            cur.execute("COMMIT;")
+            logger.info(f"Atomic commit successful on attempt {attempt+1} - Deleted {deleted:,}, Inserted {inserted:,} rows")
+            break
+        except Exception as e:
+            cur.execute("ROLLBACK;")
+            attempt += 1
+            logger.warning(f"Atomic commit failed (attempt {attempt}): {e}")
+            if attempt < max_attempts:
+                sleep_time = 5 * attempt
+                logger.info(f"Retrying atomic commit in {sleep_time}s...")
+                time.sleep(sleep_time)
+            else:
+                logger.error("Max retries reached for atomic commit. Failing job.")
+                raise
+        finally:
+            logger.info(f"write_dataframe_to_postgres_jdbc: Finally drop staging table if it still exists")
+            conn = pg8000.connect(**conn_params)
+            cur = conn.cursor()
+            cur.execute(f"DROP TABLE IF EXISTS {staging_table};")
+            conn.commit()
+            cur.close()
+            conn.close()
