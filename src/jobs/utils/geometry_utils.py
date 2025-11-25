@@ -26,18 +26,21 @@ def calculate_centroid(df: DataFrame) -> DataFrame:
     
     return df.sparkSession.sql("""
         SELECT *, 
-               ST_AsText(
-                   ST_SetSRID(
-                       ST_Point(
-                           ROUND(ST_X(ST_Centroid(ST_GeomFromWKT(geometry))), 6),
-                           ROUND(ST_Y(ST_Centroid(ST_GeomFromWKT(geometry))), 6)
-                       ),
-                       4326
-                   )
-               ) as point
+            CASE 
+                WHEN geometry IS NOT NULL THEN
+                    ST_AsText(
+                        ST_SetSRID(
+                            ST_Point(
+                                ROUND(ST_X(ST_Centroid(ST_GeomFromWKT(geometry))), 6),
+                                ROUND(ST_Y(ST_Centroid(ST_GeomFromWKT(geometry))), 6)
+                            ),
+                            4326
+                        )
+                    )
+                ELSE NULL
+            END as point
         FROM temp_geometry
-        WHERE geometry IS NOT NULL
-    """)
+        """)
 
 def sedona_unit_test():
     # Create (or reuse) the SparkSession first
