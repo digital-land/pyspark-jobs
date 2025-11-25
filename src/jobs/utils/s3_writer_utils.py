@@ -479,7 +479,8 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
         show_df(df_bake, 5, env)
         
         logger.info(f"Performing left join on entity column")
-        df = df.join(df_bake, df["entity"] == df_bake["entity"], how="left").drop(df_bake["entity"])
+        df = df.join(df_bake, df["entity"] == df_bake["entity"], how="left").select(df["*"], df_bake["json"])
+
         logger.info(f"Join completed, showing result dataframe")
         show_df(df, 5, env)
 
