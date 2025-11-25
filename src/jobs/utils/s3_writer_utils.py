@@ -5,7 +5,7 @@ from jobs.utils.s3_dataset_typology import get_dataset_typology
 from jobs.utils.s3_format_utils import flatten_s3_json, s3_csv_format
 from jobs.utils.s3_utils import cleanup_dataset_data
 from jobs.utils.logger_config import setup_logging, get_logger, log_execution_time, set_spark_log_level
-from jobs.utils.df_utils import show_df
+from jobs.utils.df_utils import show_df, count_df
 from pyspark.sql.functions import lit
 from pyspark.sql.types import TimestampType
 from datetime import datetime
@@ -21,7 +21,7 @@ from pyspark.sql.window import Window
 import requests
 import re
 import json
-from datetime import date, datetime
+from datetime import date as date_type, datetime as datetime_type
 
 # Import geometry utilities
 from jobs.utils.geometry_utils import calculate_centroid
@@ -469,10 +469,15 @@ def s3_rename_and_move(env, dataset_name, file_type,bucket_name):
 # -------------------- S3 Writer Format--------------------
 def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
     try: 
+        count = count_df(df, env)
+        if count is not None:
+            logger.info(f"write_to_s3_format: Input DataFrame Before leftjoin for {table_name} table contains {count} records")
+        
         # Load bake data from S3 and join with main dataframe to enrich with json column
         path_bake = f"s3://{env}-collection-data/{dataset_name}-collection/dataset/{dataset_name}.csv"
         logger.info(f"Reading bake data from {path_bake}")
         df_bake = read_csv_from_s3(spark, path_bake)
+
         logger.info(f"Selecting entity and json columns from bake dataframe")
         show_df(df_bake, 5, env)
         df_bake = df_bake.select("entity", "json")
@@ -480,7 +485,10 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
         
         logger.info(f"Performing left join on entity column")
         df = df.join(df_bake, df["entity"] == df_bake["entity"], how="left").select(df["*"], df_bake["json"])
-
+        # dispay count after join
+        count = count_df(df, env)
+        if count is not None:
+            logger.info(f"write_to_s3_format: Input DataFrame After leftjoin for {table_name} table contains {count} records")
         logger.info(f"Join completed, showing result dataframe")
         show_df(df, 5, env)
 
@@ -493,6 +501,11 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
     
         logger.info(f"write_to_s3_format: Writing data to S3 at {output_path} for dataset {dataset_name}") 
         
+        #count after schema normalisation
+        count = count_df(df, env)
+        if count is not None:
+            logger.info(f"write_to_s3_format: Input DataFrame After schema normalisation for {table_name} table contains {count} records")
+
         # Check and clean up (deleting old files) existing data for this dataset before writing
         cleanup_summary = cleanup_dataset_data(output_path, dataset_name)
         logger.info(f"write_to_s3_format: Cleaned up {cleanup_summary['objects_deleted']} objects for dataset '{dataset_name}'")
@@ -504,7 +517,13 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
         logger.info(f"write_to_s3_format: Adding dataset column with value {dataset_name}")
         df = df.withColumn("dataset", lit(dataset_name))
         show_df(df, 5, env)
-                     
+
+        #count after add dataset column 
+        count = count_df(df, env)
+        if count is not None:
+            logger.info(f"write_to_s3_format: Input DataFrame After adding dataset column for {table_name} table contains {count} records")
+
+                   
         # Calculate optimal partitions based on data size
         logger.info(f"write_to_s3_format: Calculating optimal partitions based on data size")
         row_count = df.count()
@@ -515,6 +534,12 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
         df = calculate_centroid(df)
         show_df(df, 5, env)
 
+         #count after centroid calculation 
+        count = count_df(df, env)
+        if count is not None:
+            logger.info(f"write_to_s3_format: Input DataFrame After centroid calculation for {table_name} table contains {count} records")
+
+
         # Create a copy of the main dataframe to a temporary dataframe for further processing
         temp_df = df
 
@@ -523,16 +548,32 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
         temp_df = flatten_json_column(temp_df)
         show_df(temp_df, 5, env)
 
+         #count after flattening json data 
+        count = count_df(temp_df, env)
+        if count is not None:
+            logger.info(f"write_to_s3_format: Input DataFrame After flattening json data for {table_name} table contains {count} records")
+
         # Normalise column names (kebab-case -> snake_case)
         logger.info(f"write_to_s3_format: Normalising column names from kebab_case to snake-case")
         for column in temp_df.columns:
             if "_" in column:
                 temp_df = temp_df.withColumnRenamed(column, column.replace("_", "-"))
+        
+         #count after normalise column names
+        count = count_df(temp_df, env)
+        if count is not None:
+            logger.info(f"write_to_s3_format: Input DataFrame After normalising column names for {table_name} table contains {count} records")
+
 
         # Ensure all schema fields are present
         logger.info(f"write_to_s3_format: Ensuring schema fields for dataset: {dataset_name}")
         temp_df = ensure_schema_fields(temp_df, dataset_name)
-        
+
+        #count after schema fields ensured
+        count = count_df(temp_df, env)
+        if count is not None:
+            logger.info(f"write_to_s3_format: Input DataFrame After schema fields ensured and before writing csvfor {table_name} table contains {count} records")
+      
         # Write csv to S3 path
         # Use "append" mode since we already cleaned up the specific dataset partition
         logger.info(f"write_to_s3_format: Writing csv data for: {dataset_name}") 
@@ -552,10 +593,7 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
 
         # Write JSON data
         logger.info(f"write_to_s3_format: Writing json data for: {dataset_name}") 
-        
-        # Import for nested function scope
-        from datetime import date as date_type, datetime as datetime_type
-        
+            
         def convert_row(row):
             row_dict = row.asDict()
             for key, value in row_dict.items():
