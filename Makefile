@@ -36,9 +36,9 @@ help: ## Show this help message
 
 # Virtual Environment Setup
 init: init-local ## Default: Initialize local testing environment
-	ifeq ($(ENVIRONMENT),local)
-		pre-commit install
-	endif
+	@if [ "$(ENVIRONMENT)" == "local" ] ; then \
+		pre-commit install \
+	fi
 
 init-local: ## Initialize local testing environment (lightweight)
 	@echo "$(BLUE)Setting up local testing environment...$(NC)"
