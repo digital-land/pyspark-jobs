@@ -7,7 +7,7 @@ set -e  # Exit on any error
 
 # Configuration
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENV_NAME="pyspark-jobs-venv"
+VENV_NAME=".venv"
 VENV_DIR="$PROJECT_DIR/$VENV_NAME"
 PYTHON_VERSION="python3"
 MIN_PYTHON_VERSION="3.8"

@@ -8,7 +8,7 @@
 
 # Variables
 PYTHON := python3
-VENV_DIR := pyspark-jobs-venv
+VENV_DIR := .venv
 VENV_ACTIVATE := $(VENV_DIR)/bin/activate
 PROJECT_DIR := $(shell pwd)
 SRC_DIR := src
@@ -22,6 +22,11 @@ YELLOW := \033[1;33m
 RED := \033[0;31m
 NC := \033[0m
 
+# Auto set ENV to local if not specified
+ENV ?= local
+
+# If ENV is local then check for VENV
+
 # Help target
 help: ## Show this help message
 	@echo "PySpark Jobs Development Makefile"
@@ -31,13 +36,22 @@ help: ## Show this help message
 
 # Virtual Environment Setup
 init: init-local ## Default: Initialize local testing environment
+	ifeq ($(ENV),local)
+		pre-commit install
+	endif
 
 init-local: ## Initialize local testing environment (lightweight)
 	@echo "$(BLUE)Setting up local testing environment...$(NC)"
 	./setup_venv.sh --type local
 	@echo "$(GREEN)Local testing environment ready!$(NC)"
 
-
+check-venv: ## Check if virtual environment is set up
+	@if [ "$(ENV)" == "local" ] ; then \
+		if [ -z $(VIRTUAL_ENV) ] ; then \
+			echo "$(RED)Error: Virtual environment is not activated in local environment. Run make init to activate or create it"; \
+			exit 1; \
+		fi \
+	fi
 
 # Testing
 test: ## Run all tests
@@ -95,32 +109,23 @@ test-smoke: ## Run smoke tests (quick validation)
 	fi
 
 # Code Quality
-lint: ## Run all linting checks
-	@echo "$(BLUE)Running linting checks...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && ./tests/utils/test_runner --lint; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+lint: check-venv ## Run all linting checks
+	black --check src/ tests/
+	flake8 src/ tests/
 
-format: ## Format code with black and isort
-	@echo "$(BLUE)Formatting code...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && ./tests/utils/test_runner --format; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+format: check-venv ## Format code with black and isort
+	black src/ tests/
+	isort src/ tests/
 
-type-check: ## Run type checking with mypy
-	@echo "$(BLUE)Running type checks...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && mypy $(SRC_DIR); \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+# TODO: implement type checking
+# type-check: ## Run type checking with mypy
+# 	@echo "$(BLUE)Running type checks...$(NC)"
+# 	@if [ -f $(VENV_ACTIVATE) ]; then \
+# 		source $(VENV_ACTIVATE) && mypy $(SRC_DIR); \
+# 	else \
+# 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
+# 		exit 1; \
+# 	fi
 
 security: ## Run security scanning
 	@echo "$(BLUE)Running security scans...$(NC)"
@@ -133,36 +138,19 @@ security: ## Run security scanning
 		exit 1; \
 	fi
 
-# Pre-commit
-install-hooks: ## Install pre-commit hooks
-	@echo "$(BLUE)Installing pre-commit hooks...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && pre-commit install; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
-
-pre-commit: ## Run pre-commit on all files
-	@echo "$(BLUE)Running pre-commit checks...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && pre-commit run --all-files; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+pre-commit: check-venv ## Run pre-commit on all files
+	pre-commit run --all-files; \
 
 # Documentation
 docs: ## Generate documentation
 	@echo "$(BLUE)Generating documentation...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && \
 		sphinx-build -b html $(DOCS_DIR) $(DOCS_DIR)/_build/html; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
 	fi
 
+# TODO: do we really need this? I haven't seen any notebooks in the repo
 # Development Tools
 run-notebook: ## Start Jupyter Lab for development
 	@echo "$(BLUE)Starting Jupyter Lab...$(NC)"
@@ -174,14 +162,9 @@ run-notebook: ## Start Jupyter Lab for development
 	fi
 
 # Build and Package
-build: ## Build the package
+build: check-venv ## Build the package
 	@echo "$(BLUE)Building package...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && python setup.py sdist bdist_wheel; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+	python setup.py sdist bdist_wheel; \
 
 package: ## Create AWS deployment package
 	@echo "$(BLUE)Creating AWS deployment package...$(NC)"
@@ -221,45 +204,32 @@ clean-all: clean clean-build ## Clean all generated files and artifacts
 	@echo "$(BLUE)Cleaning virtual environment...$(NC)"
 	rm -rf $(VENV_DIR)
 
+# TBD do we need these?
 # Database targets (if applicable)
-db-upgrade: ## Upgrade database schema
-	@echo "$(BLUE)Upgrading database schema...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && alembic upgrade head; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+# db-upgrade: ## Upgrade database schema
+# 	@echo "$(BLUE)Upgrading database schema...$(NC)"
+# 	@if [ -f $(VENV_ACTIVATE) ]; then \
+# 		source $(VENV_ACTIVATE) && alembic upgrade head; \
+# 	else \
+# 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
+# 		exit 1; \
+# 	fi
 
-db-downgrade: ## Downgrade database schema
-	@echo "$(BLUE)Downgrading database schema...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && alembic downgrade -1; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+# db-downgrade: ## Downgrade database schema
+# 	@echo "$(BLUE)Downgrading database schema...$(NC)"
+# 	@if [ -f $(VENV_ACTIVATE) ]; then \
+# 		source $(VENV_ACTIVATE) && alembic downgrade -1; \
+# 	else \
+# 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
+# 		exit 1; \
+# 	fi
 
 # Utility targets
-check-env: ## Check if virtual environment is activated
-	@if [ -z "$$VIRTUAL_ENV" ]; then \
-		echo "$(YELLOW)Virtual environment is not activated.$(NC)"; \
-		echo "Run 'source $(VENV_DIR)/bin/activate' to activate it."; \
-	else \
-		echo "$(GREEN)Virtual environment is activated: $$VIRTUAL_ENV$(NC)"; \
-	fi
-
-install-deps: ## Install/update dependencies
+install-deps: check-venv ## Install/update dependencies
 	@echo "$(BLUE)Installing/updating dependencies...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && \
-		pip install --upgrade pip setuptools wheel && \
-		pip install -r requirements-dev.txt && \
-		pip install -e .; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+	pip install --upgrade pip setuptools wheel
+	pip install -r requirements-dev.txt
+	pip install -e .;
 
 freeze: ## Freeze current dependencies
 	@echo "$(BLUE)Freezing current dependencies...$(NC)"
@@ -271,7 +241,8 @@ freeze: ## Freeze current dependencies
 		exit 1; \
 	fi
 
-# CI/CD targets
+# TODO: remove these as the CI/CD should use the same tagets as development
+# CI/CD targets)
 ci-test: ## Run tests for CI environment
 	@echo "$(BLUE)Running CI tests...$(NC)"
 	pytest $(TESTS_DIR) -v --junitxml=test-results.xml --cov=$(SRC_DIR) --cov-report=xml
