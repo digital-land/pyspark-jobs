@@ -15,7 +15,7 @@ from pyspark.sql import SparkSession
 from jobs.utils.logger_config import setup_logging, get_logger, log_execution_time, set_spark_log_level
 from jobs.utils.s3_writer_utils import write_to_s3, write_to_s3_format
 from jobs.utils.postgres_writer_utils import write_dataframe_to_postgres_jdbc
-from jobs.utils.df_utils import show_df
+from jobs.utils.df_utils import show_df, count_df
 
 # -------------------- Logging Setup --------------------
 # Setup logging for EMR Serverless (console output goes to CloudWatch automatically)
@@ -306,6 +306,9 @@ def main(args):
                     processed_df = transform_data(df,table_name,data_set,spark)
                     logger.info(f"Main: Transforming data for {table_name} table completed")
                     show_df(df, 5, env)
+                    count = count_df(processed_df, env)
+                    if count is not None:
+                        logger.info(f"Main: Processed DataFrame for {table_name} table contains {count} records")
 
                     # Write to S3 for Fact Resource table
                     write_to_s3(processed_df, f"{output_path}{table_name}", data_set,table_name,env)
