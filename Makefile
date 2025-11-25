@@ -23,7 +23,7 @@ RED := \033[0;31m
 NC := \033[0m
 
 # Auto set ENV to local if not specified
-ENV ?= local
+ENVIRONMENT ?= local
 
 # If ENV is local then check for VENV
 
@@ -36,7 +36,7 @@ help: ## Show this help message
 
 # Virtual Environment Setup
 init: init-local ## Default: Initialize local testing environment
-	ifeq ($(ENV),local)
+	ifeq ($(ENVIRONMENT),local)
 		pre-commit install
 	endif
 
@@ -46,7 +46,7 @@ init-local: ## Initialize local testing environment (lightweight)
 	@echo "$(GREEN)Local testing environment ready!$(NC)"
 
 check-venv: ## Check if virtual environment is set up
-	@if [ "$(ENV)" == "local" ] ; then \
+	@if [ "$(ENVIRONMENT)" == "local" ] ; then \
 		if [ -z $(VIRTUAL_ENV) ] ; then \
 			echo "$(RED)Error: Virtual environment is not activated in local environment. Run make init to activate or create it"; \
 			exit 1; \
