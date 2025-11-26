@@ -22,6 +22,7 @@ import requests
 import re
 import json
 from datetime import date as date_type, datetime as datetime_type
+from datetime import date, datetime
 
 # Import geometry utilities
 from jobs.utils.geometry_utils import calculate_centroid
