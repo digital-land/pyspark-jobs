@@ -604,8 +604,16 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
                     row_dict[key] = ""
             return row_dict
         
-        json_data = [convert_row(row) for row in temp_df.collect()]
-        json_output = json.dumps({"entities": json_data})
+        # Stream JSON to avoid OOM
+        json_buffer = '{"entities":['
+        first = True
+        for row in temp_df.toLocalIterator():
+            if not first:
+                json_buffer += ','
+            first = False
+            json_buffer += json.dumps(convert_row(row))
+        json_buffer += ']}'
+        json_output = json_buffer
         
         s3_client = boto3.client("s3")
         target_key = f"dataset/{dataset_name}.json"
@@ -643,44 +651,41 @@ def write_to_s3_format(df, output_path, dataset_name, table_name,spark,env):
             header = '{"type":"FeatureCollection","name":"' + dataset_name + '","features":['
             buffer = header
             
-            # Process in batches
-            batch_size = 50000
-            total_batches = (row_count + batch_size - 1) // batch_size
+            # Process in partitions to avoid OOM
+            batch_size = 10000
+            num_partitions = max(1, row_count // batch_size)
+            logger.info(f"Processing GeoJSON with {num_partitions} partitions")
             
-            # Collect all rows once
-            all_rows = temp_df.collect()
-            
-            for batch_num in range(total_batches):
-                logger.info(f"Processing GeoJSON batch {batch_num + 1}/{total_batches}")
-                start_idx = batch_num * batch_size
-                end_idx = min(start_idx + batch_size, row_count)
-                batch_rows = all_rows[start_idx:end_idx]
+            first_row = True
+            for partition_id, rows in enumerate(temp_df.repartition(num_partitions).toLocalIterator()):
+                if partition_id % 200000 == 0:
+                    logger.info(f"Processing GeoJSON row {partition_id}/{row_count}")
                 
-                for idx, row in enumerate(batch_rows):
-                    row_dict = row.asDict()
-                    geometry_wkt = row_dict.pop('geometry', None)
-                    row_dict.pop('point', None)
-                    
-                    for key, value in row_dict.items():
-                        if isinstance(value, (date, datetime)):
-                            row_dict[key] = value.isoformat() if value else ""
-                        elif value is None:
-                            row_dict[key] = ""
-                    
-                    geojson_geom = wkt_to_geojson(geometry_wkt) if geometry_wkt else None
-                    feature = {"type": "Feature", "properties": row_dict, "geometry": geojson_geom}
-                    
-                    if batch_num > 0 or idx > 0:
-                        buffer += ','
-                    buffer += json.dumps(feature)
-                    
-                    # Upload part when buffer reaches 5MB
-                    if len(buffer.encode('utf-8')) > 5 * 1024 * 1024:
-                        part = s3_client.upload_part(Bucket=f"{env}-collection-data", Key=target_key_geojson, 
-                                                      PartNumber=part_num, UploadId=mpu['UploadId'], Body=buffer)
-                        parts.append({'PartNumber': part_num, 'ETag': part['ETag']})
-                        part_num += 1
-                        buffer = ''
+                row_dict = rows.asDict()
+                geometry_wkt = row_dict.pop('geometry', None)
+                row_dict.pop('point', None)
+                
+                for key, value in row_dict.items():
+                    if isinstance(value, (date, datetime)):
+                        row_dict[key] = value.isoformat() if value else ""
+                    elif value is None:
+                        row_dict[key] = ""
+                
+                geojson_geom = wkt_to_geojson(geometry_wkt) if geometry_wkt else None
+                feature = {"type": "Feature", "properties": row_dict, "geometry": geojson_geom}
+                
+                if not first_row:
+                    buffer += ','
+                first_row = False
+                buffer += json.dumps(feature)
+                
+                # Upload part when buffer reaches 5MB
+                if len(buffer.encode('utf-8')) > 5 * 1024 * 1024:
+                    part = s3_client.upload_part(Bucket=f"{env}-collection-data", Key=target_key_geojson, 
+                                                  PartNumber=part_num, UploadId=mpu['UploadId'], Body=buffer)
+                    parts.append({'PartNumber': part_num, 'ETag': part['ETag']})
+                    part_num += 1
+                    buffer = ''
             
             # Write footer and remaining buffer
             buffer += ']}'
