@@ -160,7 +160,7 @@ make format && make lint
 
 1. **Run a specific transformation:**
 ```bash
-python src/jobs/run_main.py \
+python run_main.py \
   --load_type full \
   --data_set transport-access-node \
   --path s3://your-bucket/data/
@@ -279,7 +279,7 @@ python setup.py bdist_wheel
 2. **Upload to S3:**
 ```bash
 aws s3 cp dist/pyspark_jobs-*.whl s3://your-bucket/packages/
-aws s3 cp src/jobs/run_main.py s3://your-bucket/scripts/
+aws s3 cp run_main.py s3://your-bucket/scripts/
 ```
 
 3. **Submit EMR Serverless job:**

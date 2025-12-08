@@ -42,12 +42,12 @@ The `--use-jdbc` flag controls which import method is used:
 
 ```bash
 # Default behavior (no flag) - Aurora S3 Import
-python src/jobs/run_main.py --load_type full --data_set my-dataset --path s3://bucket/ --env development
+python run_main.py --load_type full --data_set my-dataset --path s3://bucket/ --env development
 # → Uses Aurora S3 Import
 # → If S3 import fails, automatically falls back to JDBC
 
 # Force JDBC (with flag) - JDBC Only  
-python src/jobs/run_main.py --load_type full --data_set my-dataset --path s3://bucket/ --env development --use-jdbc
+python run_main.py --load_type full --data_set my-dataset --path s3://bucket/ --env development --use-jdbc
 # → Uses JDBC import directly
 # → No S3 import attempted
 ```
@@ -58,14 +58,14 @@ Use the `--use-jdbc` flag to switch to JDBC import:
 
 ```bash
 # Default: Use Aurora S3 Import (recommended)
-python src/jobs/run_main.py \
+python run_main.py \
   --load_type full \
   --data_set transport-access-node \
   --path s3://development-collection-data/ \
   --env development
 
 # Use JDBC import instead
-python src/jobs/run_main.py \
+python run_main.py \
   --load_type full \
   --data_set transport-access-node \
   --path s3://development-collection-data/ \
@@ -155,7 +155,7 @@ The following dependencies are required (already included in requirements.txt):
 
 ```bash
 # Run ETL job with default settings (Aurora S3 import)
-python src/jobs/run_main.py \
+python run_main.py \
   --load_type full \
   --data_set transport-access-node \
   --path s3://development-collection-data/ \
@@ -166,7 +166,7 @@ python src/jobs/run_main.py \
 
 ```bash
 # Use JDBC only (skip S3 import entirely)
-python src/jobs/run_main.py \
+python run_main.py \
   --load_type full \
   --data_set transport-access-node \
   --path s3://development-collection-data/ \
@@ -278,7 +278,7 @@ Enable verbose logging for troubleshooting:
 ```bash
 export LOG_LEVEL=DEBUG
 
-python src/jobs/run_main.py \
+python run_main.py \
   --load_type full \
   --data_set transport-access-node \
   --path s3://development-collection-data/ \
@@ -291,7 +291,7 @@ Validate your Aurora setup before running production jobs:
 
 ```bash
 # Test with a small sample dataset first
-python src/jobs/run_main.py \
+python run_main.py \
   --load_type sample \
   --data_set your-dataset \
   --path s3://your-bucket/ \
@@ -309,7 +309,7 @@ Since S3 import is now the default with automatic JDBC fallback, migration is se
 1. **Test in Development**:
    ```bash
    # Run existing job commands - no changes needed
-   python src/jobs/run_main.py --load_type sample --data_set your-dataset --path s3://bucket/ --env development
+   python run_main.py --load_type sample --data_set your-dataset --path s3://bucket/ --env development
    # The system will automatically try S3 import first, fall back to JDBC if needed
    ```
 
@@ -331,7 +331,7 @@ If issues occur, quickly rollback to JDBC only:
 
 ```bash
 # Emergency rollback - just add the --use-jdbc flag to existing commands
-python src/jobs/run_main.py --load_type full --data_set your-dataset --path s3://bucket/ --env production --use-jdbc
+python run_main.py --load_type full --data_set your-dataset --path s3://bucket/ --env production --use-jdbc
 ```
 
 ## Support
