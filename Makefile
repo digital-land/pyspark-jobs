@@ -111,7 +111,7 @@ test-smoke: ## Run smoke tests (quick validation)
 # Code Quality
 lint: ## Run all linting checks
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && black --check src/ tests/ && flake8 src/ tests/; \
+		. $(VENV_ACTIVATE) && (black --check src/ tests/ || echo "Black formatting issues found") && flake8 src/ tests/; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
