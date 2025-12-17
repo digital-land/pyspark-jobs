@@ -37,7 +37,7 @@ help: ## Show this help message
 # Virtual Environment Setup
 init: init-local ## Default: Initialize local testing environment
 	@if [ "$(ENVIRONMENT)" == "local" ] ; then \
-		pre-commit install \
+		pre-commit install ; \
 	fi
 
 init-local: ## Initialize local testing environment (lightweight)
