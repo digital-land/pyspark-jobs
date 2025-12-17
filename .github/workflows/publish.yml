@@ -11,6 +11,9 @@ on:
         description: The environment to deploy to.
 
 jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+    
   detect-environments:
     runs-on: ubuntu-latest
     outputs:
@@ -26,24 +29,6 @@ jobs:
             const {data: {environments}} =
               await github.request(`GET /repos/${process.env.GITHUB_REPOSITORY}/environments`);
             return environments.map(e => e.name)
-
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
-
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip setuptools wheel
-          pip install -r requirements-local.txt
-
-      - name: Run tests
-        run: |
-          pytest tests/unit -v
 
   build:
     runs-on: ubuntu-latest
