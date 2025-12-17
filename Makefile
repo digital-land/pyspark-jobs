@@ -46,11 +46,11 @@ init-local: ## Initialize local testing environment (lightweight)
 	@echo "$(GREEN)Local testing environment ready!$(NC)"
 
 check-venv: ## Check if virtual environment is set up
-	@if [ "$(ENVIRONMENT)" == "local" ] ; then \
-		if [ -z $(VIRTUAL_ENV) ] ; then \
+	@if [ "$(ENVIRONMENT)" = "local" ] ; then \
+		if [ -z "$(VIRTUAL_ENV)" ] ; then \
 			echo "$(RED)Error: Virtual environment is not activated in local environment. Run make init to activate or create it"; \
 			exit 1; \
-		fi \
+		fi ; \
 	fi
 
 # Testing
@@ -109,13 +109,21 @@ test-smoke: ## Run smoke tests (quick validation)
 	fi
 
 # Code Quality
-lint: check-venv ## Run all linting checks
-	black --check src/ tests/
-	flake8 src/ tests/
+lint: ## Run all linting checks
+	@if [ -f $(VENV_ACTIVATE) ]; then \
+		source $(VENV_ACTIVATE) && black --check src/ tests/ && flake8 src/ tests/; \
+	else \
+		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
+		exit 1; \
+	fi
 
-format: check-venv ## Format code with black and isort
-	black src/ tests/
-	isort src/ tests/
+format: ## Format code with black and isort
+	@if [ -f $(VENV_ACTIVATE) ]; then \
+		source $(VENV_ACTIVATE) && black src/ tests/ && isort src/ tests/; \
+	else \
+		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
+		exit 1; \
+	fi
 
 # TODO: implement type checking
 # type-check: ## Run type checking with mypy
