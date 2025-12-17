@@ -13,7 +13,7 @@ on:
 jobs:
   test:
     uses: ./.github/workflows/test.yml
-    
+
   detect-environments:
     runs-on: ubuntu-latest
     outputs:
@@ -25,10 +25,21 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           result-encoding: json
           script: |
-            if (context.payload?.inputs?.environment) return [context.payload?.inputs?.environment];
-            const {data: {environments}} =
-              await github.request(`GET /repos/${process.env.GITHUB_REPOSITORY}/environments`);
-            return environments.map(e => e.name)
+            const allowed = ['development', 'staging', 'production'];
+            // If triggered manually with an environment in the allowed array, return it
+            if (context.payload?.inputs?.environment) {
+              const env = context.payload.inputs.environment
+              return allowed.includes(env) ? [env] : [];
+            }
+
+            // fetch all repo environments
+            const { data: { environments } } = await github.rest.repos.getAllEnvironments({
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
+
+            // Otherwise fetch all defined GitHub Environments
+            return environments.map(e => e.name).filter(name => allowed.includes(name));
 
   build:
     runs-on: ubuntu-latest
