@@ -111,7 +111,7 @@ test-smoke: ## Run smoke tests (quick validation)
 # Code Quality
 lint: ## Run all linting checks
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && black --check src/ tests/ && flake8 src/ tests/; \
+		. $(VENV_ACTIVATE) && black --check src/ tests/ && flake8 src/ tests/; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
@@ -119,7 +119,7 @@ lint: ## Run all linting checks
 
 format: ## Format code with black and isort
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && black src/ tests/ && isort src/ tests/; \
+		. $(VENV_ACTIVATE) && black src/ tests/ && isort src/ tests/; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
