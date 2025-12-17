@@ -110,20 +110,20 @@ test-smoke: ## Run smoke tests (quick validation)
 
 # Code Quality
 lint: ## Run all linting checks
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && (black --check src/ tests/ || echo "Black formatting issues found") && flake8 src/ tests/; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+	@echo "$(BLUE)Running linting checks...$(NC)"
+	@echo "$(BLUE)Running Black...$(NC)"
+	@black --check src/ tests/ 2>&1 || (echo "$(YELLOW)Black formatting issues found. Run 'make format' to fix.$(NC)" && exit 1)
+	@echo "$(BLUE)Running Flake8...$(NC)"
+	@flake8 src/ tests/
+	@echo "$(GREEN)All linting checks passed!$(NC)"
 
 format: ## Format code with black and isort
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && black src/ tests/ && isort src/ tests/; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+	@echo "$(BLUE)Formatting code...$(NC)"
+	@echo "$(BLUE)Running Black formatter...$(NC)"
+	@black src/ tests/
+	@echo "$(BLUE)Running isort...$(NC)"
+	@isort src/ tests/
+	@echo "$(GREEN)Code formatting complete!$(NC)"
 
 # TODO: implement type checking
 # type-check: ## Run type checking with mypy
