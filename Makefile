@@ -8,7 +8,7 @@
 
 # Variables
 PYTHON := python3
-VENV_DIR := .venv
+VENV_DIR := pyspark-jobs-venv
 VENV_ACTIVATE := $(VENV_DIR)/bin/activate
 PROJECT_DIR := $(shell pwd)
 SRC_DIR := src
