@@ -66,7 +66,7 @@ test: ## Run all tests
 test-unit: ## Run unit tests only
 	@echo "$(BLUE)Running unit tests...$(NC)"
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && ./tests/utils/test_runner --unit; \
+		. $(VENV_ACTIVATE) && ./tests/utils/test_runner --unit; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
