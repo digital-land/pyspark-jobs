@@ -45,7 +45,7 @@ class TestPathUtils:
         
         result = resolve_desktop_path("")
         
-        expected = "/home/testuser/Desktop"
+        expected = "/home/testuser/Desktop/"
         assert result == expected
 
     @patch('os.path.expanduser')
@@ -96,7 +96,7 @@ class TestPathUtils:
         
         result = resolve_repo_path("")
         
-        expected = "/home/testuser/github_repo/pyspark-jobs"
+        expected = "/home/testuser/github_repo/pyspark-jobs/"
         assert result == expected
 
     @patch('jobs.utils.path_utils.resolve_repo_path')

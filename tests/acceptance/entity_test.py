@@ -12,13 +12,14 @@ import pytest
 import tempfile
 import os
 import json
+from unittest.mock import patch
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import first, lit, to_json, struct, col
 from pyspark.sql.types import StructType, StructField, StringType
-from unittest.mock import patch
-
-import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
 from jobs.transform_collection_data import transform_data_entity
 

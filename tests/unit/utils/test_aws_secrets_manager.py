@@ -309,7 +309,7 @@ class TestAWSSecretsManagerIntegration:
             "password": "secure_password",
             "host": "db.example.com",
             "port": 5432,
-            "db_name": "application_db",
+            "database": "application_db",
             "engine": "postgres"
         }
         
