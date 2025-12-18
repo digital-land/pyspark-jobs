@@ -27,10 +27,16 @@ logger = get_logger(__name__)
 # Optional import for direct database connections (table creation)
 try:
     import pg8000
-    from pg8000.exceptions import DatabaseError
+    try:
+        from pg8000.exceptions import DatabaseError, InterfaceError
+    except ImportError:
+        # Fallback for older pg8000 versions
+        DatabaseError = Exception
+        InterfaceError = Exception
 except ImportError:
     pg8000 = None
     DatabaseError = Exception
+    InterfaceError = Exception
 
 from jobs.utils.aws_secrets_manager import get_secret_emr_compatible
 import os
@@ -154,9 +160,7 @@ def cleanup_old_staging_tables(conn_params, max_age_hours=24, max_retries=3):
         max_retries (int): Maximum number of connection attempts
     """
     import time
-    if pg8000:
-        from pg8000.exceptions import InterfaceError, DatabaseError
-    else:
+    if not pg8000:
         logger.warning("cleanup_old_staging_tables: pg8000 not available")
         return
     
@@ -256,11 +260,9 @@ def create_and_prepare_staging_table(conn_params, dataset_value, max_retries=3):
         str: Name of the staging table created
     """
     import time
-    if pg8000:
-        from pg8000.exceptions import InterfaceError, DatabaseError
-    else:
+    if not pg8000:
         logger.warning("create_and_prepare_staging_table: pg8000 not available")
-        InterfaceError = DatabaseError = Exception
+        return None
     
     # Generate unique staging table name based on actual target table
     import hashlib
@@ -399,11 +401,9 @@ def commit_staging_to_production(conn_params, staging_table_name, dataset_value,
         dict: Statistics about the commit operation
     """
     import time
-    if pg8000:
-        from pg8000.exceptions import InterfaceError, DatabaseError
-    else:
+    if not pg8000:
         logger.warning("commit_staging_to_production: pg8000 not available")
-        InterfaceError = DatabaseError = Exception
+        return {"success": False, "error": "pg8000 not available"}
     
     conn = None
     cur = None
@@ -584,11 +584,9 @@ def create_table(conn_params, dataset_value, max_retries=5):
         max_retries (int): Maximum number of connection attempts (default: 5)
     """
     import time
-    if pg8000:
-        from pg8000.exceptions import InterfaceError, DatabaseError
-    else:
+    if not pg8000:
         logger.warning("create_table: pg8000 not available, table creation may not work properly")
-        InterfaceError = DatabaseError = Exception
+        return
     
     conn = None
     cur = None
@@ -904,11 +902,9 @@ def calculate_centroid_wkt(conn_params, target_table=None, max_retries=3):
     Returns:
         int: Number of rows updated with calculated centroids
     """
-    if pg8000:
-        from pg8000.exceptions import InterfaceError
-    else:
+    if not pg8000:
         logger.warning("calculate_centroid_wkt: pg8000 not available")
-        InterfaceError = Exception
+        return 0
     
     # Determine which table to update
     table_name = target_table if target_table else dbtable_name
