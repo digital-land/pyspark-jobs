@@ -151,7 +151,7 @@ class TestMainCollectionDataIntegration:
                     value = str(row.get(header, ""))
                     # Escape quotes and commas
                     if "," in value or '"' in value:
-                        value = f'"{value.replace('"', '""')}"'
+                        value = '"' + value.replace('"', '""') + '"'
                     csv_row.append(value)
                 csv_content += ",".join(csv_row) + "\n"
             
