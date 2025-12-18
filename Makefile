@@ -54,10 +54,10 @@ check-venv: ## Check if virtual environment is set up
 	fi
 
 # Testing
-test: ## Run all tests
-	@echo "$(BLUE)Running all tests...$(NC)"
+test: ## Run all tests with coverage
+	@echo "$(BLUE)Running all tests with coverage...$(NC)"
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && ./tests/utils/test_runner --all; \
+		source $(VENV_ACTIVATE) && python run_tests.py --coverage; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
@@ -66,7 +66,7 @@ test: ## Run all tests
 test-unit: ## Run unit tests only
 	@echo "$(BLUE)Running unit tests...$(NC)"
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && ./tests/utils/test_runner --unit; \
+		source $(VENV_ACTIVATE) && python run_tests.py --unit; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
@@ -75,7 +75,7 @@ test-unit: ## Run unit tests only
 test-integration: ## Run integration tests
 	@echo "$(BLUE)Running integration tests...$(NC)"
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && ./tests/utils/test_runner --integration; \
+		source $(VENV_ACTIVATE) && python run_tests.py --integration; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
@@ -84,25 +84,34 @@ test-integration: ## Run integration tests
 test-acceptance: ## Run acceptance tests
 	@echo "$(BLUE)Running acceptance tests...$(NC)"
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && ./tests/utils/test_runner --acceptance; \
+		source $(VENV_ACTIVATE) && python run_tests.py --acceptance; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
 	fi
 
-test-coverage: ## Run tests with coverage report
-	@echo "$(BLUE)Running tests with coverage...$(NC)"
+test-coverage: ## Run tests with HTML coverage report
+	@echo "$(BLUE)Running tests with HTML coverage report...$(NC)"
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && ./tests/utils/test_runner --all --coverage; \
+		source $(VENV_ACTIVATE) && python run_tests.py --coverage --html-report; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
 	fi
 
-test-smoke: ## Run smoke tests (quick validation)
-	@echo "$(BLUE)Running smoke tests...$(NC)"
+test-quick: ## Run quick tests (unit tests only, no coverage)
+	@echo "$(BLUE)Running quick tests...$(NC)"
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && ./tests/utils/test_runner --smoke; \
+		source $(VENV_ACTIVATE) && python run_tests.py --quick; \
+	else \
+		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
+		exit 1; \
+	fi
+
+test-parallel: ## Run tests in parallel
+	@echo "$(BLUE)Running tests in parallel...$(NC)"
+	@if [ -f $(VENV_ACTIVATE) ]; then \
+		source $(VENV_ACTIVATE) && python run_tests.py --parallel --coverage; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
