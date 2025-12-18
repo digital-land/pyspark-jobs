@@ -57,7 +57,7 @@ check-venv: ## Check if virtual environment is set up
 test: ## Run all tests
 	@echo "$(BLUE)Running all tests...$(NC)"
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && ./tests/utils/test_runner --all; \
+		. $(VENV_ACTIVATE) && ./tests/utils/test_runner --all; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
@@ -75,7 +75,7 @@ test-unit: ## Run unit tests only
 test-integration: ## Run integration tests
 	@echo "$(BLUE)Running integration tests...$(NC)"
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && ./tests/utils/test_runner --integration; \
+		. $(VENV_ACTIVATE) && ./tests/utils/test_runner --integration; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
@@ -84,7 +84,7 @@ test-integration: ## Run integration tests
 test-acceptance: ## Run acceptance tests
 	@echo "$(BLUE)Running acceptance tests...$(NC)"
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && ./tests/utils/test_runner --acceptance; \
+		. $(VENV_ACTIVATE) && ./tests/utils/test_runner --acceptance; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
@@ -93,7 +93,7 @@ test-acceptance: ## Run acceptance tests
 test-coverage: ## Run tests with coverage report
 	@echo "$(BLUE)Running tests with coverage...$(NC)"
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && ./tests/utils/test_runner --all --coverage; \
+		. $(VENV_ACTIVATE) && ./tests/utils/test_runner --all --coverage; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
@@ -102,7 +102,7 @@ test-coverage: ## Run tests with coverage report
 test-smoke: ## Run smoke tests (quick validation)
 	@echo "$(BLUE)Running smoke tests...$(NC)"
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && ./tests/utils/test_runner --smoke; \
+		. $(VENV_ACTIVATE) && ./tests/utils/test_runner --smoke; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
@@ -129,7 +129,7 @@ format: ## Format code with black and isort
 # type-check: ## Run type checking with mypy
 # 	@echo "$(BLUE)Running type checks...$(NC)"
 # 	@if [ -f $(VENV_ACTIVATE) ]; then \
-# 		source $(VENV_ACTIVATE) && mypy $(SRC_DIR); \
+# 		. $(VENV_ACTIVATE) && mypy $(SRC_DIR); \
 # 	else \
 # 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 # 		exit 1; \
@@ -138,7 +138,7 @@ format: ## Format code with black and isort
 security: ## Run security scanning
 	@echo "$(BLUE)Running security scans...$(NC)"
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && \
+		. $(VENV_ACTIVATE) && \
 		bandit -r $(SRC_DIR) && \
 		safety check; \
 	else \
@@ -163,7 +163,7 @@ docs: ## Generate documentation
 run-notebook: ## Start Jupyter Lab for development
 	@echo "$(BLUE)Starting Jupyter Lab...$(NC)"
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && jupyter lab --notebook-dir=.; \
+		. $(VENV_ACTIVATE) && jupyter lab --notebook-dir=.; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
@@ -217,7 +217,7 @@ clean-all: clean clean-build ## Clean all generated files and artifacts
 # db-upgrade: ## Upgrade database schema
 # 	@echo "$(BLUE)Upgrading database schema...$(NC)"
 # 	@if [ -f $(VENV_ACTIVATE) ]; then \
-# 		source $(VENV_ACTIVATE) && alembic upgrade head; \
+# 		. $(VENV_ACTIVATE) && alembic upgrade head; \
 # 	else \
 # 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 # 		exit 1; \
@@ -226,7 +226,7 @@ clean-all: clean clean-build ## Clean all generated files and artifacts
 # db-downgrade: ## Downgrade database schema
 # 	@echo "$(BLUE)Downgrading database schema...$(NC)"
 # 	@if [ -f $(VENV_ACTIVATE) ]; then \
-# 		source $(VENV_ACTIVATE) && alembic downgrade -1; \
+# 		. $(VENV_ACTIVATE) && alembic downgrade -1; \
 # 	else \
 # 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 # 		exit 1; \
@@ -242,7 +242,7 @@ install-deps: check-venv ## Install/update dependencies
 freeze: ## Freeze current dependencies
 	@echo "$(BLUE)Freezing current dependencies...$(NC)"
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		source $(VENV_ACTIVATE) && pip freeze > requirements-frozen.txt; \
+		. $(VENV_ACTIVATE) && pip freeze > requirements-frozen.txt; \
 		echo "$(GREEN)Dependencies frozen to requirements-frozen.txt$(NC)"; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
