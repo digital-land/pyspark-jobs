@@ -36,7 +36,7 @@ help: ## Show this help message
 
 # Virtual Environment Setup
 init: init-local ## Default: Initialize local testing environment
-	@if [ "$(ENVIRONMENT)" = "local" ] ; then \
+	@if [ "$(ENVIRONMENT)" = "local" ] && command -v pre-commit >/dev/null 2>&1 ; then \
 		pre-commit install ; \
 	fi
 
@@ -121,17 +121,17 @@ test-parallel: ## Run tests in parallel
 lint: ## Run all linting checks
 	@echo "$(BLUE)Running linting checks...$(NC)"
 	@echo "$(BLUE)Running Black...$(NC)"
-	@black --check src/ tests/ 2>&1 || (echo "$(YELLOW)Black formatting issues found. Run 'make format' to fix.$(NC)" && exit 1)
+	@black --check . 2>&1 || (echo "$(YELLOW)Black formatting issues found. Run 'make format' to fix.$(NC)" && exit 1)
 	@echo "$(BLUE)Running Flake8...$(NC)"
-	@flake8 src/ tests/
+	@flake8 .
 	@echo "$(GREEN)All linting checks passed!$(NC)"
 
 format: ## Format code with black and isort
 	@echo "$(BLUE)Formatting code...$(NC)"
 	@echo "$(BLUE)Running Black formatter...$(NC)"
-	@black src/ tests/
+	@black .
 	@echo "$(BLUE)Running isort...$(NC)"
-	@isort src/ tests/
+	@isort .
 	@echo "$(GREEN)Code formatting complete!$(NC)"
 
 # TODO: implement type checking
