@@ -60,15 +60,16 @@ def sqlite_connection(temp_sqlite_db):
     conn.close()
 
 
-@pytest.fixture
-def mock_postgres_connection():
-    """Mock PostgreSQL connection for testing."""
-    with patch('psycopg2.connect') as mock_connect:
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
-        mock_connect.return_value = mock_conn
-        yield mock_conn, mock_cursor
+# Removed mock_postgres_connection fixture to allow real database connections in integration tests
+# @pytest.fixture
+# def mock_postgres_connection():
+#     """Mock PostgreSQL connection for testing."""
+#     with patch('psycopg2.connect') as mock_connect:
+#         mock_conn = MagicMock()
+#         mock_cursor = MagicMock()
+#         mock_conn.cursor.return_value = mock_cursor
+#         mock_connect.return_value = mock_conn
+#         yield mock_conn, mock_cursor
 
 
 @pytest.fixture
