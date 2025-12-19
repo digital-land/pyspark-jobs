@@ -1,7 +1,8 @@
 """Sample data fixtures for testing."""
 
 import pytest
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DateType
+from pyspark.sql.types import (DateType, IntegerType, StringType, StructField,
+                               StructType)
 
 
 @pytest.fixture

@@ -2,13 +2,13 @@
 Integration tests for SQLite database operations.
 """
 
-import pytest
-import sqlite3
-import tempfile
 import os
-from unittest.mock import patch, MagicMock
-
+import sqlite3
 import sys
+import tempfile
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 

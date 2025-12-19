@@ -1,6 +1,7 @@
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import from_json, col, schema_of_json
-from pyspark.sql.types import StructType, StructField, StringType, DoubleType, ArrayType
+from pyspark.sql.functions import col, from_json, schema_of_json
+from pyspark.sql.types import (ArrayType, DoubleType, StringType, StructField,
+                               StructType)
 
 
 def flatten_json_column(df: DataFrame) -> DataFrame:

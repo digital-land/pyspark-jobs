@@ -21,6 +21,7 @@ ENTITY_TABLE_NAME = "entity"
 
 ##writing to postgres db
 import json
+
 from jobs.utils.logger_config import get_logger
 
 logger = get_logger(__name__)
@@ -32,11 +33,12 @@ except ImportError:
     pg8000 = None
     DatabaseError = Exception
 
-from jobs.utils.aws_secrets_manager import get_secret_emr_compatible
 import os
 import time
 from datetime import datetime
 from pathlib import Path
+
+from jobs.utils.aws_secrets_manager import get_secret_emr_compatible
 
 # Define your table schema
 # https://github.com/digital-land/digital-land.info/blob/main/application/db/models.py - refered from here
@@ -162,7 +164,7 @@ def cleanup_old_staging_tables(conn_params, max_age_hours=24, max_retries=3):
     import time
 
     if pg8000:
-        from pg8000.exceptions import InterfaceError, DatabaseError
+        from pg8000.exceptions import DatabaseError, InterfaceError
     else:
         logger.warning("cleanup_old_staging_tables: pg8000 not available")
         return
@@ -299,7 +301,7 @@ def create_and_prepare_staging_table(conn_params, dataset_value, max_retries=3):
     import time
 
     if pg8000:
-        from pg8000.exceptions import InterfaceError, DatabaseError
+        from pg8000.exceptions import DatabaseError, InterfaceError
     else:
         logger.warning("create_and_prepare_staging_table: pg8000 not available")
         InterfaceError = DatabaseError = Exception
@@ -485,7 +487,7 @@ def commit_staging_to_production(
     import time
 
     if pg8000:
-        from pg8000.exceptions import InterfaceError, DatabaseError
+        from pg8000.exceptions import DatabaseError, InterfaceError
     else:
         logger.warning("commit_staging_to_production: pg8000 not available")
         InterfaceError = DatabaseError = Exception
@@ -708,7 +710,7 @@ def create_table(conn_params, dataset_value, max_retries=5):
     import time
 
     if pg8000:
-        from pg8000.exceptions import InterfaceError, DatabaseError
+        from pg8000.exceptions import DatabaseError, InterfaceError
     else:
         logger.warning(
             "create_table: pg8000 not available, table creation may not work properly"
@@ -1080,7 +1082,7 @@ def _prepare_geometry_columns(df):
     Returns:
         pyspark.sql.DataFrame: DataFrame with properly cast columns
     """
-    from pyspark.sql.functions import when, col, expr
+    from pyspark.sql.functions import col, expr, when
     from pyspark.sql.types import LongType
 
     logger.info(

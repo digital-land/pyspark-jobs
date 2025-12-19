@@ -1,11 +1,12 @@
 """Unit tests for main_collection_data module."""
 
-import pytest
+import argparse
 import os
 import sys
-from unittest.mock import Mock, patch, MagicMock
-import argparse
 from datetime import datetime
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
@@ -20,15 +21,10 @@ with patch.dict(
         "pandas": MagicMock(),
     },
 ):
-    from jobs.main_collection_data import (
-        initialize_logging,
-        create_spark_session,
-        load_metadata,
-        read_data,
-        transform_data,
-        validate_s3_path,
-        main,
-    )
+    from jobs.main_collection_data import (create_spark_session,
+                                           initialize_logging, load_metadata,
+                                           main, read_data, transform_data,
+                                           validate_s3_path)
 
 
 class TestMainCollectionData:

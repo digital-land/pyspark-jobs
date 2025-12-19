@@ -1,19 +1,10 @@
-from jobs.utils.logger_config import get_logger
-from jobs.utils.df_utils import show_df
-from pyspark.sql.functions import (
-    row_number,
-    lit,
-    first,
-    to_json,
-    struct,
-    col,
-    when,
-    to_date,
-    desc,
-    expr,
-)
 import pyspark.sql.functions as F
+from pyspark.sql.functions import (col, desc, expr, first, lit, row_number,
+                                   struct, to_date, to_json, when)
 from pyspark.sql.window import Window
+
+from jobs.utils.df_utils import show_df
+from jobs.utils.logger_config import get_logger
 from jobs.utils.s3_dataset_typology import get_dataset_typology
 
 # centroid computation is handled via Sedona when available; fall back to

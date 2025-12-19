@@ -1,21 +1,18 @@
 """Unit tests for s3_format_utils module."""
 
-import pytest
+import json
 import os
 import sys
-import json
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "src"))
 
-from jobs.utils.s3_format_utils import (
-    parse_possible_json,
-    s3_csv_format,
-    flatten_s3_json,
-    renaming,
-    flatten_s3_geojson,
-)
+from jobs.utils.s3_format_utils import (flatten_s3_geojson, flatten_s3_json,
+                                        parse_possible_json, renaming,
+                                        s3_csv_format)
 
 
 class TestS3FormatUtils:
@@ -139,8 +136,8 @@ class TestS3FormatUtils:
     @pytest.mark.skip(reason="PySpark type checking issues in test environment")
     def test_flatten_s3_json_simple_struct(self, spark):
         """Test flatten_s3_json with simple nested structure."""
-        from pyspark.sql.types import StructType, StructField, StringType
-        from pyspark.sql.functions import struct, lit
+        from pyspark.sql.functions import lit, struct
+        from pyspark.sql.types import StringType, StructField, StructType
 
         # Create DataFrame with nested structure
         df = spark.createDataFrame([("1", "value1")], ["id", "simple_field"])
@@ -231,7 +228,7 @@ class TestS3FormatUtils:
     @pytest.mark.skip(reason="PySpark type checking issues in test environment")
     def test_flatten_s3_geojson_basic_functionality(self, spark):
         """Test basic functionality of flatten_s3_geojson."""
-        from pyspark.sql.types import StructType, StructField, StringType
+        from pyspark.sql.types import StringType, StructField, StructType
 
         schema = StructType(
             [
@@ -262,7 +259,7 @@ class TestS3FormatUtils:
     @pytest.mark.skip(reason="PySpark type checking issues in test environment")
     def test_flatten_s3_geojson_invalid_point_format(self, spark):
         """Test flatten_s3_geojson with invalid point format."""
-        from pyspark.sql.types import StructType, StructField, StringType
+        from pyspark.sql.types import StringType, StructField, StructType
 
         schema = StructType(
             [
@@ -285,7 +282,7 @@ class TestS3FormatUtils:
     @pytest.mark.skip(reason="PySpark type checking issues in test environment")
     def test_flatten_s3_geojson_empty_dataframe(self, spark):
         """Test flatten_s3_geojson with empty DataFrame."""
-        from pyspark.sql.types import StructType, StructField, StringType
+        from pyspark.sql.types import StringType, StructField, StructType
 
         schema = StructType(
             [

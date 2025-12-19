@@ -2,17 +2,18 @@
 Shared pytest configuration and fixtures for the entire test suite.
 """
 
-import pytest
 import os
 import sys
+
+import pytest
 from pyspark.sql import SparkSession
 
 # Add src directory to Python path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from tests.fixtures.mock_services import *
 # Import fixtures from fixtures module
 from tests.fixtures.sample_data import *
-from tests.fixtures.mock_services import *
 
 
 @pytest.fixture(scope="session")
@@ -152,7 +153,8 @@ def setup_test_environment(monkeypatch):
 @pytest.fixture
 def sample_csv_schema():
     """Provide a standard CSV schema for testing."""
-    from pyspark.sql.types import StructType, StructField, StringType, IntegerType
+    from pyspark.sql.types import (IntegerType, StringType, StructField,
+                                   StructType)
 
     return StructType(
         [
@@ -167,7 +169,7 @@ def sample_csv_schema():
 @pytest.fixture
 def sample_entity_schema():
     """Provide entity schema for testing."""
-    from pyspark.sql.types import StructType, StructField, StringType
+    from pyspark.sql.types import StringType, StructField, StructType
 
     return StructType(
         [

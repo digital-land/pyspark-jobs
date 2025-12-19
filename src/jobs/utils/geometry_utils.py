@@ -1,6 +1,5 @@
-from pyspark.sql import DataFrame
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import expr
-from pyspark.sql import SparkSession
 from sedona.spark import SedonaContext
 
 

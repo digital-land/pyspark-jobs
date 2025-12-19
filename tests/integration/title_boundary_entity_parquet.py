@@ -2,13 +2,13 @@
 Integration tests for reading Parquet files with PySpark.
 """
 
-import pytest
-import tempfile
 import os
-from pyspark.sql import SparkSession
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType
-
 import sys
+import tempfile
+
+import pytest
+from pyspark.sql import SparkSession
+from pyspark.sql.types import IntegerType, StringType, StructField, StructType
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 

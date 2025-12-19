@@ -1,9 +1,10 @@
 """Acceptance tests for data quality and validation."""
 
-import pytest
 import os
 import sys
 from unittest.mock import Mock, patch
+
+import pytest
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
@@ -46,7 +47,7 @@ class TestDataQuality:
 
     def test_error_handling_quality(self):
         """Test error handling meets quality standards."""
-        from jobs.csv_s3_writer import CSVWriterError, AuroraImportError
+        from jobs.csv_s3_writer import AuroraImportError, CSVWriterError
 
         # Test meaningful error messages
         csv_error = CSVWriterError("Data validation failed: missing required columns")
@@ -98,7 +99,7 @@ class TestDataQuality:
 
         mock_count.side_effect = count_side_effect
 
-        from jobs.utils.df_utils import show_df, count_df
+        from jobs.utils.df_utils import count_df, show_df
 
         # Test development environment allows debugging
         show_df(mock_df, 10, "development")

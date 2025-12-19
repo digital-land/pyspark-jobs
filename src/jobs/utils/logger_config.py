@@ -15,10 +15,10 @@ Usage:
     logger.info("This is an info message")
 """
 
+import functools
 import logging
 import logging.config
 import os
-import functools
 import time
 from pathlib import Path
 from typing import Optional

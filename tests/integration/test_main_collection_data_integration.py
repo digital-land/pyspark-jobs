@@ -5,17 +5,18 @@ These tests exercise the full ETL pipeline with mocked AWS services,
 testing the integration between components while avoiding real external dependencies.
 """
 
-import pytest
+import json
 import os
 import sys
 import tempfile
-import json
-from unittest.mock import patch, Mock, MagicMock
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
-from jobs.main_collection_data import main, create_spark_session, load_metadata
+from jobs.main_collection_data import create_spark_session, load_metadata, main
 
 
 @pytest.mark.integration

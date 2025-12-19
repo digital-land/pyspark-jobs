@@ -1,9 +1,10 @@
 """Integration tests for Spark operations."""
 
-import pytest
 import os
 import sys
 from unittest.mock import Mock, patch
+
+import pytest
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
@@ -57,7 +58,7 @@ class TestSparkIntegration:
 
     def test_csv_writer_integration(self):
         """Test CSV writer components work together."""
-        from jobs.csv_s3_writer import CSVWriterError, AuroraImportError
+        from jobs.csv_s3_writer import AuroraImportError, CSVWriterError
 
         # Test exception creation
         csv_error = CSVWriterError("Test CSV error")

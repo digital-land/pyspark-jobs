@@ -1,20 +1,19 @@
 """Unit tests for s3_dataset_typology module."""
 
-import pytest
+import csv
 import os
 import sys
-import csv
-from unittest.mock import Mock, patch, mock_open
-from urllib.error import URLError, HTTPError
+from unittest.mock import Mock, mock_open, patch
+from urllib.error import HTTPError, URLError
+
+import pytest
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "src"))
 
-from jobs.utils.s3_dataset_typology import (
-    DATASET_SPEC_URL,
-    load_datasets,
-    get_dataset_typology,
-)
+from jobs.utils.s3_dataset_typology import (DATASET_SPEC_URL,
+                                            get_dataset_typology,
+                                            load_datasets)
 
 
 class TestS3DatasetTypology:

@@ -9,8 +9,8 @@ Usage:
     python3 test_logging_quick.py
 """
 
-import sys
 import os
+import sys
 
 # Add src to path (utils -> tests -> project_root -> src)
 utils_dir = os.path.dirname(__file__)
@@ -27,7 +27,7 @@ def main():
 
     try:
         # Test import
-        from jobs.utils.logger_config import setup_logging, get_logger
+        from jobs.utils.logger_config import get_logger, setup_logging
 
         print("✅ Logger config imported successfully")
 

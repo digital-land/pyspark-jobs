@@ -1,23 +1,19 @@
 """Unit tests for s3_utils module."""
 
-import pytest
 import os
 import sys
 from unittest.mock import Mock, patch
+
+import pytest
 from botocore.exceptions import ClientError, NoCredentialsError
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "src"))
 
-from jobs.utils.s3_utils import (
-    S3UtilsError,
-    parse_s3_path,
-    validate_s3_path,
-    cleanup_dataset_data,
-    validate_s3_bucket_access,
-    _extract_bucket_name_safe,
-    read_csv_from_s3,
-)
+from jobs.utils.s3_utils import (S3UtilsError, _extract_bucket_name_safe,
+                                 cleanup_dataset_data, parse_s3_path,
+                                 read_csv_from_s3, validate_s3_bucket_access,
+                                 validate_s3_path)
 
 
 class TestS3Utils:

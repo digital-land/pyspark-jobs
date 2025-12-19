@@ -4,7 +4,7 @@ Unit test specific configuration and fixtures.
 
 import pytest
 from pyspark.sql import SparkSession
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType
+from pyspark.sql.types import IntegerType, StringType, StructField, StructType
 
 
 @pytest.fixture(scope="module")

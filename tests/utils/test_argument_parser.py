@@ -9,9 +9,9 @@ Usage:
     python3 tests/utils/test_argument_parser.py
 """
 
-import sys
-import os
 import argparse
+import os
+import sys
 
 # Add src to path (utils -> tests -> project_root -> src)
 utils_dir = os.path.dirname(__file__)

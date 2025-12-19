@@ -22,10 +22,11 @@ Usage:
 This pattern ensures clean separation of concerns and supports scalable, maintainable job deployments.
 """
 
-from jobs.main_collection_data import main
-from jobs.utils.logger_config import setup_logging, get_logger
 import argparse
 import sys
+
+from jobs.main_collection_data import main
+from jobs.utils.logger_config import get_logger, setup_logging
 
 # Setup basic logging for the entry point
 setup_logging(log_level="INFO", environment="production")

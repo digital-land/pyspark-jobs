@@ -7,6 +7,7 @@ import os
 import re
 from collections import defaultdict
 from datetime import datetime
+
 from shapely import wkt
 
 # Increase CSV field size limit for large geometry fields

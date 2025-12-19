@@ -1,22 +1,19 @@
 """Unit tests for postgres_connectivity module."""
 
-import pytest
+import json
 import os
 import sys
-import json
 from unittest.mock import Mock, patch
+
+import pytest
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "src"))
 
 from jobs.dbaccess.postgres_connectivity import (
-    get_aws_secret,
-    cleanup_old_staging_tables,
-    create_and_prepare_staging_table,
-    commit_staging_to_production,
-    get_performance_recommendations,
-    ENTITY_TABLE_NAME,
-)
+    ENTITY_TABLE_NAME, cleanup_old_staging_tables,
+    commit_staging_to_production, create_and_prepare_staging_table,
+    get_aws_secret, get_performance_recommendations)
 
 
 class TestPostgresConnectivity:

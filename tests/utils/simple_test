@@ -14,14 +14,15 @@ def test_basic_imports():
     print("Testing basic imports...")
     
     try:
-        from jobs.utils.logger_config import setup_logging, get_logger
+        from jobs.utils.logger_config import get_logger, setup_logging
         print("✅ Logger config import successful")
     except ImportError as e:
         print(f"❌ Logger config import failed: {e}")
         return False
     
     try:
-        from jobs.main_collection_data import create_spark_session, load_metadata
+        from jobs.main_collection_data import (create_spark_session,
+                                               load_metadata)
         print("✅ Main collection data import successful")
     except ImportError as e:
         print(f"❌ Main collection data import failed: {e}")
@@ -34,7 +35,7 @@ def test_logger_functionality():
     print("Testing logger functionality...")
     
     try:
-        from jobs.utils.logger_config import setup_logging, get_logger
+        from jobs.utils.logger_config import get_logger, setup_logging
         
         setup_logging(log_level="INFO", environment="test")
         logger = get_logger(__name__)
@@ -52,8 +53,9 @@ def test_configuration_loading():
     try:
         import json
         import tempfile
+
         from jobs.main_collection_data import load_metadata
-        
+
         # Create test config
         test_config = {"test_key": "test_value"}
         

@@ -40,10 +40,11 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
     logger.info("write_dataframe_to_postgres_jdbc: Show df:")
     show_df(df, 5, env)
 
-    from pyspark.sql.types import LongType
-    import pg8000
     import hashlib
     from datetime import datetime
+
+    import pg8000
+    from pyspark.sql.types import LongType
 
     conn_params = get_aws_secret(env)
     row_count = df.count()

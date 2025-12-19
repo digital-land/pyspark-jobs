@@ -9,9 +9,9 @@ Usage:
     python3 tests/utils/test_large_dataset_monitoring.py
 """
 
-import time
-import sys
 import os
+import sys
+import time
 
 # Add src to path (utils -> tests -> project_root -> src)
 utils_dir = os.path.dirname(__file__)

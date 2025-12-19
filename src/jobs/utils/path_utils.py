@@ -1,5 +1,5 @@
-import os
 import json
+import os
 
 
 def resolve_desktop_path(relative_path):

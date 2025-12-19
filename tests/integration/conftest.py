@@ -2,11 +2,12 @@
 Integration test specific configuration and fixtures.
 """
 
-import pytest
-import tempfile
 import os
 import sqlite3
+import tempfile
 from unittest.mock import MagicMock, patch
+
+import pytest
 from pyspark.sql import SparkSession
 
 
@@ -85,7 +86,8 @@ def mock_s3_client():
 @pytest.fixture
 def sample_parquet_file(integration_spark, temp_directory):
     """Create a sample parquet file for testing."""
-    from pyspark.sql.types import StructType, StructField, StringType, IntegerType
+    from pyspark.sql.types import (IntegerType, StringType, StructField,
+                                   StructType)
 
     schema = StructType(
         [
@@ -112,7 +114,7 @@ def sample_parquet_file(integration_spark, temp_directory):
 @pytest.fixture
 def sample_csv_file(integration_spark, temp_directory):
     """Create a sample CSV file for testing."""
-    from pyspark.sql.types import StructType, StructField, StringType
+    from pyspark.sql.types import StringType, StructField, StructType
 
     schema = StructType(
         [

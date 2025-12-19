@@ -1,9 +1,10 @@
 """Acceptance tests for complete ETL workflows."""
 
-import pytest
 import os
 import sys
 from unittest.mock import Mock, patch
+
+import pytest
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
@@ -87,7 +88,7 @@ class TestETLWorkflow:
 
     def test_error_handling_workflow(self):
         """Test error handling across the entire workflow."""
-        from jobs.csv_s3_writer import CSVWriterError, AuroraImportError
+        from jobs.csv_s3_writer import AuroraImportError, CSVWriterError
         from jobs.main_collection_data import main
 
         # Test CSV writer errors
@@ -123,7 +124,7 @@ class TestETLWorkflow:
 
     def test_environment_configuration_workflow(self):
         """Test environment-specific configuration workflow."""
-        from jobs.utils.df_utils import show_df, count_df
+        from jobs.utils.df_utils import count_df, show_df
 
         mock_df = Mock()
         mock_df.count.return_value = 100

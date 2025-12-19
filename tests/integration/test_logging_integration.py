@@ -5,8 +5,8 @@ These tests verify that logging works correctly with external dependencies
 and in integration scenarios.
 """
 
-import sys
 import os
+import sys
 import tempfile
 import traceback
 
@@ -43,11 +43,8 @@ def test_import_logger_config():
     """Test importing the logger_config module."""
     print("\n=== Testing Logger Config Import ===")
     try:
-        from jobs.utils.logger_config import (
-            setup_logging,
-            get_logger,
-            log_execution_time,
-        )
+        from jobs.utils.logger_config import (get_logger, log_execution_time,
+                                              setup_logging)
 
         print("✅ Successfully imported logger_config module")
         return True
@@ -68,10 +65,10 @@ def test_setup_logging_basic():
     """Test basic setup_logging functionality."""
     print("\n=== Testing Basic Setup Logging ===")
     try:
-        from jobs.utils.logger_config import setup_logging, get_logger
-
         # Clear any existing handlers
         import logging
+
+        from jobs.utils.logger_config import get_logger, setup_logging
 
         for handler in logging.root.handlers[:]:
             logging.root.removeHandler(handler)
@@ -99,7 +96,8 @@ def test_file_logging():
         # Import test utilities
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
         from utils.test_utils import get_test_log_file
-        from jobs.utils.logger_config import setup_logging, get_logger
+
+        from jobs.utils.logger_config import get_logger, setup_logging
 
         log_file = get_test_log_file("test_integration_logging_file")
 
@@ -152,15 +150,12 @@ def test_execution_time_decorator():
     """Test the log_execution_time decorator."""
     print("\n=== Testing Execution Time Decorator ===")
     try:
-        from jobs.utils.logger_config import (
-            setup_logging,
-            get_logger,
-            log_execution_time,
-        )
-        import time
-
         # Clear any existing handlers
         import logging
+        import time
+
+        from jobs.utils.logger_config import (get_logger, log_execution_time,
+                                              setup_logging)
 
         for handler in logging.root.handlers[:]:
             logging.root.removeHandler(handler)
@@ -190,7 +185,7 @@ def test_environment_variables():
     """Test configuration via environment variables."""
     print("\n=== Testing Environment Variables ===")
     try:
-        from jobs.utils.logger_config import setup_logging, get_logger
+        from jobs.utils.logger_config import get_logger, setup_logging
 
         # Set environment variables
         os.environ["LOG_LEVEL"] = "WARNING"

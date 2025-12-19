@@ -1,10 +1,11 @@
 """Unit tests for transform_collection_data module."""
 
-import pytest
 import os
 import sys
-from unittest.mock import Mock, patch, MagicMock
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
+from pyspark.sql.types import IntegerType, StringType, StructField, StructType
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
@@ -19,12 +20,10 @@ with patch.dict(
         "pandas": MagicMock(),
     },
 ):
-    from jobs.transform_collection_data import (
-        transform_data_fact,
-        transform_data_fact_res,
-        transform_data_issue,
-        transform_data_entity,
-    )
+    from jobs.transform_collection_data import (transform_data_entity,
+                                                transform_data_fact,
+                                                transform_data_fact_res,
+                                                transform_data_issue)
 
 
 class TestTransformCollectionData:

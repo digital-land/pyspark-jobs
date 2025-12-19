@@ -1,24 +1,22 @@
 """Unit tests for aws_secrets_manager module."""
 
-import pytest
+import json
 import os
 import sys
-import json
 from unittest.mock import Mock, patch
+
+import pytest
 from botocore.exceptions import ClientError, NoCredentialsError
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "src"))
 
-from jobs.utils.aws_secrets_manager import (
-    SecretsManagerError,
-    get_secret,
-    get_secret_json,
-    get_database_credentials,
-    get_secret_emr_compatible,
-    get_secret_with_fallback,
-    get_postgres_secret,
-)
+from jobs.utils.aws_secrets_manager import (SecretsManagerError,
+                                            get_database_credentials,
+                                            get_postgres_secret, get_secret,
+                                            get_secret_emr_compatible,
+                                            get_secret_json,
+                                            get_secret_with_fallback)
 
 
 class TestAWSSecretsManager:

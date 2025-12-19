@@ -1,8 +1,8 @@
-import boto3
-import time
 import logging
+import time
 from logging.config import dictConfig
 
+import boto3
 
 # -------------------- Logging Configuration --------------------
 LOGGING_CONFIG = {

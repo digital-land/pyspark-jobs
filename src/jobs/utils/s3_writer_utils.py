@@ -1,61 +1,33 @@
-from jobs.transform_collection_data import transform_data_issue
-from jobs.transform_collection_data import (
-    transform_data_entity,
-    transform_data_fact,
-    transform_data_fact_res,
-)
-from jobs.utils.s3_utils import read_csv_from_s3
-from jobs.utils.s3_dataset_typology import get_dataset_typology
-from jobs.utils.s3_format_utils import flatten_s3_json, s3_csv_format
-from jobs.utils.s3_utils import cleanup_dataset_data
-from jobs.utils.logger_config import (
-    setup_logging,
-    get_logger,
-    log_execution_time,
-    set_spark_log_level,
-)
-from jobs.utils.df_utils import show_df, count_df
-from pyspark.sql.functions import lit
-from pyspark.sql.types import TimestampType
-from datetime import datetime
-from pyspark.sql.functions import (
-    coalesce,
-    collect_list,
-    concat_ws,
-    dayofmonth,
-    expr,
-    first,
-    month,
-    to_date,
-    year,
-    row_number,
-    lit,
-)
-from pyspark.sql.functions import (
-    row_number,
-    lit,
-    first,
-    to_json,
-    struct,
-    col,
-    when,
-    to_date,
-    desc,
-    expr,
-)
-from pyspark.sql.window import Window
-from jobs.utils.flatten_csv import flatten_json_column, flatten_geojson_column
-import boto3
-from pyspark.sql.functions import monotonically_increasing_id, row_number
-from pyspark.sql.window import Window
-import requests
-import re
 import json
-from datetime import date as date_type, datetime as datetime_type
-from datetime import date, datetime
+import re
+from datetime import date
+from datetime import date as date_type
+from datetime import datetime
+from datetime import datetime as datetime_type
 
+import boto3
+import requests
+from pyspark.sql.functions import (coalesce, col, collect_list, concat_ws,
+                                   dayofmonth, desc, expr, first, lit,
+                                   monotonically_increasing_id, month,
+                                   row_number, struct, to_date, to_json, when,
+                                   year)
+from pyspark.sql.types import TimestampType
+from pyspark.sql.window import Window
+
+from jobs.transform_collection_data import (transform_data_entity,
+                                            transform_data_fact,
+                                            transform_data_fact_res,
+                                            transform_data_issue)
+from jobs.utils.df_utils import count_df, show_df
+from jobs.utils.flatten_csv import flatten_geojson_column, flatten_json_column
 # Import geometry utilities
 from jobs.utils.geometry_utils import calculate_centroid
+from jobs.utils.logger_config import (get_logger, log_execution_time,
+                                      set_spark_log_level, setup_logging)
+from jobs.utils.s3_dataset_typology import get_dataset_typology
+from jobs.utils.s3_format_utils import flatten_s3_json, s3_csv_format
+from jobs.utils.s3_utils import cleanup_dataset_data, read_csv_from_s3
 
 logger = get_logger(__name__)
 
@@ -459,7 +431,7 @@ def wkt_to_geojson(wkt_string):
 # ------------------round point coordinates to 6 decimal places-----------------
 def round_point_coordinates(df):
     """Round POINT coordinates to 6 decimal places."""
-    from pyspark.sql.functions import udf, col
+    from pyspark.sql.functions import col, udf
     from pyspark.sql.types import StringType
 
     def round_point_udf(point_str):

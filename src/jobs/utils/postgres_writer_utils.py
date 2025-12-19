@@ -1,19 +1,12 @@
-from jobs.utils.logger_config import get_logger, log_execution_time
-from jobs.dbaccess.postgres_connectivity import (
-    get_aws_secret,
-    write_to_postgres,
-    create_and_prepare_staging_table,
-    commit_staging_to_production,
-    calculate_centroid_wkt,
-    ENTITY_TABLE_NAME,
-)
-from jobs.csv_s3_writer import (
-    write_dataframe_to_csv_s3,
-    import_csv_to_aurora,
-    cleanup_temp_csv_files,
-)
-from jobs.utils.df_utils import show_df
 from pyspark.sql.functions import col, lit, to_json
+
+from jobs.csv_s3_writer import (cleanup_temp_csv_files, import_csv_to_aurora,
+                                write_dataframe_to_csv_s3)
+from jobs.dbaccess.postgres_connectivity import (
+    ENTITY_TABLE_NAME, calculate_centroid_wkt, commit_staging_to_production,
+    create_and_prepare_staging_table, get_aws_secret, write_to_postgres)
+from jobs.utils.df_utils import show_df
+from jobs.utils.logger_config import get_logger, log_execution_time
 
 logger = get_logger(__name__)
 
@@ -101,9 +94,10 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
     Write DataFrame to PostgreSQL using staging table and atomic transaction with retry logic.
     JDBC write and transaction block are retried on transient failures.
     """
-    import time
     import hashlib
+    import time
     from datetime import datetime
+
     import pg8000
     from pyspark.sql.types import LongType
 

@@ -11,18 +11,20 @@ Usage:
 """
 
 import argparse
-import sys
 import os
+import sys
 from pathlib import Path
 
 # Add the jobs package to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from jobs.utils.logger_config import get_logger, log_execution_time
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import when, col, to_json, date_format
-from pyspark.sql.types import StringType
 import time
+
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, date_format, to_json, when
+from pyspark.sql.types import StringType
+
+from jobs.utils.logger_config import get_logger, log_execution_time
 
 logger = get_logger(__name__)
 

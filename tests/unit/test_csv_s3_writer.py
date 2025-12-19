@@ -1,11 +1,12 @@
 """Unit tests for csv_s3_writer module."""
 
-import pytest
+import json
 import os
 import sys
-from unittest.mock import Mock, patch, MagicMock
-import json
 import time
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
@@ -20,19 +21,16 @@ with patch.dict(
         "pandas": MagicMock(),
     },
 ):
-    from jobs.csv_s3_writer import (
-        CSVWriterError,
-        AuroraImportError,
-        create_spark_session_for_csv,
-        prepare_dataframe_for_csv,
-        write_dataframe_to_csv_s3,
-        cleanup_temp_csv_files,
-        read_csv_from_s3,
-        get_aurora_connection_params,
-        import_csv_to_aurora,
-        _move_csv_to_final_location,
-        _cleanup_temp_path,
-    )
+    from jobs.csv_s3_writer import (AuroraImportError, CSVWriterError,
+                                    _cleanup_temp_path,
+                                    _move_csv_to_final_location,
+                                    cleanup_temp_csv_files,
+                                    create_spark_session_for_csv,
+                                    get_aurora_connection_params,
+                                    import_csv_to_aurora,
+                                    prepare_dataframe_for_csv,
+                                    read_csv_from_s3,
+                                    write_dataframe_to_csv_s3)
 
 
 class TestCSVS3Writer:

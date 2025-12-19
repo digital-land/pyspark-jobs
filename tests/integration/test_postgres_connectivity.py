@@ -1,11 +1,10 @@
-import pytest
 import json
-from unittest.mock import patch, MagicMock
-from jobs.dbaccess.postgres_connectivity import (
-    get_aws_secret,
-    create_table,
-    write_to_postgres,
-)
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from jobs.dbaccess.postgres_connectivity import (create_table, get_aws_secret,
+                                                 write_to_postgres)
 
 
 class TestPostgresConnectivity:

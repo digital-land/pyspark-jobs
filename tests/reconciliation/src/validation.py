@@ -1,9 +1,10 @@
 import csv
 import json
-import geojson
-from typing import Dict, Any, Set, List
-from datetime import datetime
 import os
+from datetime import datetime
+from typing import Any, Dict, List, Set
+
+import geojson
 
 
 class FileProcessor:

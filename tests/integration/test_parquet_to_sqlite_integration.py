@@ -6,10 +6,10 @@ This test module verifies that the parquet to SQLite conversion works correctly
 with different input scenarios and output methods.
 """
 
-import sys
 import os
-import tempfile
 import shutil
+import sys
+import tempfile
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
@@ -21,12 +21,10 @@ def test_parquet_to_sqlite_imports():
     print("=" * 40)
 
     try:
-        from jobs.parquet_to_sqlite import (
-            create_spark_session,
-            get_sqlite_schema_mapping,
-            prepare_dataframe_for_sqlite,
-            convert_parquet_to_sqlite,
-        )
+        from jobs.parquet_to_sqlite import (convert_parquet_to_sqlite,
+                                            create_spark_session,
+                                            get_sqlite_schema_mapping,
+                                            prepare_dataframe_for_sqlite)
 
         print("✅ Successfully imported parquet_to_sqlite functions")
 

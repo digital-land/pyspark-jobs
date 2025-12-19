@@ -18,10 +18,10 @@ Examples:
 """
 
 import argparse
-import os
-import sys
-import subprocess
 import logging
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 # Setup logging

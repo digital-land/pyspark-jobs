@@ -1,7 +1,6 @@
 import csv
 import urllib.request
 
-
 DATASET_SPEC_URL = "https://raw.githubusercontent.com/digital-land/specification/main/specification/dataset.csv"
 
 

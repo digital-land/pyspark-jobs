@@ -9,18 +9,19 @@ This test module validates the complete entity processing pipeline including:
 - Output generation
 """
 
-import pytest
-import tempfile
-import os
 import json
-from unittest.mock import patch
+import os
 import sys
+import tempfile
+from unittest.mock import patch
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import first, lit, to_json, struct, col
-from pyspark.sql.types import StructType, StructField, StringType
+from pyspark.sql.functions import col, first, lit, struct, to_json
+from pyspark.sql.types import StringType, StructField, StructType
 
 from jobs.transform_collection_data import transform_data_entity
 

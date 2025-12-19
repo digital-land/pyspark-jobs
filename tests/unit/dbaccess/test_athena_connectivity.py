@@ -1,11 +1,12 @@
 """Unit tests for Athena-connectivity module."""
 
-import pytest
 import os
 import sys
 import time
-from unittest.mock import Mock, patch, MagicMock
-from botocore.exceptions import ClientError, BotoCoreError
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
+from botocore.exceptions import BotoCoreError, ClientError
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "src"))

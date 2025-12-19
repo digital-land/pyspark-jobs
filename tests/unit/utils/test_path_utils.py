@@ -1,20 +1,18 @@
 """Unit tests for path_utils module."""
 
-import pytest
+import json
 import os
 import sys
-import json
 import tempfile
-from unittest.mock import Mock, patch, mock_open
+from unittest.mock import Mock, mock_open, patch
+
+import pytest
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "src"))
 
-from jobs.utils.path_utils import (
-    resolve_desktop_path,
-    resolve_repo_path,
-    load_json_from_repo,
-)
+from jobs.utils.path_utils import (load_json_from_repo, resolve_desktop_path,
+                                   resolve_repo_path)
 
 
 class TestPathUtils:

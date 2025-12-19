@@ -1,14 +1,15 @@
 """Unit tests for df_utils module."""
 
-import pytest
 import os
 import sys
 from unittest.mock import Mock, patch
 
+import pytest
+
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "src"))
 
-from jobs.utils.df_utils import show_df, count_df
+from jobs.utils.df_utils import count_df, show_df
 
 
 class TestDFUtils:

@@ -26,24 +26,27 @@ Usage:
 """
 
 import argparse
-import sys
-import os
-import boto3
 import json
+import os
+import sys
 import time
-from pathlib import Path
-from typing import Optional, Dict, Any, Tuple, List
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import boto3
 
 # Add the jobs package to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from jobs.utils.logger_config import get_logger, log_execution_time
-from jobs.utils.aws_secrets_manager import get_secret_emr_compatible
-from jobs.utils.s3_utils import cleanup_dataset_data, validate_s3_path
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import when, col, to_json, date_format, lit, coalesce
-from pyspark.sql.types import StringType, DateType
+from pyspark.sql.functions import (coalesce, col, date_format, lit, to_json,
+                                   when)
+from pyspark.sql.types import DateType, StringType
+
+from jobs.utils.aws_secrets_manager import get_secret_emr_compatible
+from jobs.utils.logger_config import get_logger, log_execution_time
+from jobs.utils.s3_utils import cleanup_dataset_data, validate_s3_path
 
 logger = get_logger(__name__)
 
@@ -412,8 +415,9 @@ def _write_multiple_csv_files(
 def _move_csv_to_final_location(temp_path: str, final_csv_path: str) -> str:
     """Move CSV file from temporary location to final location with proper naming."""
     try:
-        import boto3
         from urllib.parse import urlparse
+
+        import boto3
 
         # Parse S3 paths
         temp_uri = urlparse(temp_path)
@@ -490,8 +494,9 @@ def _move_csv_to_final_location(temp_path: str, final_csv_path: str) -> str:
 def _cleanup_temp_path(temp_path: str):
     """Clean up temporary files in S3."""
     try:
-        import boto3
         from urllib.parse import urlparse
+
+        import boto3
 
         uri = urlparse(temp_path)
         bucket = uri.netloc
@@ -523,8 +528,9 @@ def cleanup_temp_csv_files(csv_path: str):
         csv_path: S3 path to the CSV file(s) to clean up
     """
     try:
-        import boto3
         from urllib.parse import urlparse
+
+        import boto3
 
         logger.info(
             f"cleanup_temp_csv_files: Cleaning up temporary CSV files at: {csv_path}"
@@ -798,8 +804,9 @@ def _import_via_aurora_s3(
     logger.info("_import_via_aurora_s3: Starting Aurora S3 import")
 
     try:
-        import pg8000
         from urllib.parse import urlparse
+
+        import pg8000
     except ImportError:
         raise AuroraImportError(
             "pg8000 is required for Aurora S3 import but not available"
@@ -934,10 +941,8 @@ def _import_via_jdbc(
         # 2. Read the CSV from S3
         # 3. Use the existing write_to_postgres function
 
-        from jobs.dbaccess.postgres_connectivity import (
-            write_to_postgres,
-            get_aws_secret,
-        )
+        from jobs.dbaccess.postgres_connectivity import (get_aws_secret,
+                                                         write_to_postgres)
 
         # Create Spark session for reading CSV
         spark = create_spark_session_for_csv("JDBCImport")

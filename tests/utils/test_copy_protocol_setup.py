@@ -5,8 +5,8 @@ Test script to check COPY protocol setup and S3 bucket configuration.
 This script helps diagnose COPY protocol issues and provides setup guidance.
 """
 
-import sys
 import os
+import sys
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
@@ -18,7 +18,8 @@ def test_copy_protocol_setup():
     print("=" * 45)
 
     try:
-        from jobs.dbaccess.postgres_connectivity import get_copy_protocol_recommendation
+        from jobs.dbaccess.postgres_connectivity import \
+            get_copy_protocol_recommendation
 
         # Test with no configuration
         print("\n1. Testing with no S3 bucket configuration:")

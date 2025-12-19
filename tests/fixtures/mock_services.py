@@ -1,8 +1,9 @@
 """Mock services for testing external dependencies."""
 
-import pytest
-from unittest.mock import Mock, MagicMock
 import json
+from unittest.mock import MagicMock, Mock
+
+import pytest
 
 
 @pytest.fixture

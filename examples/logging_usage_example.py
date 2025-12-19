@@ -5,16 +5,13 @@ This example demonstrates how to use the new logging configuration module
 to set up consistent logging across your PySpark applications.
 """
 
+import logging
 import os
 import time
-import logging
-from jobs.utils.logger_config import (
-    setup_logging,
-    get_logger,
-    log_execution_time,
-    set_spark_log_level,
-    quick_setup,
-)
+
+from jobs.utils.logger_config import (get_logger, log_execution_time,
+                                      quick_setup, set_spark_log_level,
+                                      setup_logging)
 
 
 # Example 1: Basic logging setup

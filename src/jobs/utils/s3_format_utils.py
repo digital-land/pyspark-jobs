@@ -1,9 +1,10 @@
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col, when, expr, regexp_replace
-from pyspark.sql.types import MapType, StringType
 import json
 import logging
+
 import boto3
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, expr, from_json, regexp_replace, when
+from pyspark.sql.types import MapType, StringType
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)

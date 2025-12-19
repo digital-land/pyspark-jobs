@@ -1,24 +1,21 @@
 """Unit tests for logger_config module."""
 
-import pytest
+import logging
 import os
 import sys
-import logging
 import tempfile
 import time
-from unittest.mock import Mock, patch
 from pathlib import Path
+from unittest.mock import Mock, patch
+
+import pytest
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "src"))
 
-from jobs.utils.logger_config import (
-    setup_logging,
-    get_logger,
-    log_execution_time,
-    set_spark_log_level,
-    quick_setup,
-)
+from jobs.utils.logger_config import (get_logger, log_execution_time,
+                                      quick_setup, set_spark_log_level,
+                                      setup_logging)
 
 
 class TestLoggerConfig:

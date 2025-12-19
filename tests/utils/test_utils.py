@@ -5,8 +5,8 @@ This module provides common utilities and helpers for all test types.
 """
 
 import os
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -176,8 +176,8 @@ def setup_test_file_logging(
     Returns:
         tuple: (log_file_path, logger_instance)
     """
-    import sys
     import os
+    import sys
 
     # Add src to path if not already there (utils -> tests -> project_root -> src)
     utils_dir = os.path.dirname(__file__)
@@ -187,7 +187,7 @@ def setup_test_file_logging(
     if src_path not in sys.path:
         sys.path.insert(0, src_path)
 
-    from jobs.utils.logger_config import setup_logging, get_logger
+    from jobs.utils.logger_config import get_logger, setup_logging
 
     log_file = get_test_log_file(test_name)
     setup_logging(log_level=log_level, log_file=log_file, environment="development")
