@@ -104,12 +104,14 @@ class TestPostgresConnectivity:
         mock_cursor.execute.assert_called()
 
     @patch('jobs.dbaccess.postgres_connectivity.pg8000', None)
-    def test_create_and_prepare_staging_table_no_pg8000(self):
+    def test_create_and_prepare_staging_table_no_pg8000(self, caplog):
         """Test staging table creation when pg8000 is not available."""
         conn_params = {'host': 'test', 'port': 5432}
         
-        with pytest.raises(ImportError):
-            create_and_prepare_staging_table(conn_params, "test-dataset")
+        result = create_and_prepare_staging_table(conn_params, "test-dataset")
+        
+        assert result is None
+        assert "pg8000 not available" in caplog.text
 
     @pytest.mark.parametrize("staging_count,insert_count,expected_success,expected_error", [
         (100, 100, True, None),  # Success case
