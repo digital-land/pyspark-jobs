@@ -16,13 +16,16 @@ Features:
 - Comprehensive logging and error handling
 
 Usage:
-    from jobs.csv_s3_writer import write_dataframe_to_csv_s3, import_csv_to_aurora
+    from jobs.csv_s3_writer import write_dataframe_to_csv_s3,
+    import_csv_to_aurora
 
     # Write DataFrame to CSV in S3
-    csv_path = write_dataframe_to_csv_s3(df, "s3://bucket/path/", "entity", "my-dataset")
+    csv_path = write_dataframe_to_csv_s3(df, "s3://bucket/path/", "entity",
+    "my-dataset")
 
     # Import CSV from S3 to Aurora using S3 import
-    import_csv_to_aurora(csv_path, "entity", "my-dataset", "development", use_s3_import=True)
+    import_csv_to_aurora(csv_path, "entity", "my-dataset", "development",
+    use_s3_import=True)
 """
 
 import argparse
@@ -30,22 +33,19 @@ import json
 import os
 import sys
 import time
-from datetime import datetime
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-
-import boto3
-
-# Add the jobs package to the Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from typing import Any, Dict, Optional
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import coalesce, col, date_format, lit, to_json, when
-from pyspark.sql.types import DateType, StringType
+from pyspark.sql.functions import col, date_format, to_json, when
+from pyspark.sql.types import StringType
 
 from jobs.utils.aws_secrets_manager import get_secret_emr_compatible
 from jobs.utils.logger_config import get_logger, log_execution_time
 from jobs.utils.s3_utils import cleanup_dataset_data, validate_s3_path
+
+# Add the jobs package to the Python path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
 
 logger = get_logger(__name__)
 
@@ -74,7 +74,8 @@ CSV_CONFIG = {
     "date_format": "yyyy-MM-dd",
     "timestamp_format": "yyyy-MM-dd HH:mm:ss",
     "coalesce_to_single_file": True,  # For Aurora S3 import compatibility
-    "compression": None,  # No compression by default for Aurora S3 import compatibility
+    "compression": None,
+    # No compression by default for Aurora S3 import compatibility
 }
 
 
@@ -148,7 +149,8 @@ def prepare_dataframe_for_csv(df):
                 when(col(col_name).isNull(), None).otherwise(to_json(col(col_name))),
             )
 
-        # Handle JSON columns that are already strings - just ensure they're properly formatted
+        # Handle JSON columns that are already strings - just ensure they're
+        # properly formatted
         elif col_name.lower() in ["geojson", "json"] and "string" in col_type:
             logger.info(
                 f"prepare_dataframe_for_csv: Column {col_name} is already a string, keeping as-is"
@@ -189,7 +191,8 @@ def prepare_dataframe_for_csv(df):
             or "geometry" in col_type
         ):
             logger.info(
-                f"prepare_dataframe_for_csv: Converting {col_name} to WKT text for Aurora compatibility"
+                f"prepare_dataframe_for_csv: Converting {col_name} to WKT text"
+                f"for Aurora compatibility"
             )
             processed_df = processed_df.withColumn(
                 col_name,
@@ -204,7 +207,7 @@ def prepare_dataframe_for_csv(df):
         # Handle boolean columns - convert to text for CSV compatibility
         elif "boolean" in col_type or col_name.lower().endswith("_flag"):
             logger.info(
-                f"prepare_dataframe_for_csv: Converting {col_name} to text boolean"
+                f"prepare_dataframe_for_csv: Converting {col_name} to text" f" boolean"
             )
             processed_df = processed_df.withColumn(
                 col_name,
@@ -234,12 +237,15 @@ def write_dataframe_to_csv_s3(
     """
     Write PySpark DataFrame to temporary CSV file(s) in S3.
 
-    This function writes the DataFrame to CSV format optimized for Aurora S3 import.
-    The CSV files are intended to be temporary and should be cleaned up after import.
+    This function writes the DataFrame to CSV format optimized for Aurora
+    S3 import.
+    The CSV files are intended to be temporary and should be cleaned up
+    after import.
 
     Args:
         df: PySpark DataFrame to write
-        output_path: S3 path where CSV files should be created (e.g., "s3://bucket/path/")
+        output_path: S3 path where CSV files should be created
+        (e.g., "s3://bucket/path/")
         table_name: Name of the table (used for file naming)
         dataset_name: Name of the dataset (used for partitioning/cleanup)
         cleanup_existing: Whether to cleanup existing files before writing
@@ -288,14 +294,16 @@ def write_dataframe_to_csv_s3(
         if temp_folder:
             temp_output_path = f"{output_path.rstrip('/')}/temp-csv-{timestamp}/"
             logger.info(
-                f"write_dataframe_to_csv_s3: Using temporary folder: {temp_output_path}"
+                f"write_dataframe_to_csv_s3: Using temporary folder:"
+                f"  {temp_output_path}"
             )
         else:
             temp_output_path = output_path
 
         # Always use single file for Aurora S3 import compatibility
         logger.info(
-            "write_dataframe_to_csv_s3: Using single file output strategy for Aurora compatibility"
+            "write_dataframe_to_csv_s3: Using single file output strategy for "
+            "Aurora compatibility"
         )
         return _write_single_csv_file(
             processed_df, temp_output_path, table_name, dataset_name, config, timestamp

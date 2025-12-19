@@ -1,8 +1,6 @@
-import argparse
 import json
 import os
 import pkgutil
-import sys
 from datetime import datetime
 
 import boto3
@@ -20,16 +18,15 @@ from jobs.utils.df_utils import count_df, show_df
 from jobs.utils.logger_config import (
     get_logger,
     log_execution_time,
-    set_spark_log_level,
     setup_logging,
 )
 from jobs.utils.postgres_writer_utils import write_dataframe_to_postgres_jdbc
-from jobs.utils.s3_utils import cleanup_dataset_data
 from jobs.utils.s3_writer_utils import write_to_s3, write_to_s3_format
 
 
 # -------------------- Logging Setup --------------------
-# Setup logging for EMR Serverless (console output goes to CloudWatch automatically)
+# Setup logging for EMR Serverless
+# (console output goes to CloudWatch automatically)
 def initialize_logging(args):
     try:
         setup_logging(
@@ -56,13 +53,17 @@ def create_spark_session(app_name="EMR Transform Job"):
         logger.info(f"Creating Spark session with app name: {app_name}")
 
         # Configure Spark for EMR Serverless 7.9.0 (Spark 3.5.x, Java 17)
-        # PostgreSQL JDBC driver is configured via --jars in Airflow DAG sparkSubmitParameters
+        # PostgreSQL JDBC driver is configured via --jars in Airflow DAG
+        # sparkSubmitParameters
         spark_session = (
             SparkSession.builder.appName(app_name)
             .config("spark.sql.adaptive.enabled", "true")
             .config("spark.sql.adaptive.coalescePartitions.enabled", "true")
             .config("spark.sql.adaptive.skewJoin.enabled", "true")
-            .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+            .config(
+                "spark.serializer",
+                "org.apache.spark.serializer.KryoSerializer",
+            )
             .getOrCreate()
         )
 
@@ -106,14 +107,19 @@ def load_metadata(uri: str) -> dict:
                 # Try to load using pkgutil if running from .whl
                 package_name = __package__ or "jobs"  # will be 'jobs'
                 logger.info(
-                    f"Attempting to load from package using pkgutil with package_name: {package_name} and uri: {uri}"
+                    f"Attempting to load from package using pkgutil with "
+                    f"package_name: {package_name} and uri: {uri}"
                 )
                 data = pkgutil.get_data(package_name, uri)
                 if data:
-                    logger.info("Successfully loaded from package using pkgutil")
+                    logger.info(
+                        "Successfully loaded from package using pkgutil"
+                    )
                     return json.loads(data.decode("utf-8"))
                 else:
-                    raise FileNotFoundError(f"pkgutil.get_data could not find {uri}")
+                    raise FileNotFoundError(
+                        f"pkgutil.get_data could not find {uri}"
+                    )
             except (
                 FileNotFoundError,
                 json.JSONDecodeError,
@@ -122,31 +128,39 @@ def load_metadata(uri: str) -> dict:
             ) as e:
                 # If pkgutil fails, try to load from the file system
                 logger.warning(
-                    f"pkgutil.get_data failed: {e}, attempting to read from file system"
+                    f"pkgutil.get_data failed: {e}, attempting to read "
+                    f"from file system"
                 )
                 try:
                     # Check if the path is absolute
                     if os.path.isabs(uri):
                         filepath = uri
                     else:
-                        # Construct the absolute path relative to the script's location
+                        # Construct the absolute path relative to the 
+                        # script's location
                         script_dir = os.path.dirname(os.path.abspath(__file__))
-                        filepath = os.path.normpath(os.path.join(script_dir, uri))
+                        filepath = os.path.normpath(
+                            os.path.join(script_dir, uri)
+                        )
 
                         # Validate path doesn't escape base directory
                         if not filepath.startswith(script_dir):
                             raise ValueError(
-                                f"Invalid file path: path traversal detected in {uri}"
+                                f"Invalid file path: path traversal detected"
+                                f" in {uri}"
                             )
 
                     logger.info(
-                        f"Attempting to load from file system with filepath: {filepath}"
+                        f"Attempting to load from file system with "
+                        f"filepath: {filepath}"
                     )
                     with open(filepath, "r") as f:
                         logger.info("Successfully loaded from file system")
                         return json.load(f)
                 except FileNotFoundError as e:
-                    logger.error(f"Configuration file not found in file system: {e}")
+                    logger.error(
+                        f"Configuration file not found in file system: {e}"
+                    )
                     raise
                 except (json.JSONDecodeError, IOError) as e:
                     logger.error(f"Error reading or parsing file: {e}")
@@ -182,11 +196,13 @@ def transform_data(df, schema_name, data_set, spark):
 
         dataset_json_transformed_path = "config/transformed_source.json"
         logger.info(
-            f"transform_data: Transforming data for table: {schema_name} using schema from {dataset_json_transformed_path}"
+            f"transform_data: Transforming data for table: {schema_name} "
+            f"using schema from {dataset_json_transformed_path}"
         )
         json_data = load_metadata(dataset_json_transformed_path)
         logger.info(
-            f"transform_data: Transforming data with schema with json data: {json_data}"
+            f"transform_data: Transforming data with schema with json data: "
+            f"{json_data}"
         )
         show_df(df, 5, env)
 
@@ -199,12 +215,14 @@ def transform_data(df, schema_name, data_set, spark):
         ):
             fields = json_data.get("schema_fact_res_fact_entity", [])
             logger.info(
-                f"transform_data: Fields to select from json data {fields} for {schema_name}"
+                f"transform_data: Fields to select from json data {fields} "
+                f"for {schema_name}"
             )
         elif schema_name == "issue":
             fields = json_data.get("schema_issue", [])
             logger.info(
-                f"transform_data: Fields to select from json data {fields} for {schema_name}"
+                f"transform_data: Fields to select from json data {fields} "
+                f"for {schema_name}"
             )
 
         # Replace hyphens with underscores in column names
@@ -213,20 +231,29 @@ def transform_data(df, schema_name, data_set, spark):
                 new_col = col.replace("-", "_")
                 df = df.withColumnRenamed(col, new_col)
         logger.info(
-            f"transform_data: DataFrame columns after renaming hyphens: {df.columns}"
+            f"transform_data: DataFrame columns after renaming hyphens: "
+            f"{df.columns}"
         )
         df.printSchema()
-        logger.info(f"transform_data: DataFrame schema after renaming hyphens")
+        logger.info(
+            "transform_data: DataFrame schema after renaming hyphens"
+        )
         show_df(df, 5, env)
 
         # Find fields that are present in both DataFrame and json
         if set(fields) == set(df.columns):
-            logger.info("transform_data: All fields are present in the DataFrame")
+            logger.info(
+                "transform_data: All fields are present in the DataFrame"
+            )
         else:
-            logger.warning("transform_data: Some fields are missing in the DataFrame")
+            logger.warning(
+                "transform_data: Some fields are missing in the DataFrame"
+            )
 
         if schema_name == "fact_resource":
-            logger.info("transform_data: Transforming data for Fact Resource table")
+            logger.info(
+                "transform_data: Transforming data for Fact Resource table"
+            )
             return transform_data_fact_res(df)
         elif schema_name == "fact":
             logger.info("transform_data: Transforming data for Fact table")
@@ -246,7 +273,8 @@ def transform_data(df, schema_name, data_set, spark):
         raise
     except Exception as e:
         logger.error(
-            f"transform_data: Unexpected error transforming data: {e}", exc_info=True
+            f"transform_data: Unexpected error transforming data: {e}",
+            exc_info=True,
         )
         raise
 
@@ -260,7 +288,9 @@ def validate_s3_path(s3_path):
     if not s3_path or not isinstance(s3_path, str):
         raise ValueError("S3 path must be a non-empty string")
     if not s3_path.startswith("s3://"):
-        raise ValueError(f"Invalid S3 path format: {s3_path}. Must start with s3://")
+        raise ValueError(
+            f"Invalid S3 path format: {s3_path}. Must start with s3://"
+        )
     if len(s3_path) <= 5:
         raise ValueError(f"Invalid S3 path: {s3_path}. Path too short")
 
@@ -271,7 +301,9 @@ env = None
 @log_execution_time
 def main(args):
     global env, df_entity
-    logger.info(f"Main: Initialize logging and invoking initialize_logging method")
+    logger.info(
+        "Main: Initialize logging and invoking initialize_logging method"
+    )
 
     initialize_logging(args)  # Initialize logging with args
 
@@ -289,13 +321,16 @@ def main(args):
     allowed_load_types = ["full", "delta", "sample"]
     if args.load_type not in allowed_load_types:
         raise ValueError(
-            f"Invalid load_type: {args.load_type}. Must be one of {allowed_load_types}"
+            f"Invalid load_type: {args.load_type}. Must be one of "
+            f"{allowed_load_types}"
         )
 
     # Validate environment
     allowed_envs = ["development", "staging", "production", "local"]
     if args.env not in allowed_envs:
-        raise ValueError(f"Invalid env: {args.env}. Must be one of {allowed_envs}")
+        raise ValueError(
+            f"Invalid env: {args.env}. Must be one of {allowed_envs}"
+        )
 
     # Validate S3 path
     validate_s3_path(args.path)
@@ -306,7 +341,8 @@ def main(args):
     logger.info(f"Main: Using import method: {import_method}")
 
     logger.info(
-        f"Main: Starting ETL process for Collection Data {args.load_type} and dataset {args.data_set}"
+        f"Main: Starting ETL process for Collection Data "
+        f"{args.load_type} and dataset {args.data_set}"
     )
     try:
         logger.info("Main: Starting main ETL process for collection Data")
@@ -326,12 +362,15 @@ def main(args):
 
         if spark is None:
             raise Exception("Failed to create Spark session")
-        logger.info(f"Main: Spark session created successfully for dataset: {data_set}")
+        logger.info(
+            f"Main: Spark session created successfully for dataset: {data_set}"
+        )
 
         if load_type == "full":
             # invoke full load logic
             logger.info(
-                f"Main: Load type is {load_type} and dataset is {data_set} and path is {s3_uri}"
+                f"Main: Load type is {load_type} and dataset is {data_set} "
+                f"and path is {s3_uri}"
             )
 
             output_path = f"s3://{env}-parquet-datasets/"
@@ -345,9 +384,12 @@ def main(args):
                     or table_name == "fact_resource"
                     or table_name == "entity"
                 ):
-                    full_path = f"{s3_uri}" + "/transformed/" + data_set + "/*.csv"
+                    full_path = (
+                        f"{s3_uri}/transformed/{data_set}/*.csv"
+                    )
                     logger.info(
-                        f"Main: Dataset input path including csv file path: {full_path}"
+                        f"Main: Dataset input path including csv file path: "
+                        f"{full_path}"
                     )
 
                     if df is None:
@@ -358,12 +400,15 @@ def main(args):
 
                     # Show schema and sample data
                     df.printSchema()
-                    logger.info(f"Main: Schema information for the loaded dataframe")
+                    logger.info(
+                        "Main: Schema information for the loaded dataframe"
+                    )
                     show_df(df, 5, env)
 
                     if table_name == "entity":
                         logger.info(
-                            f"Main: Invocation of write_to_s3_format method for {table_name} table"
+                            f"Main: Invocation of write_to_s3_format method "
+                            f"for {table_name} table"
                         )
                         df_entity = write_to_s3_format(
                             df,
@@ -374,16 +419,21 @@ def main(args):
                             env,
                         )
 
-                    # TODO: revise this code and for converting spark session as singleton in future
-                    processed_df = transform_data(df, table_name, data_set, spark)
+                    # TODO: revise this code and for converting spark session
+                    # as singleton in future
+                    processed_df = transform_data(
+                        df, table_name, data_set, spark
+                    )
                     logger.info(
-                        f"Main: Transforming data for {table_name} table completed"
+                        f"Main: Transforming data for {table_name} table "
+                        f"completed"
                     )
                     show_df(df, 5, env)
                     count = count_df(processed_df, env)
                     if count is not None:
                         logger.info(
-                            f"Main: Processed DataFrame for {table_name} table contains {count} records"
+                            f"Main: Processed DataFrame for {table_name} "
+                            f"table contains {count} records"
                         )
 
                     # Write to S3 for Fact Resource table
@@ -394,11 +444,15 @@ def main(args):
                         table_name,
                         env,
                     )
-                    logger.info(f"Main: Writing to s3 for {table_name} table completed")
+                    logger.info(
+                        f"Main: Writing to s3 for {table_name} table "
+                        f"completed"
+                    )
                 elif table_name == "issue":
                     full_path = f"{s3_uri}" + "/issue/" + data_set + "/*.csv"
                     logger.info(
-                        f"Main: Dataset input path including csv file path: {full_path}"
+                        f"Main: Dataset input path including csv file path: "
+                        f"{full_path}"
                     )
 
                     # Read CSV using the dynamic schema
@@ -407,12 +461,17 @@ def main(args):
 
                     # Show schema and sample data
                     df.printSchema()
-                    logger.info(f"Main: Schema information for the loaded dataframe")
+                    logger.info(
+                        "Main: Schema information for the loaded dataframe"
+                    )
                     show_df(df, 5, env)
-                    processed_df = transform_data(df, table_name, data_set, spark)
+                    processed_df = transform_data(
+                        df, table_name, data_set, spark
+                    )
 
                     logger.info(
-                        f"Main: Transforming data for {table_name} table completed"
+                        f"Main: Transforming data for {table_name} table "
+                        f"completed"
                     )
 
                     # Write to S3 for Fact table
@@ -423,9 +482,13 @@ def main(args):
                         table_name,
                         env,
                     )
-                    logger.info(f"Main: Writing to s3 for {table_name} table completed")
+                    logger.info(
+                        f"Main: Writing to s3 for {table_name} table completed"
+                    )
 
-            logger.info("Main: Writing to target s3 output path: process completed")
+            logger.info(
+                "Main: Writing to target s3 output path: process completed"
+            )
 
             # Write dataframe to Postgres for Entity table
             if df_entity is not None:
@@ -435,10 +498,13 @@ def main(args):
                 )
                 table_name = "entity"
                 logger.info(
-                    f"Main: before writing to postgres, df_entity dataframe is below"
+                    "Main: before writing to postgres, df_entity dataframe "
+                    "is below"
                 )
                 show_df(df_entity, 5, env)
-                write_dataframe_to_postgres_jdbc(df_entity, table_name, data_set, env)
+                write_dataframe_to_postgres_jdbc(
+                    df_entity, table_name, data_set, env
+                )
             else:
                 logger.info("Main: df_entity is None, skipping Postgres write")
 
@@ -448,9 +514,11 @@ def main(args):
 
         # elif(load_type == 'sample'):
         #     #invoke sample load logic
-        #     logger.info(f"Main: Sample load type is {load_type} and dataset is {data_set} and path is {s3_uri}")
+        #     logger.info(f"Main: Sample load type is {load_type} and dataset 
+        # is {data_set} and path is {s3_uri}")
 
-        #     logger.info(f"Main: Processing dataset with path information : {s3_uri}")
+        #     logger.info(f"Main: Processing dataset with path information : 
+        # {s3_uri}")
 
         #     logger.info("Main: Set target s3 output path")
         #     output_path = f"s3://{env}-parquet-datasets/"
@@ -459,37 +527,50 @@ def main(args):
         #     df = None  # Initialise df to avoid UnboundLocalError
 
         #     for table_name in table_names:
-        #         if(table_name== 'fact' or table_name== 'fact_resource' or table_name== 'entity'):
-        #             full_path = f"{s3_uri}"+"/transformed/sample-"+data_set+"/*.csv"
-        #             logger.info(f"Main: Dataset input path including csv file path: {full_path}")
+        #         if(table_name== 'fact' or table_name== 'fact_resource' or 
+        #       table_name== 'entity'):
+        #             full_path = f"{s3_uri}"+"/transformed/sample-"+data_set+"
+        #           /*.csv"
+        #             logger.info(f"Main: Dataset input path including csv 
+        #           file path: {full_path}")
 
         #             if df is None:
         #                 # Read CSV using the dynamic schema
         #                 logger.info("Main: dataframe is empty")
-        #                 df = spark.read.option("header", "true").csv(full_path)
+        #                 df = spark.read.option("header", "true")
+        #               .csv(full_path)
         #                 df.cache()  # Cache the DataFrame for performance
 
         #             # Show schema and sample data
         #             df.printSchema()
-        #             logger.info(f"Main: Schema information for the loaded dataframe")
+        #             logger.info(f"Main: Schema information for the loaded
+        #             dataframe")
         #             df.show(5)
-        #             #revise this code and for converting spark session as singleton in future
-        #             processed_df = transform_data(df,table_name,data_set,spark)
-        #             logger.info(f"Main: Transforming data for {table_name} table completed")
+        #             #revise this code and for converting spark session as
+        #               singleton in future
+        #             processed_df = transform_data(df,table_name,data_set,
+        #               spark)
+        #             logger.info(f"Main: Transforming data for {table_name}
+        #               table completed")
 
         #             # Write to S3 for Fact Resource table
         #             sample_dataset_name = f"sample-{data_set}"
-        #             write_to_s3(processed_df, f"{output_path}{table_name}", sample_dataset_name, table_name)
-        #             logger.info(f"Main: Writing to s3 for {table_name} table completed")
+        #             write_to_s3(processed_df, f"{output_path}{table_name}",
+        #               sample_dataset_name, table_name)
+        #             logger.info(f"Main: Writing to s3 for {table_name} table
+        #               completed")
 
         #             # Write to Postgres for Entity table
         #             if (table_name == 'entity'):
-        #                 write_dataframe_to_postgres(processed_df, table_name, data_set, env, use_jdbc)
-        #                 logger.info(f"Main: Writing to Postgres for {table_name} table completed")
+        #                 write_dataframe_to_postgres(processed_df, table_name, 
+        #               data_set, env, use_jdbc)
+        #                 logger.info(f"Main: Writing to Postgres for 
+        #           {table_name} table completed")
 
         #         elif(table_name== 'issue'):
         #             full_path = f"{s3_uri}"+"/issue/"+data_set+"/*.csv"
-        #             logger.info(f"Main: Dataset input path including csv file path: {full_path}")
+        #             logger.info(f"Main: Dataset input path including csv 
+        #       file path: {full_path}")
 
         #             # Read CSV using the dynamic schema
         #             df = spark.read.option("header", "true").csv(full_path)
@@ -497,25 +578,34 @@ def main(args):
 
         #             # Show schema and sample data
         #             df.printSchema()
-        #             logger.info(f"Main: Schema information for the loaded dataframe")
+        #             logger.info(f"Main: Schema information for the loaded
+        #               dataframe")
         #             df.show(5)
-        #             processed_df = transform_data(df,table_name,data_set,spark)
+        #             processed_df = transform_data(df,table_name,data_set,
+        #               spark)
 
-        #             logger.info(f"Main: Transforming data for {table_name} table completed")
+        #             logger.info(f"Main: Transforming data for {table_name}
+        #               table completed")
 
         #             # Write to S3 for Fact table
         #             sample_dataset_name = f"sample-{data_set}"
-        #             write_to_s3(processed_df, f"{output_path}{table_name}", sample_dataset_name, table_name)
-        #             logger.info(f"Main: Writing to s3 for {table_name} table completed")
+        #             write_to_s3(processed_df, f"{output_path}{table_name}",
+        #             sample_dataset_name, table_name)
+        #             logger.info(f"Main: Writing to s3 for {table_name} table
+        #               completed")
         else:
             logger.error(f"Main: Invalid load type specified: {load_type}")
             raise ValueError(f"Invalid load type: {load_type}")
 
     except (ValueError, AttributeError, KeyError) as e:
-        logger.exception("Main: An error occurred during the ETL process: %s", str(e))
+        logger.exception(
+            "Main: An error occurred during the ETL process: %s", str(e)
+        )
         raise
     except Exception as e:
-        logger.exception("Main: Unexpected error during the ETL process: %s", str(e))
+        logger.exception(
+            "Main: Unexpected error during the ETL process: %s", str(e)
+        )
         raise
     finally:
         if "spark" in locals() and spark is not None:
@@ -528,10 +618,17 @@ def main(args):
         if "start_time" in locals() and start_time is not None:
             try:
                 end_time = datetime.now()
-                logger.info(f"Spark session ended at: {end_time}")
+                logger.info(
+                    f"Spark session ended at: {end_time}"
+                )
                 duration = end_time - start_time
                 logger.info(f"Total duration: {duration}")
             except (AttributeError, TypeError) as e:
-                logger.warning(f"Main: Error calculating duration: {e}")
+                logger.warning(
+                    f"Main: Error calculating duration: {e}"
+                )
         else:
-            logger.info("Main: ETL process completed (no timing information available)")
+            logger.info(
+                "Main: ETL process completed (no timing information "
+                "available)"
+            )
