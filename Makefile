@@ -36,7 +36,7 @@ help: ## Show this help message
 
 # Virtual Environment Setup
 init: init-local ## Default: Initialize local testing environment
-	@if [ "$(ENVIRONMENT)" == "local" ] ; then \
+	@if [ "$(ENVIRONMENT)" = "local" ] ; then \
 		pre-commit install ; \
 	fi
 
@@ -156,12 +156,13 @@ security: ## Run security scanning
 	fi
 
 pre-commit: check-venv ## Run pre-commit on all files
-	pre-commit run --all-files; \
+	pre-commit run --all-files
 
 # Documentation
 docs: ## Generate documentation
 	@echo "$(BLUE)Generating documentation...$(NC)"
-		sphinx-build -b html $(DOCS_DIR) $(DOCS_DIR)/_build/html; \
+	@if [ -f $(VENV_ACTIVATE) ]; then \
+		. $(VENV_ACTIVATE) && sphinx-build -b html $(DOCS_DIR) $(DOCS_DIR)/_build/html; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
@@ -181,7 +182,7 @@ run-notebook: ## Start Jupyter Lab for development
 # Build and Package
 build: check-venv ## Build the package
 	@echo "$(BLUE)Building package...$(NC)"
-	python setup.py sdist bdist_wheel; \
+	python setup.py sdist bdist_wheel
 
 package: ## Create AWS deployment package
 	@echo "$(BLUE)Creating AWS deployment package...$(NC)"
@@ -246,7 +247,7 @@ install-deps: check-venv ## Install/update dependencies
 	@echo "$(BLUE)Installing/updating dependencies...$(NC)"
 	pip install --upgrade pip setuptools wheel
 	pip install -r requirements-dev.txt
-	pip install -e .;
+	pip install -e .
 
 freeze: ## Freeze current dependencies
 	@echo "$(BLUE)Freezing current dependencies...$(NC)"
