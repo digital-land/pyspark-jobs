@@ -167,7 +167,7 @@ def test_end_to_end_entity_processing_workflow(spark, temp_csv_files):
     pivot_df = pivot_df.join(organisation_df, 
                             pivot_df.organisation == organisation_df.organisation, "left") \
         .select(pivot_df["*"], organisation_df["entity"].alias("organisation_entity"))
-    pivot_df = pivot_df.drop("organisation")
+    pivot_df = pivot_df.drop(pivot_df.organisation)
     
     # Verify organisation join
     assert "organisation_entity" in pivot_df.columns
@@ -326,28 +326,19 @@ def test_complete_etl_pipeline_integration(spark, temp_csv_files):
             new_col = column.replace("-", "_")
             raw_df = raw_df.withColumnRenamed(column, new_col)
     
-    # Apply entity transformation
-    with patch('jobs.transform_collection_data.spark.read') as mock_spark_read:
-        # Mock the external data reads
-        mock_org_df = spark.read.option("header", True).csv(temp_csv_files["organisation_csv"])
-        mock_dataset_df = spark.read.option("header", True).csv(temp_csv_files["dataset_csv"])
-        
-        # Configure the mock to return our test data
-        mock_spark_read.side_effect = [mock_org_df, mock_dataset_df]
-        
-        # This would normally call transform_data_entity but we'll simulate it
-        processed_df = raw_df.groupBy("entry_number", "entity").pivot("field").agg(first("value"))
-        processed_df = processed_df.drop("entry_number")
-        processed_df = processed_df.withColumn("dataset", lit(dataset_name))
-        
-        # Step 3: Data loading (output)
-        output_path = os.path.join(temp_csv_files["output_dir"], "etl_output")
-        processed_df.write.mode("overwrite").option("header", True).csv(output_path)
-        
-        # Verify complete pipeline
-        assert os.path.exists(output_path)
-        
-        # Verify output data
-        result_df = spark.read.option("header", True).csv(output_path)
-        assert result_df.count() == 2
-        assert "dataset" in result_df.columns
+    # Apply entity transformation (simplified without external dependencies)
+    processed_df = raw_df.groupBy("entry_number", "entity").pivot("field").agg(first("value"))
+    processed_df = processed_df.drop("entry_number")
+    processed_df = processed_df.withColumn("dataset", lit(dataset_name))
+    
+    # Step 3: Data loading (output)
+    output_path = os.path.join(temp_csv_files["output_dir"], "etl_output")
+    processed_df.write.mode("overwrite").option("header", True).csv(output_path)
+    
+    # Verify complete pipeline
+    assert os.path.exists(output_path)
+    
+    # Verify output data
+    result_df = spark.read.option("header", True).csv(output_path)
+    assert result_df.count() == 2
+    assert "dataset" in result_df.columns
