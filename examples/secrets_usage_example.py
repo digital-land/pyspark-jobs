@@ -7,10 +7,13 @@ This example shows how to integrate the secrets manager with your existing code.
 import logging
 import os
 
-from utils.aws_secrets_manager import (SecretsManagerError,
-                                       get_database_credentials, get_secret,
-                                       get_secret_json,
-                                       get_secret_with_fallback)
+from utils.aws_secrets_manager import (
+    SecretsManagerError,
+    get_database_credentials,
+    get_secret,
+    get_secret_json,
+    get_secret_with_fallback,
+)
 
 logger = logging.getLogger(__name__)
 

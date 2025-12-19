@@ -21,10 +21,12 @@ def test_parquet_to_sqlite_imports():
     print("=" * 40)
 
     try:
-        from jobs.parquet_to_sqlite import (convert_parquet_to_sqlite,
-                                            create_spark_session,
-                                            get_sqlite_schema_mapping,
-                                            prepare_dataframe_for_sqlite)
+        from jobs.parquet_to_sqlite import (
+            convert_parquet_to_sqlite,
+            create_spark_session,
+            get_sqlite_schema_mapping,
+            prepare_dataframe_for_sqlite,
+        )
 
         print("✅ Successfully imported parquet_to_sqlite functions")
 

@@ -11,9 +11,13 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "src"))
 
 from jobs.dbaccess.postgres_connectivity import (
-    ENTITY_TABLE_NAME, cleanup_old_staging_tables,
-    commit_staging_to_production, create_and_prepare_staging_table,
-    get_aws_secret, get_performance_recommendations)
+    ENTITY_TABLE_NAME,
+    cleanup_old_staging_tables,
+    commit_staging_to_production,
+    create_and_prepare_staging_table,
+    get_aws_secret,
+    get_performance_recommendations,
+)
 
 
 class TestPostgresConnectivity:

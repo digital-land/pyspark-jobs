@@ -40,8 +40,7 @@ import boto3
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import (coalesce, col, date_format, lit, to_json,
-                                   when)
+from pyspark.sql.functions import coalesce, col, date_format, lit, to_json, when
 from pyspark.sql.types import DateType, StringType
 
 from jobs.utils.aws_secrets_manager import get_secret_emr_compatible
@@ -941,8 +940,10 @@ def _import_via_jdbc(
         # 2. Read the CSV from S3
         # 3. Use the existing write_to_postgres function
 
-        from jobs.dbaccess.postgres_connectivity import (get_aws_secret,
-                                                         write_to_postgres)
+        from jobs.dbaccess.postgres_connectivity import (
+            get_aws_secret,
+            write_to_postgres,
+        )
 
         # Create Spark session for reading CSV
         spark = create_spark_session_for_csv("JDBCImport")

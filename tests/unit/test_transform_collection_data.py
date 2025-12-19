@@ -20,10 +20,12 @@ with patch.dict(
         "pandas": MagicMock(),
     },
 ):
-    from jobs.transform_collection_data import (transform_data_entity,
-                                                transform_data_fact,
-                                                transform_data_fact_res,
-                                                transform_data_issue)
+    from jobs.transform_collection_data import (
+        transform_data_entity,
+        transform_data_fact,
+        transform_data_fact_res,
+        transform_data_issue,
+    )
 
 
 class TestTransformCollectionData:

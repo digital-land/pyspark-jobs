@@ -86,8 +86,7 @@ def mock_s3_client():
 @pytest.fixture
 def sample_parquet_file(integration_spark, temp_directory):
     """Create a sample parquet file for testing."""
-    from pyspark.sql.types import (IntegerType, StringType, StructField,
-                                   StructType)
+    from pyspark.sql.types import IntegerType, StringType, StructField, StructType
 
     schema = StructType(
         [

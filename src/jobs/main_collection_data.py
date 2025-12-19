@@ -8,14 +8,21 @@ from datetime import datetime
 import boto3
 from pyspark.sql import SparkSession
 
-from jobs.transform_collection_data import (transform_data_entity,
-                                            transform_data_fact,
-                                            transform_data_fact_res,
-                                            transform_data_issue)
+from jobs.transform_collection_data import (
+    transform_data_entity,
+    transform_data_fact,
+    transform_data_fact_res,
+    transform_data_issue,
+)
 from jobs.utils.df_utils import count_df, show_df
+
 # Import the new logging module
-from jobs.utils.logger_config import (get_logger, log_execution_time,
-                                      set_spark_log_level, setup_logging)
+from jobs.utils.logger_config import (
+    get_logger,
+    log_execution_time,
+    set_spark_log_level,
+    setup_logging,
+)
 from jobs.utils.postgres_writer_utils import write_dataframe_to_postgres_jdbc
 from jobs.utils.s3_utils import cleanup_dataset_data
 from jobs.utils.s3_writer_utils import write_to_s3, write_to_s3_format

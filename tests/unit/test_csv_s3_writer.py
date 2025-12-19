@@ -21,16 +21,19 @@ with patch.dict(
         "pandas": MagicMock(),
     },
 ):
-    from jobs.csv_s3_writer import (AuroraImportError, CSVWriterError,
-                                    _cleanup_temp_path,
-                                    _move_csv_to_final_location,
-                                    cleanup_temp_csv_files,
-                                    create_spark_session_for_csv,
-                                    get_aurora_connection_params,
-                                    import_csv_to_aurora,
-                                    prepare_dataframe_for_csv,
-                                    read_csv_from_s3,
-                                    write_dataframe_to_csv_s3)
+    from jobs.csv_s3_writer import (
+        AuroraImportError,
+        CSVWriterError,
+        _cleanup_temp_path,
+        _move_csv_to_final_location,
+        cleanup_temp_csv_files,
+        create_spark_session_for_csv,
+        get_aurora_connection_params,
+        import_csv_to_aurora,
+        prepare_dataframe_for_csv,
+        read_csv_from_s3,
+        write_dataframe_to_csv_s3,
+    )
 
 
 class TestCSVS3Writer:

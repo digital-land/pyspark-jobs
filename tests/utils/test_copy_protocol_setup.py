@@ -18,8 +18,7 @@ def test_copy_protocol_setup():
     print("=" * 45)
 
     try:
-        from jobs.dbaccess.postgres_connectivity import \
-            get_copy_protocol_recommendation
+        from jobs.dbaccess.postgres_connectivity import get_copy_protocol_recommendation
 
         # Test with no configuration
         print("\n1. Testing with no S3 bucket configuration:")

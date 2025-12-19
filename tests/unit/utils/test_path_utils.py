@@ -11,8 +11,11 @@ import pytest
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "src"))
 
-from jobs.utils.path_utils import (load_json_from_repo, resolve_desktop_path,
-                                   resolve_repo_path)
+from jobs.utils.path_utils import (
+    load_json_from_repo,
+    resolve_desktop_path,
+    resolve_repo_path,
+)
 
 
 class TestPathUtils:

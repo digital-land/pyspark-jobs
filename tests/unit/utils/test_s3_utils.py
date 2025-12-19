@@ -10,10 +10,15 @@ from botocore.exceptions import ClientError, NoCredentialsError
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "src"))
 
-from jobs.utils.s3_utils import (S3UtilsError, _extract_bucket_name_safe,
-                                 cleanup_dataset_data, parse_s3_path,
-                                 read_csv_from_s3, validate_s3_bucket_access,
-                                 validate_s3_path)
+from jobs.utils.s3_utils import (
+    S3UtilsError,
+    _extract_bucket_name_safe,
+    cleanup_dataset_data,
+    parse_s3_path,
+    read_csv_from_s3,
+    validate_s3_bucket_access,
+    validate_s3_path,
+)
 
 
 class TestS3Utils:

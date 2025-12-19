@@ -21,10 +21,15 @@ with patch.dict(
         "pandas": MagicMock(),
     },
 ):
-    from jobs.main_collection_data import (create_spark_session,
-                                           initialize_logging, load_metadata,
-                                           main, read_data, transform_data,
-                                           validate_s3_path)
+    from jobs.main_collection_data import (
+        create_spark_session,
+        initialize_logging,
+        load_metadata,
+        main,
+        read_data,
+        transform_data,
+        validate_s3_path,
+    )
 
 
 class TestMainCollectionData:

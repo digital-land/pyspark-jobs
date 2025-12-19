@@ -10,9 +10,13 @@ import pytest
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "src"))
 
-from jobs.utils.s3_format_utils import (flatten_s3_geojson, flatten_s3_json,
-                                        parse_possible_json, renaming,
-                                        s3_csv_format)
+from jobs.utils.s3_format_utils import (
+    flatten_s3_geojson,
+    flatten_s3_json,
+    parse_possible_json,
+    renaming,
+    s3_csv_format,
+)
 
 
 class TestS3FormatUtils:

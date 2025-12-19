@@ -12,6 +12,7 @@ from pyspark.sql import SparkSession
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from tests.fixtures.mock_services import *
+
 # Import fixtures from fixtures module
 from tests.fixtures.sample_data import *
 
@@ -153,8 +154,7 @@ def setup_test_environment(monkeypatch):
 @pytest.fixture
 def sample_csv_schema():
     """Provide a standard CSV schema for testing."""
-    from pyspark.sql.types import (IntegerType, StringType, StructField,
-                                   StructType)
+    from pyspark.sql.types import IntegerType, StringType, StructField, StructType
 
     return StructType(
         [

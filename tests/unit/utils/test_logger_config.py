@@ -13,9 +13,13 @@ import pytest
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "src"))
 
-from jobs.utils.logger_config import (get_logger, log_execution_time,
-                                      quick_setup, set_spark_log_level,
-                                      setup_logging)
+from jobs.utils.logger_config import (
+    get_logger,
+    log_execution_time,
+    quick_setup,
+    set_spark_log_level,
+    setup_logging,
+)
 
 
 class TestLoggerConfig:

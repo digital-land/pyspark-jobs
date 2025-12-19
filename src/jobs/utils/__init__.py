@@ -26,14 +26,20 @@ def __getattr__(name):
         "get_database_credentials",
         "get_postgres_secret",
     ]:
-        from .aws_secrets_manager import (get_database_credentials,
-                                          get_postgres_secret, get_secret,
-                                          get_secret_json)
+        from .aws_secrets_manager import (
+            get_database_credentials,
+            get_postgres_secret,
+            get_secret,
+            get_secret_json,
+        )
 
         return locals()[name]
     elif name in ["load_json_from_repo", "resolve_repo_path", "resolve_desktop_path"]:
-        from .path_utils import (load_json_from_repo, resolve_desktop_path,
-                                 resolve_repo_path)
+        from .path_utils import (
+            load_json_from_repo,
+            resolve_desktop_path,
+            resolve_repo_path,
+        )
 
         return locals()[name]
     elif name in [
@@ -41,8 +47,11 @@ def __getattr__(name):
         "validate_s3_path",
         "validate_s3_bucket_access",
     ]:
-        from .s3_utils import (cleanup_dataset_data, validate_s3_bucket_access,
-                               validate_s3_path)
+        from .s3_utils import (
+            cleanup_dataset_data,
+            validate_s3_bucket_access,
+            validate_s3_path,
+        )
 
         return locals()[name]
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

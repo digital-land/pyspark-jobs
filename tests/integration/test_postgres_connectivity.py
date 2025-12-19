@@ -3,8 +3,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from jobs.dbaccess.postgres_connectivity import (create_table, get_aws_secret,
-                                                 write_to_postgres)
+from jobs.dbaccess.postgres_connectivity import (
+    create_table,
+    get_aws_secret,
+    write_to_postgres,
+)
 
 
 class TestPostgresConnectivity:

@@ -9,9 +9,13 @@ import logging
 import os
 import time
 
-from jobs.utils.logger_config import (get_logger, log_execution_time,
-                                      quick_setup, set_spark_log_level,
-                                      setup_logging)
+from jobs.utils.logger_config import (
+    get_logger,
+    log_execution_time,
+    quick_setup,
+    set_spark_log_level,
+    setup_logging,
+)
 
 
 # Example 1: Basic logging setup

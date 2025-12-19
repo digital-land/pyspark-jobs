@@ -11,9 +11,11 @@ import pytest
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "src"))
 
-from jobs.utils.s3_dataset_typology import (DATASET_SPEC_URL,
-                                            get_dataset_typology,
-                                            load_datasets)
+from jobs.utils.s3_dataset_typology import (
+    DATASET_SPEC_URL,
+    get_dataset_typology,
+    load_datasets,
+)
 
 
 class TestS3DatasetTypology:

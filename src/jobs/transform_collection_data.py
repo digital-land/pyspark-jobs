@@ -1,6 +1,16 @@
 import pyspark.sql.functions as F
-from pyspark.sql.functions import (col, desc, expr, first, lit, row_number,
-                                   struct, to_date, to_json, when)
+from pyspark.sql.functions import (
+    col,
+    desc,
+    expr,
+    first,
+    lit,
+    row_number,
+    struct,
+    to_date,
+    to_json,
+    when,
+)
 from pyspark.sql.window import Window
 
 from jobs.utils.df_utils import show_df

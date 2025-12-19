@@ -7,24 +7,45 @@ from datetime import datetime as datetime_type
 
 import boto3
 import requests
-from pyspark.sql.functions import (coalesce, col, collect_list, concat_ws,
-                                   dayofmonth, desc, expr, first, lit,
-                                   monotonically_increasing_id, month,
-                                   row_number, struct, to_date, to_json, when,
-                                   year)
+from pyspark.sql.functions import (
+    coalesce,
+    col,
+    collect_list,
+    concat_ws,
+    dayofmonth,
+    desc,
+    expr,
+    first,
+    lit,
+    monotonically_increasing_id,
+    month,
+    row_number,
+    struct,
+    to_date,
+    to_json,
+    when,
+    year,
+)
 from pyspark.sql.types import TimestampType
 from pyspark.sql.window import Window
 
-from jobs.transform_collection_data import (transform_data_entity,
-                                            transform_data_fact,
-                                            transform_data_fact_res,
-                                            transform_data_issue)
+from jobs.transform_collection_data import (
+    transform_data_entity,
+    transform_data_fact,
+    transform_data_fact_res,
+    transform_data_issue,
+)
 from jobs.utils.df_utils import count_df, show_df
 from jobs.utils.flatten_csv import flatten_geojson_column, flatten_json_column
+
 # Import geometry utilities
 from jobs.utils.geometry_utils import calculate_centroid
-from jobs.utils.logger_config import (get_logger, log_execution_time,
-                                      set_spark_log_level, setup_logging)
+from jobs.utils.logger_config import (
+    get_logger,
+    log_execution_time,
+    set_spark_log_level,
+    setup_logging,
+)
 from jobs.utils.s3_dataset_typology import get_dataset_typology
 from jobs.utils.s3_format_utils import flatten_s3_json, s3_csv_format
 from jobs.utils.s3_utils import cleanup_dataset_data, read_csv_from_s3
