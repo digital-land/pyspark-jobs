@@ -144,7 +144,7 @@ def test_end_to_end_entity_processing_workflow(spark, temp_csv_files):
     
     # Step 2: Transform data (pivot entity fields)
     dataset_name = "title-boundary"
-    pivot_df = df.groupBy("entry-number", "entity").pivot("field").agg(first("value"))
+    pivot_df = df.groupBy("entry-number", "entity", "organisation").pivot("field").agg(first("value"))
     pivot_df = pivot_df.drop("entry-number")
     pivot_df = pivot_df.withColumn("dataset", lit(dataset_name))
     
