@@ -2,106 +2,110 @@
 Unit test specific configuration and fixtures.
 """
 import pytest
-from pyspark.sql import SparkSession
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType
+import sys
+from unittest.mock import Mock, MagicMock, patch
 
 
-@pytest.fixture(scope="module")
-def unit_spark():
-    """
-    Create a minimal Spark session for unit tests.
+@pytest.fixture(autouse=True)
+def mock_sedona_dependencies():
+    """Mock Sedona and geometry dependencies for unit tests."""
+    # Mock sedona modules
+    sedona_mock = MagicMock()
+    sedona_spark_mock = MagicMock()
+    sedona_context_mock = MagicMock()
     
-    Unit tests should be fast and isolated, so this uses
-    minimal Spark configuration.
-    """
-    spark_session = SparkSession.builder \
-        .appName("UnitTestSpark") \
-        .master("local[1]") \
-        .config("spark.sql.shuffle.partitions", "1") \
-        .config("spark.sql.adaptive.enabled", "false") \
-        .config("spark.ui.enabled", "false") \
-        .getOrCreate()
-    
-    spark_session.sparkContext.setLogLevel("ERROR")
-    
-    yield spark_session
-    
-    spark_session.stop()
+    with patch.dict('sys.modules', {
+        'sedona': sedona_mock,
+        'sedona.spark': sedona_spark_mock,
+        'sedona.spark.SedonaContext': sedona_context_mock,
+        'pandas': MagicMock(),
+    }):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def mock_geometry_utils():
+    """Mock geometry utilities that depend on Sedona."""
+    with patch('jobs.utils.geometry_utils.calculate_centroid') as mock_centroid:
+        mock_centroid.return_value = "POINT(0 0)"
+        yield mock_centroid
 
 
 @pytest.fixture
-def sample_fact_schema():
-    """Schema for fact data testing."""
-    return StructType([
-        StructField("fact", StringType(), True),
-        StructField("end_date", StringType(), True),
-        StructField("entity", StringType(), True),
-        StructField("field", StringType(), True),
-        StructField("entry_date", StringType(), True),
-        StructField("entry_number", StringType(), True),
-        StructField("priority", StringType(), True),
-        StructField("reference_entity", StringType(), True),
-        StructField("resource", StringType(), True),
-        StructField("start_date", StringType(), True),
-        StructField("value", StringType(), True)
-    ])
+def mock_dataset_typology():
+    """Mock dataset typology function."""
+    with patch('jobs.transform_collection_data.get_dataset_typology') as mock_func:
+        mock_func.return_value = "test-typology"
+        yield mock_func
 
 
 @pytest.fixture
-def sample_fact_res_schema():
-    """Schema for fact resource data testing."""
-    return StructType([
-        StructField("end_date", StringType(), True),
-        StructField("fact", StringType(), True),
-        StructField("entry_date", StringType(), True),
-        StructField("entry_number", StringType(), True),
-        StructField("priority", StringType(), True),
-        StructField("resource", StringType(), True),
-        StructField("start_date", StringType(), True)
-    ])
+def mock_logging_setup():
+    """Mock logging setup to avoid file system dependencies."""
+    with patch('jobs.utils.logger_config.setup_logging') as mock_setup:
+        yield mock_setup
 
 
 @pytest.fixture
-def sample_transport_schema():
-    """Schema for transport access node data testing."""
+def mock_s3_operations():
+    """Mock S3 operations for unit tests."""
+    with patch('jobs.utils.s3_utils.upload_to_s3') as mock_upload, \
+         patch('jobs.utils.s3_utils.download_from_s3') as mock_download, \
+         patch('jobs.utils.s3_utils.list_s3_objects') as mock_list:
+        
+        mock_upload.return_value = True
+        mock_download.return_value = True
+        mock_list.return_value = []
+        
+        yield {
+            'upload': mock_upload,
+            'download': mock_download,
+            'list': mock_list
+        }
+
+
+@pytest.fixture
+def mock_postgres_operations():
+    """Mock PostgreSQL operations for unit tests."""
+    with patch('jobs.dbaccess.postgres_connectivity.get_postgres_connection') as mock_conn, \
+         patch('jobs.utils.postgres_writer_utils.write_dataframe_to_postgres_jdbc') as mock_write:
+        
+        mock_conn.return_value = MagicMock()
+        mock_write.return_value = True
+        
+        yield {
+            'connection': mock_conn,
+            'write': mock_write
+        }
+
+
+@pytest.fixture
+def mock_athena_operations():
+    """Mock Athena operations for unit tests."""
+    with patch('jobs.dbaccess.Athena-connectivity.get_athena_connection') as mock_conn:
+        mock_conn.return_value = MagicMock()
+        yield mock_conn
+
+
+@pytest.fixture
+def sample_csv_data():
+    """Sample CSV data for testing."""
+    return [
+        ["entity", "field", "value", "entry_date"],
+        ["entity1", "name", "Test Entity 1", "2023-01-01"],
+        ["entity1", "type", "test", "2023-01-01"],
+        ["entity2", "name", "Test Entity 2", "2023-01-02"]
+    ]
+
+
+@pytest.fixture
+def sample_parquet_schema():
+    """Sample Parquet schema for testing."""
+    from pyspark.sql.types import StructType, StructField, StringType, IntegerType
+    
     return StructType([
-        StructField("entry_number", StringType(), True),
-        StructField("entity", StringType(), True),
-        StructField("field", StringType(), True),
+        StructField("id", IntegerType(), True),
+        StructField("name", StringType(), True),
         StructField("value", StringType(), True),
-        StructField("entry_date", StringType(), True),
-        StructField("start_date", StringType(), True),
-        StructField("end_date", StringType(), True),
-        StructField("organisation", StringType(), True)
+        StructField("date", StringType(), True)
     ])
-
-
-# Unit test helper functions
-def create_test_dataframe(spark, schema, data):
-    """Create a test DataFrame with given schema and data."""
-    return spark.createDataFrame(data, schema)
-
-
-def validate_transformation_output(input_df, output_df, expected_columns):
-    """Validate that a transformation produces expected output."""
-    # Check that output is not None
-    assert output_df is not None
-    
-    # Check column structure
-    assert output_df.columns == expected_columns
-    
-    # Check that we have some data (unless input was empty)
-    if input_df.count() > 0:
-        assert output_df.count() >= 0  # Allow for filtering that removes all rows
-
-
-@pytest.fixture
-def transformation_validator():
-    """Provide transformation validation function."""
-    return validate_transformation_output
-
-
-@pytest.fixture
-def dataframe_creator():
-    """Provide DataFrame creation helper."""
-    return create_test_dataframe
