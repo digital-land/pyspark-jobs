@@ -28,7 +28,7 @@ TEST_CONN_PARAMS = {
     "port": 5432,
     "database": "postgres",
     "user": "postgres",
-    "password": "postgres"
+    "password": "postgres",
 }
 
 # Sample data
@@ -47,7 +47,7 @@ sample_entity_data = [
         "prefix": "PA",
         "reference": "REF001",
         "start_date": date(2025, 1, 1),
-        "typology": "residential"
+        "typology": "residential",
     },
     {
         "dataset": "title-boundary",
@@ -63,18 +63,21 @@ sample_entity_data = [
         "prefix": "PA",
         "reference": "REF002",
         "start_date": date(2025, 2, 1),
-        "typology": "commercial"
-    }
+        "typology": "commercial",
+    },
 ]
+
 
 def create_table_sql():
     column_defs = ", ".join([f"{col} {dtype}" for col, dtype in COLUMNS.items()])
     return f"CREATE TABLE IF NOT EXISTS {TABLE_NAME} ({column_defs});"
 
+
 def insert_sql():
     columns = ", ".join(COLUMNS.keys())
     placeholders = ", ".join(["%s"] * len(COLUMNS))
     return f"INSERT INTO {TABLE_NAME} ({columns}) VALUES ({placeholders});"
+
 
 @pytest.mark.integration
 def test_create_table():
@@ -84,6 +87,7 @@ def test_create_table():
     conn.commit()
     cursor.close()
     conn.close()
+
 
 @pytest.mark.integration
 def test_insert_sample_data():
@@ -97,6 +101,7 @@ def test_insert_sample_data():
     cursor.close()
     conn.close()
 
+
 @pytest.mark.integration
 def test_verify_table_exists():
     conn = pg8000.connect(**TEST_CONN_PARAMS)
@@ -107,26 +112,27 @@ def test_verify_table_exists():
     cursor.close()
     conn.close()
 
+
 @pytest.mark.integration
 def test_verify_data_inserted():
     conn = pg8000.connect(**TEST_CONN_PARAMS)
     cursor = conn.cursor()
-    
+
     # Clean up any existing data first
     cursor.execute(f"DELETE FROM {TABLE_NAME};")
-    
+
     # Insert fresh test data
     insert_query = insert_sql()
     for record in sample_entity_data:
         values = tuple(record[col] for col in COLUMNS.keys())
         cursor.execute(insert_query, values)
-    
+
     conn.commit()
-    
+
     # Now verify the count
     cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NAME};")
     count = cursor.fetchone()[0]
     assert count == len(sample_entity_data)
-    
+
     cursor.close()
     conn.close()

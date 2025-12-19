@@ -1,4 +1,5 @@
 """Mock services for testing external dependencies."""
+
 import pytest
 from unittest.mock import Mock, MagicMock
 import json
@@ -9,10 +10,10 @@ def mock_s3_client():
     """Mock S3 client for testing."""
     mock_client = Mock()
     mock_client.get_object.return_value = {
-        'Body': Mock(read=Mock(return_value=b'{"test": "data"}'))
+        "Body": Mock(read=Mock(return_value=b'{"test": "data"}'))
     }
-    mock_client.list_objects_v2.return_value = {'Contents': []}
-    mock_client.delete_objects.return_value = {'Deleted': []}
+    mock_client.list_objects_v2.return_value = {"Contents": []}
+    mock_client.delete_objects.return_value = {"Deleted": []}
     return mock_client
 
 
@@ -21,13 +22,15 @@ def mock_secrets_manager():
     """Mock AWS Secrets Manager for testing."""
     mock_client = Mock()
     mock_client.get_secret_value.return_value = {
-        'SecretString': json.dumps({
-            'username': 'test_user',
-            'password': 'test_password',
-            'host': 'test_host',
-            'port': '5432',
-            'db_name': 'test_db'
-        })
+        "SecretString": json.dumps(
+            {
+                "username": "test_user",
+                "password": "test_password",
+                "host": "test_host",
+                "port": "5432",
+                "db_name": "test_db",
+            }
+        )
     }
     return mock_client
 
