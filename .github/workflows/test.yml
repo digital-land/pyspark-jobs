@@ -39,7 +39,7 @@ jobs:
     #   DATA_FILE_URL: https://data.digital-land.info
     #   READ_DATABASE_URL: postgresql://postgres:postgres@localhost/digital_land_test
     #   WRITE_DATABASE_URL: postgresql://postgres:postgres@localhost/digital_land_test
-      DATABASE_URL: postgresql://postgres:postgres@localhost/postgres
+      DATABASE_URL: postgresql://postgres:postgres@localhost/digital_land_test
       ENVIRONMENT: test
       PGPASSWORD: postgres
     steps:
@@ -56,8 +56,8 @@ jobs:
       - name: Setup database
         run: |
           echo "Setting up test database..."
-          psql -h localhost -c "CREATE DATABASE postgres WITH TEMPLATE postgres" -U postgres
-          echo "✅ Database 'postgres' created successfully"
+          psql -h localhost -c "CREATE DATABASE digital_land_test WITH TEMPLATE postgres" -U postgres || echo "Database already exists, continuing..."
+          echo "✅ Database 'digital_land_test' ready"
 
       - name: Unit Tests
         run: |
