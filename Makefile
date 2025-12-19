@@ -120,19 +120,31 @@ test-parallel: ## Run tests in parallel
 # Code Quality
 lint: ## Run all linting checks
 	@echo "$(BLUE)Running linting checks...$(NC)"
-	@echo "$(BLUE)Running Black...$(NC)"
-	@black --check . 2>&1 || (echo "$(YELLOW)Black formatting issues found. Run 'make format' to fix.$(NC)" && exit 1)
-	@echo "$(BLUE)Running Flake8...$(NC)"
-	@flake8 .
-	@echo "$(GREEN)All linting checks passed!$(NC)"
+	@if [ -f $(VENV_ACTIVATE) ]; then \
+		. $(VENV_ACTIVATE) && \
+		echo "$(BLUE)Running Black...$(NC)" && \
+		black --check . 2>&1 || (echo "$(YELLOW)Black formatting issues found. Run 'make format' to fix.$(NC)" && exit 1) && \
+		echo "$(BLUE)Running Flake8...$(NC)" && \
+		flake8 . && \
+		echo "$(GREEN)All linting checks passed!$(NC)"; \
+	else \
+		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
+		exit 1; \
+	fi
 
 format: ## Format code with black and isort
 	@echo "$(BLUE)Formatting code...$(NC)"
-	@echo "$(BLUE)Running Black formatter...$(NC)"
-	@black .
-	@echo "$(BLUE)Running isort...$(NC)"
-	@isort .
-	@echo "$(GREEN)Code formatting complete!$(NC)"
+	@if [ -f $(VENV_ACTIVATE) ]; then \
+		. $(VENV_ACTIVATE) && \
+		echo "$(BLUE)Running Black formatter...$(NC)" && \
+		black . && \
+		echo "$(BLUE)Running isort...$(NC)" && \
+		isort . && \
+		echo "$(GREEN)Code formatting complete!$(NC)"; \
+	else \
+		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
+		exit 1; \
+	fi
 
 # TODO: implement type checking
 # type-check: ## Run type checking with mypy
