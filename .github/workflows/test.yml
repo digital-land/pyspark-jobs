@@ -22,25 +22,26 @@ jobs:
 
   test:
     runs-on: ubuntu-22.04
-    # services:
-    #   postgres:
-    #     image: postgis/postgis:14-master
-    #     env:
-    #       POSTGRES_PASSWORD: postgres
-    #     options: >-
-    #       --health-cmd pg_isready
-    #       --health-interval 10s
-    #       --health-timeout 5s
-    #       --health-retries 5
-    #     ports:
-    #       - 5432:5432
+    services:
+      postgres:
+        image: postgis/postgis:14-master
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
     env:
     #   DATASETTE_URL: https://datasette.digital-land.info
     #   DATA_FILE_URL: https://data.digital-land.info
     #   READ_DATABASE_URL: postgresql://postgres:postgres@localhost/digital_land_test
     #   WRITE_DATABASE_URL: postgresql://postgres:postgres@localhost/digital_land_test
+      DATABASE_URL: postgresql://postgres:postgres@localhost/digital_land_test
       ENVIRONMENT: test
-        # PGPASSWORD: postgres
+      PGPASSWORD: postgres
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,9 +53,9 @@ jobs:
 
       - run: make init
 
-      # - name: Setup database
-      #   run: |
-      #     psql -h localhost -c "CREATE DATABASE digital_land_test WITH TEMPLATE postgres" -U postgres
+      - name: Setup database
+        run: |
+          psql -h localhost -c "CREATE DATABASE digital_land_test WITH TEMPLATE postgres" -U postgres
 
       - name: Unit Tests
         run: |
