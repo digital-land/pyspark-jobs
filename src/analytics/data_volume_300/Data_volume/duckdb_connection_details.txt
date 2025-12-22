@@ -1,0 +1,16 @@
+DuckDB Connection Details
+============================================================
+
+Database Path: /Users/2193780/github_repo/unit_tests/300/Data_volume/inspire_gml_data.duckdb
+Total GML files: 318
+Total size: 29,645,860,605 bytes (28272.50 MB)
+
+Connection String: duckdb:////Users/2193780/github_repo/unit_tests/300/Data_volume/inspire_gml_data.duckdb
+
+Python Connection:
+  import duckdb
+  con = duckdb.connect('/Users/2193780/github_repo/unit_tests/300/Data_volume/inspire_gml_data.duckdb')
+
+Query Examples:
+  con.execute('SELECT * FROM gml_files').df()
+  con.execute('SELECT COUNT(*) FROM gml_files').fetchone()

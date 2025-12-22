@@ -1,0 +1,1601 @@
+GML Files Data Volume Report
+Source: https://use-land-property-data.service.gov.uk/datasets/inspire/download
+============================================================
+
+
+Pembrokeshire_County_Council.zip:
+  GML files: 1
+  Size: 155,519,383 bytes (148.31 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Redcar_and_Cleveland_Borough_Council.zip:
+  GML files: 1
+  Size: 73,528,567 bytes (70.12 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Royal_Borough_of_Windsor_and_Maidenhead.zip:
+  GML files: 1
+  Size: 72,580,169 bytes (69.22 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Basingstoke_and_Deane_Borough_Council.zip:
+  GML files: 1
+  Size: 105,358,915 bytes (100.48 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Tower_Hamlets.zip:
+  GML files: 1
+  Size: 24,876,442 bytes (23.72 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Bury_Metropolitan_Borough_Council.zip:
+  GML files: 1
+  Size: 65,883,181 bytes (62.83 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Breckland_District_Council.zip:
+  GML files: 1
+  Size: 100,766,743 bytes (96.10 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Middlesbrough_Borough_Council.zip:
+  GML files: 1
+  Size: 61,409,512 bytes (58.56 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Flintshire_County_Council.zip:
+  GML files: 1
+  Size: 101,548,049 bytes (96.84 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Chorley_Borough_Council.zip:
+  GML files: 1
+  Size: 59,578,298 bytes (56.82 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Tendring_District_Council.zip:
+  GML files: 1
+  Size: 89,341,863 bytes (85.20 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+St_Helens_Council.zip:
+  GML files: 1
+  Size: 70,484,273 bytes (67.22 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+East_Riding_of_Yorkshire_Council.zip:
+  GML files: 1
+  Size: 220,633,345 bytes (210.41 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Haringey.zip:
+  GML files: 1
+  Size: 56,060,195 bytes (53.46 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Medway_Council.zip:
+  GML files: 1
+  Size: 128,578,319 bytes (122.62 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Malvern_Hills_District_Council.zip:
+  GML files: 1
+  Size: 71,293,311 bytes (67.99 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Isle_of_Wight_Council.zip:
+  GML files: 1
+  Size: 84,646,268 bytes (80.72 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Barking_and_Dagenham.zip:
+  GML files: 1
+  Size: 50,873,785 bytes (48.52 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Uttlesford_District_Council.zip:
+  GML files: 1
+  Size: 68,950,188 bytes (65.76 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Hinckley_and_Bosworth_Borough_Council.zip:
+  GML files: 1
+  Size: 67,062,994 bytes (63.96 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Harborough_District_Council.zip:
+  GML files: 1
+  Size: 71,293,518 bytes (67.99 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Harlow_District_Council.zip:
+  GML files: 1
+  Size: 33,513,691 bytes (31.96 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Croydon.zip:
+  GML files: 1
+  Size: 110,978,935 bytes (105.84 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Salford_City_Council.zip:
+  GML files: 1
+  Size: 73,800,930 bytes (70.38 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Bassetlaw_District_Council.zip:
+  GML files: 1
+  Size: 74,705,244 bytes (71.24 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+East_Lindsey_District_Council.zip:
+  GML files: 1
+  Size: 110,411,074 bytes (105.30 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Gateshead_Metropolitan_Borough_Council.zip:
+  GML files: 1
+  Size: 89,965,309 bytes (85.80 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+East_Hampshire_District_Council.zip:
+  GML files: 1
+  Size: 82,869,607 bytes (79.03 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Hastings_Borough_Council.zip:
+  GML files: 1
+  Size: 39,461,572 bytes (37.63 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Derby_City_Council.zip:
+  GML files: 1
+  Size: 105,125,451 bytes (100.26 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Westmorland_and_Furness_Council.zip:
+  GML files: 1
+  Size: 254,187,228 bytes (242.41 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Test_Valley_Borough_Council.zip:
+  GML files: 1
+  Size: 79,906,572 bytes (76.20 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Coventry_City_Council.zip:
+  GML files: 1
+  Size: 126,954,500 bytes (121.07 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Colchester_Borough_Council.zip:
+  GML files: 1
+  Size: 101,534,671 bytes (96.83 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Caerphilly_County_Borough_Council.zip:
+  GML files: 1
+  Size: 100,018,015 bytes (95.38 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+North_Warwickshire_Borough_Council.zip:
+  GML files: 1
+  Size: 47,699,831 bytes (45.49 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+East_Devon_District_Council.zip:
+  GML files: 1
+  Size: 127,719,724 bytes (121.80 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+South_Norfolk_Council.zip:
+  GML files: 1
+  Size: 103,587,077 bytes (98.79 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Stockton-on-Tees_Borough_Council.zip:
+  GML files: 1
+  Size: 107,125,413 bytes (102.16 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Hartlepool_Borough_Council.zip:
+  GML files: 1
+  Size: 46,761,582 bytes (44.60 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Maidstone_Borough_Council.zip:
+  GML files: 1
+  Size: 105,418,695 bytes (100.54 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Dartford_Borough_Council.zip:
+  GML files: 1
+  Size: 50,297,552 bytes (47.97 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Hounslow.zip:
+  GML files: 1
+  Size: 71,941,579 bytes (68.61 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Worcester_City_Council.zip:
+  GML files: 1
+  Size: 43,168,694 bytes (41.17 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Exeter_City_Council.zip:
+  GML files: 1
+  Size: 54,678,642 bytes (52.15 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Bromsgrove_District_Council.zip:
+  GML files: 1
+  Size: 63,037,529 bytes (60.12 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Cumberland_Council.zip:
+  GML files: 1
+  Size: 243,245,506 bytes (231.98 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+West_Lancashire_Borough_Council.zip:
+  GML files: 1
+  Size: 63,652,367 bytes (60.70 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Brent.zip:
+  GML files: 1
+  Size: 67,266,331 bytes (64.15 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Waltham_Forest.zip:
+  GML files: 1
+  Size: 66,050,854 bytes (62.99 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Thurrock_Council.zip:
+  GML files: 1
+  Size: 68,019,818 bytes (64.87 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Sandwell_Metropolitan_Borough_Council.zip:
+  GML files: 1
+  Size: 122,661,388 bytes (116.98 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Doncaster_Metropolitan_Borough_Council.zip:
+  GML files: 1
+  Size: 153,219,266 bytes (146.12 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Monmouthshire_County_Council.zip:
+  GML files: 1
+  Size: 100,063,872 bytes (95.43 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Liverpool_City_Council.zip:
+  GML files: 1
+  Size: 153,124,290 bytes (146.03 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Walsall_Metropolitan_Borough_Council.zip:
+  GML files: 1
+  Size: 107,365,522 bytes (102.39 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Nuneaton_and_Bedworth_Borough_Council.zip:
+  GML files: 1
+  Size: 61,928,611 bytes (59.06 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Oxford_City_Council.zip:
+  GML files: 1
+  Size: 45,608,573 bytes (43.50 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Gloucester_City_Council.zip:
+  GML files: 1
+  Size: 62,261,548 bytes (59.38 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Islington.zip:
+  GML files: 1
+  Size: 28,639,385 bytes (27.31 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Chelmsford_City_Council.zip:
+  GML files: 1
+  Size: 94,824,174 bytes (90.43 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Conwy_County_Borough_Council.zip:
+  GML files: 1
+  Size: 98,638,295 bytes (94.07 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Stockport_Metropolitan_Borough_Council.zip:
+  GML files: 1
+  Size: 117,190,462 bytes (111.76 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Brighton_and_Hove_City_Council.zip:
+  GML files: 1
+  Size: 74,591,815 bytes (71.14 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Royal_Borough_of_Kensington_and_Chelsea.zip:
+  GML files: 1
+  Size: 23,977,727 bytes (22.87 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Neath_Port_Talbot_County_Borough_Council.zip:
+  GML files: 1
+  Size: 87,955,328 bytes (83.88 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Cotswold_District_Council.zip:
+  GML files: 1
+  Size: 85,708,507 bytes (81.74 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Sevenoaks_District_Council.zip:
+  GML files: 1
+  Size: 81,856,256 bytes (78.06 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+South_Ribble_Borough_Council.zip:
+  GML files: 1
+  Size: 58,924,330 bytes (56.19 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Peterborough_City_Council.zip:
+  GML files: 1
+  Size: 105,283,558 bytes (100.41 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Barnet.zip:
+  GML files: 1
+  Size: 101,081,311 bytes (96.40 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Cheshire_East_Council.zip:
+  GML files: 1
+  Size: 258,499,001 bytes (246.52 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Bexley.zip:
+  GML files: 1
+  Size: 86,565,767 bytes (82.56 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Denbighshire_County_Council.zip:
+  GML files: 1
+  Size: 86,568,811 bytes (82.56 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+High_Peak_Borough_Council.zip:
+  GML files: 1
+  Size: 58,561,145 bytes (55.85 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Pendle_Borough_Council.zip:
+  GML files: 1
+  Size: 42,405,621 bytes (40.44 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Lambeth.zip:
+  GML files: 1
+  Size: 48,141,041 bytes (45.91 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Babergh_District_Council.zip:
+  GML files: 1
+  Size: 72,743,546 bytes (69.37 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Tandridge_District_Council.zip:
+  GML files: 1
+  Size: 58,471,843 bytes (55.76 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+West_Oxfordshire_District_Council.zip:
+  GML files: 1
+  Size: 79,071,700 bytes (75.41 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Southwark.zip:
+  GML files: 1
+  Size: 39,993,658 bytes (38.14 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Wrexham_County_Borough_Council.zip:
+  GML files: 1
+  Size: 83,529,392 bytes (79.66 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Nottingham_City_Council.zip:
+  GML files: 1
+  Size: 104,476,699 bytes (99.64 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Arun_District_Council.zip:
+  GML files: 1
+  Size: 89,986,600 bytes (85.82 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Southampton_City_Council.zip:
+  GML files: 1
+  Size: 65,090,910 bytes (62.08 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Bolsover_District_Council.zip:
+  GML files: 1
+  Size: 47,223,305 bytes (45.04 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Wychavon_District_Council.zip:
+  GML files: 1
+  Size: 94,831,220 bytes (90.44 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Hart_District_Council.zip:
+  GML files: 1
+  Size: 55,603,466 bytes (53.03 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Charnwood_Borough_Council.zip:
+  GML files: 1
+  Size: 91,365,889 bytes (87.13 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Stevenage_Borough_Council.zip:
+  GML files: 1
+  Size: 33,382,717 bytes (31.84 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Guildford_Borough_Council.zip:
+  GML files: 1
+  Size: 77,847,271 bytes (74.24 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+North_East_Lincolnshire_Council.zip:
+  GML files: 1
+  Size: 75,074,191 bytes (71.60 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Newcastle-under-Lyme_Borough_Council.zip:
+  GML files: 1
+  Size: 67,527,334 bytes (64.40 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Shropshire_Council.zip:
+  GML files: 1
+  Size: 297,064,870 bytes (283.30 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Woking_Borough_Council.zip:
+  GML files: 1
+  Size: 46,739,573 bytes (44.57 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Leeds_City_Council.zip:
+  GML files: 1
+  Size: 324,597,707 bytes (309.56 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Blaby_District_Council.zip:
+  GML files: 1
+  Size: 53,982,044 bytes (51.48 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+City_of_Westminster.zip:
+  GML files: 1
+  Size: 28,288,161 bytes (26.98 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Rother_District_Council.zip:
+  GML files: 1
+  Size: 81,642,893 bytes (77.86 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+South_Tyneside_Council.zip:
+  GML files: 1
+  Size: 61,755,984 bytes (58.90 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Wandsworth.zip:
+  GML files: 1
+  Size: 61,481,115 bytes (58.63 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Newport_City_Council.zip:
+  GML files: 1
+  Size: 82,462,170 bytes (78.64 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Eastleigh_Borough_Council.zip:
+  GML files: 1
+  Size: 67,605,212 bytes (64.47 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Spelthorne_Borough_Council.zip:
+  GML files: 1
+  Size: 41,510,913 bytes (39.59 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Dacorum_Borough_Council.zip:
+  GML files: 1
+  Size: 66,078,239 bytes (63.02 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Winchester_City_Council.zip:
+  GML files: 1
+  Size: 78,999,591 bytes (75.34 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Wokingham_Borough_Council.zip:
+  GML files: 1
+  Size: 91,757,972 bytes (87.51 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Bridgend_County_Borough_Council.zip:
+  GML files: 1
+  Size: 81,371,016 bytes (77.60 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Borough_Council_of_Kings_Lynn_and_West_Norfolk.zip:
+  GML files: 1
+  Size: 107,954,600 bytes (102.95 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Mid_Sussex_District_Council.zip:
+  GML files: 1
+  Size: 96,572,033 bytes (92.10 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+South_Holland_District_Council.zip:
+  GML files: 1
+  Size: 69,959,648 bytes (66.72 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Stoke-on-Trent_City_Council.zip:
+  GML files: 1
+  Size: 109,429,657 bytes (104.36 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+West_Devon_Borough_Council.zip:
+  GML files: 1
+  Size: 82,176,252 bytes (78.37 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Hertsmere_Borough_Council.zip:
+  GML files: 1
+  Size: 45,527,935 bytes (43.42 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Bristol_City_Council.zip:
+  GML files: 1
+  Size: 157,093,078 bytes (149.82 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Mid_Devon_District_Council.zip:
+  GML files: 1
+  Size: 92,491,491 bytes (88.21 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+New_Forest_District_Council.zip:
+  GML files: 1
+  Size: 112,363,179 bytes (107.16 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Hyndburn_Borough_Council.zip:
+  GML files: 1
+  Size: 27,766,755 bytes (26.48 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Tameside_Metropolitan_Borough_Council.zip:
+  GML files: 1
+  Size: 88,375,627 bytes (84.28 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Rhondda_Cynon_Taf_County_Borough_Council.zip:
+  GML files: 1
+  Size: 138,955,306 bytes (132.52 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Gwynedd_Council.zip:
+  GML files: 1
+  Size: 155,097,413 bytes (147.91 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+South_Staffordshire_Council.zip:
+  GML files: 1
+  Size: 70,028,499 bytes (66.78 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Rugby_Borough_Council.zip:
+  GML files: 1
+  Size: 67,182,033 bytes (64.07 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Camden.zip:
+  GML files: 1
+  Size: 30,661,892 bytes (29.24 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Warwick_District_Council.zip:
+  GML files: 1
+  Size: 78,558,848 bytes (74.92 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Cardiff_Council.zip:
+  GML files: 1
+  Size: 134,129,521 bytes (127.92 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Herefordshire_Council.zip:
+  GML files: 1
+  Size: 199,330,153 bytes (190.10 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Watford_Borough_Council.zip:
+  GML files: 1
+  Size: 29,586,966 bytes (28.22 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Bracknell_Forest_Council.zip:
+  GML files: 1
+  Size: 61,783,548 bytes (58.92 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Derbyshire_Dales_District_Council.zip:
+  GML files: 1
+  Size: 78,672,269 bytes (75.03 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Hammersmith_and_Fulham.zip:
+  GML files: 1
+  Size: 32,346,073 bytes (30.85 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Maldon_District_Council.zip:
+  GML files: 1
+  Size: 52,113,535 bytes (49.70 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Sefton_Metropolitan_Borough_Council.zip:
+  GML files: 1
+  Size: 104,189,382 bytes (99.36 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Mid_Suffolk_District_Council.zip:
+  GML files: 1
+  Size: 85,522,150 bytes (81.56 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Rochford_District_Council.zip:
+  GML files: 1
+  Size: 46,025,852 bytes (43.89 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Havering.zip:
+  GML files: 1
+  Size: 93,698,110 bytes (89.36 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+East_Suffolk_Council.zip:
+  GML files: 1
+  Size: 168,491,639 bytes (160.69 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Swindon_Borough_Council.zip:
+  GML files: 1
+  Size: 108,451,592 bytes (103.43 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Thanet_District_Council.zip:
+  GML files: 1
+  Size: 63,233,445 bytes (60.30 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Hull_City_Council.zip:
+  GML files: 1
+  Size: 105,042,332 bytes (100.18 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Runnymede_Borough_Council.zip:
+  GML files: 1
+  Size: 39,885,263 bytes (38.04 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Cherwell_District_Council.zip:
+  GML files: 1
+  Size: 106,259,090 bytes (101.34 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Eastbourne_Borough_Council.zip:
+  GML files: 1
+  Size: 39,361,499 bytes (37.54 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Darlington_Borough_Council.zip:
+  GML files: 1
+  Size: 61,278,490 bytes (58.44 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Lewisham.zip:
+  GML files: 1
+  Size: 63,760,128 bytes (60.81 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Birmingham_City_Council.zip:
+  GML files: 1
+  Size: 348,338,603 bytes (332.20 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Royal_Borough_of_Greenwich.zip:
+  GML files: 1
+  Size: 63,526,046 bytes (60.58 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Telford_and_Wrekin_Council.zip:
+  GML files: 1
+  Size: 108,150,032 bytes (103.14 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Council_of_the_Isles_of_Scilly.zip:
+  GML files: 1
+  Size: 2,373,251 bytes (2.26 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+East_Cambridgeshire_District_Council.zip:
+  GML files: 1
+  Size: 63,115,361 bytes (60.19 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Oldham_Metropolitan_Borough_Council.zip:
+  GML files: 1
+  Size: 73,504,483 bytes (70.10 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Warrington_Borough_Council.zip:
+  GML files: 1
+  Size: 97,948,189 bytes (93.41 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+North_Tyneside_Council.zip:
+  GML files: 1
+  Size: 87,427,848 bytes (83.38 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+The_North_Yorkshire_Council.zip:
+  GML files: 1
+  Size: 542,530,564 bytes (517.40 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Carmarthenshire_County_Council.zip:
+  GML files: 1
+  Size: 215,315,001 bytes (205.34 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Hackney.zip:
+  GML files: 1
+  Size: 32,748,146 bytes (31.23 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Somerset_Council.zip:
+  GML files: 1
+  Size: 459,216,834 bytes (437.94 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Plymouth_City_Council.zip:
+  GML files: 1
+  Size: 109,458,019 bytes (104.39 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Wirral_Borough_Council.zip:
+  GML files: 1
+  Size: 134,198,360 bytes (127.98 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Dudley_Metropolitan_Borough_Council.zip:
+  GML files: 1
+  Size: 140,506,872 bytes (134.00 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Bedford_Borough_Council.zip:
+  GML files: 1
+  Size: 95,840,148 bytes (91.40 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Milton_Keynes_Council.zip:
+  GML files: 1
+  Size: 140,571,194 bytes (134.06 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Blackburn_with_Darwen_Borough_Council.zip:
+  GML files: 1
+  Size: 60,609,736 bytes (57.80 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Broadland_District_Council.zip:
+  GML files: 1
+  Size: 83,792,655 bytes (79.91 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+North_Lincolnshire_Council.zip:
+  GML files: 1
+  Size: 94,397,922 bytes (90.02 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Luton_Borough_Council.zip:
+  GML files: 1
+  Size: 67,727,149 bytes (64.59 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Cannock_Chase_District_Council.zip:
+  GML files: 1
+  Size: 46,770,739 bytes (44.60 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Oadby_and_Wigston_Borough_Council.zip:
+  GML files: 1
+  Size: 25,084,195 bytes (23.92 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Three_Rivers_District_Council.zip:
+  GML files: 1
+  Size: 40,871,041 bytes (38.98 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+St_Albans_City_and_District_Council.zip:
+  GML files: 1
+  Size: 64,646,489 bytes (61.65 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+City_of_London_Corporation.zip:
+  GML files: 1
+  Size: 4,934,980 bytes (4.71 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Fylde_Borough_Council.zip:
+  GML files: 1
+  Size: 42,036,976 bytes (40.09 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Lewes_District_Council.zip:
+  GML files: 1
+  Size: 57,767,630 bytes (55.09 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Central_Bedfordshire_Council.zip:
+  GML files: 1
+  Size: 165,033,952 bytes (157.39 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Leicester_City_Council.zip:
+  GML files: 1
+  Size: 108,991,758 bytes (103.94 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Dover_District_Council.zip:
+  GML files: 1
+  Size: 71,989,716 bytes (68.65 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Cornwall_Council.zip:
+  GML files: 1
+  Size: 554,924,429 bytes (529.22 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Wakefield_Metropolitan_District_Council.zip:
+  GML files: 1
+  Size: 167,103,352 bytes (159.36 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Merthyr_Tydfil_County_Borough_Council.zip:
+  GML files: 1
+  Size: 33,726,050 bytes (32.16 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Mole_Valley_District_Council.zip:
+  GML files: 1
+  Size: 58,648,742 bytes (55.93 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Gosport_Borough_Council.zip:
+  GML files: 1
+  Size: 31,013,784 bytes (29.58 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Surrey_Heath_Borough_Council.zip:
+  GML files: 1
+  Size: 45,890,811 bytes (43.76 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+City_of_Bradford_Metropolitan_District_Council.zip:
+  GML files: 1
+  Size: 223,560,375 bytes (213.20 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Canterbury_City_Council.zip:
+  GML files: 1
+  Size: 91,401,203 bytes (87.17 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Portsmouth_City_Council.zip:
+  GML files: 1
+  Size: 61,815,864 bytes (58.95 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Isle_of_Anglesey_County_Council.zip:
+  GML files: 1
+  Size: 78,985,107 bytes (75.33 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Redditch_Borough_Council.zip:
+  GML files: 1
+  Size: 38,795,932 bytes (37.00 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Wyre_Forest_District_Council.zip:
+  GML files: 1
+  Size: 54,683,269 bytes (52.15 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Brentwood_Borough_Council.zip:
+  GML files: 1
+  Size: 38,319,451 bytes (36.54 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Sutton.zip:
+  GML files: 1
+  Size: 61,736,012 bytes (58.88 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Tewkesbury_Borough_Council.zip:
+  GML files: 1
+  Size: 71,156,666 bytes (67.86 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+East_Staffordshire_Borough_Council.zip:
+  GML files: 1
+  Size: 72,606,266 bytes (69.24 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Ceredigion_County_Council.zip:
+  GML files: 1
+  Size: 101,248,549 bytes (96.56 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Dorset_Council.zip:
+  GML files: 1
+  Size: 275,400,501 bytes (262.64 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Epsom_and_Ewell_Borough_Council.zip:
+  GML files: 1
+  Size: 30,863,898 bytes (29.43 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Rossendale_Borough_Council.zip:
+  GML files: 1
+  Size: 37,802,908 bytes (36.05 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Sunderland_City_Council.zip:
+  GML files: 1
+  Size: 118,803,981 bytes (113.30 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Harrow.zip:
+  GML files: 1
+  Size: 69,947,711 bytes (66.71 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Mansfield_District_Council.zip:
+  GML files: 1
+  Size: 50,411,567 bytes (48.08 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Blackpool_Borough_Council.zip:
+  GML files: 1
+  Size: 57,807,197 bytes (55.13 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Vale_of_White_Horse_District_Council.zip:
+  GML files: 1
+  Size: 87,500,868 bytes (83.45 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Welwyn_Hatfield_Borough_Council.zip:
+  GML files: 1
+  Size: 49,483,301 bytes (47.19 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Burnley_Borough_Council.zip:
+  GML files: 1
+  Size: 36,032,009 bytes (34.36 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+City_of_Lincoln_Council.zip:
+  GML files: 1
+  Size: 38,666,063 bytes (36.87 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+South_Kesteven_District_Council.zip:
+  GML files: 1
+  Size: 85,256,385 bytes (81.31 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Lancaster_City_Council.zip:
+  GML files: 1
+  Size: 80,843,112 bytes (77.10 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+South_Hams_District_Council.zip:
+  GML files: 1
+  Size: 116,550,068 bytes (111.15 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+West_Berkshire_Council.zip:
+  GML files: 1
+  Size: 103,341,653 bytes (98.55 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Kirklees_Council.zip:
+  GML files: 1
+  Size: 210,155,177 bytes (200.42 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Ribble_Valley_Borough_Council.zip:
+  GML files: 1
+  Size: 57,241,912 bytes (54.59 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+West_Lindsey_District_Council.zip:
+  GML files: 1
+  Size: 70,287,722 bytes (67.03 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+South_Oxfordshire_District_Council.zip:
+  GML files: 1
+  Size: 101,822,532 bytes (97.11 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Fareham_Borough_Council.zip:
+  GML files: 1
+  Size: 59,359,489 bytes (56.61 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Rutland_County_Council_District_Council.zip:
+  GML files: 1
+  Size: 31,569,383 bytes (30.11 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Wyre_Borough_Council.zip:
+  GML files: 1
+  Size: 64,360,822 bytes (61.38 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Buckinghamshire_Council.zip:
+  GML files: 1
+  Size: 306,044,765 bytes (291.87 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Swansea_Council.zip:
+  GML files: 1
+  Size: 125,552,977 bytes (119.74 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Cambridge_City_Council.zip:
+  GML files: 1
+  Size: 38,507,084 bytes (36.72 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Reading_Borough_Council.zip:
+  GML files: 1
+  Size: 56,944,576 bytes (54.31 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Merton.zip:
+  GML files: 1
+  Size: 61,068,602 bytes (58.24 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Great_Yarmouth_Borough_Council.zip:
+  GML files: 1
+  Size: 51,491,761 bytes (49.11 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Tonbridge_and_Malling_Borough_Council.zip:
+  GML files: 1
+  Size: 78,377,061 bytes (74.75 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Huntingdonshire_District_Council.zip:
+  GML files: 1
+  Size: 113,346,819 bytes (108.10 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Elmbridge_Borough_Council.zip:
+  GML files: 1
+  Size: 63,156,135 bytes (60.23 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Southend-on-Sea_Borough_Council.zip:
+  GML files: 1
+  Size: 62,237,611 bytes (59.35 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Bournemouth_Christchurch_and_Poole_Council.zip:
+  GML files: 1
+  Size: 148,591,865 bytes (141.71 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+North_Kesteven_District_Council.zip:
+  GML files: 1
+  Size: 73,769,659 bytes (70.35 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Cheltenham_Borough_Council.zip:
+  GML files: 1
+  Size: 49,224,612 bytes (46.94 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Vale_of_Glamorgan_Council.zip:
+  GML files: 1
+  Size: 81,281,234 bytes (77.52 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+North_Devon_District_Council.zip:
+  GML files: 1
+  Size: 112,766,538 bytes (107.54 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Royal_Borough_of_Kingston_upon_Thames.zip:
+  GML files: 1
+  Size: 51,981,533 bytes (49.57 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Fenland_District_Council.zip:
+  GML files: 1
+  Size: 60,372,968 bytes (57.58 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Newcastle_City_Council.zip:
+  GML files: 1
+  Size: 100,528,598 bytes (95.87 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Ipswich_Borough_Council.zip:
+  GML files: 1
+  Size: 50,885,040 bytes (48.53 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Blaenau_Gwent_County_Borough_Council.zip:
+  GML files: 1
+  Size: 36,606,313 bytes (34.91 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+North_West_Leicestershire_District_Council.zip:
+  GML files: 1
+  Size: 65,257,118 bytes (62.23 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Wigan_Metropolitan_Borough_Council.zip:
+  GML files: 1
+  Size: 116,679,405 bytes (111.27 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+City_of_Wolverhampton_Council.zip:
+  GML files: 1
+  Size: 96,296,461 bytes (91.84 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Erewash_Borough_Council.zip:
+  GML files: 1
+  Size: 60,028,367 bytes (57.25 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Richmond_upon_Thames.zip:
+  GML files: 1
+  Size: 63,084,746 bytes (60.16 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Havant_Borough_Council.zip:
+  GML files: 1
+  Size: 55,287,189 bytes (52.73 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Powys_County_Council.zip:
+  GML files: 1
+  Size: 256,584,273 bytes (244.70 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Wealden_District_Council.zip:
+  GML files: 1
+  Size: 141,972,602 bytes (135.40 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Redbridge.zip:
+  GML files: 1
+  Size: 78,369,947 bytes (74.74 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Barnsley_Metropolitan_Borough_Council.zip:
+  GML files: 1
+  Size: 125,556,665 bytes (119.74 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Rotherham_Metropolitan_Borough_Council.zip:
+  GML files: 1
+  Size: 120,029,441 bytes (114.47 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Gedling_Borough_Council.zip:
+  GML files: 1
+  Size: 57,903,869 bytes (55.22 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Durham_County_Council.zip:
+  GML files: 1
+  Size: 346,271,824 bytes (330.23 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Trafford_Borough_Council.zip:
+  GML files: 1
+  Size: 78,411,296 bytes (74.78 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Chichester_District_Council.zip:
+  GML files: 1
+  Size: 95,674,420 bytes (91.24 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Folkestone_and_Hythe_District_Council.zip:
+  GML files: 1
+  Size: 67,962,152 bytes (64.81 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Amber_Valley_Borough_Council.zip:
+  GML files: 1
+  Size: 79,241,561 bytes (75.57 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Braintree_District_Council.zip:
+  GML files: 1
+  Size: 98,984,300 bytes (94.40 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Broxtowe_Borough_Council.zip:
+  GML files: 1
+  Size: 54,288,089 bytes (51.77 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Epping_Forest_District_Council.zip:
+  GML files: 1
+  Size: 72,330,466 bytes (68.98 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Chesterfield_Borough_Council.zip:
+  GML files: 1
+  Size: 51,422,854 bytes (49.04 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Gravesham_Borough_Council.zip:
+  GML files: 1
+  Size: 45,657,673 bytes (43.54 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Melton_Borough_Council.zip:
+  GML files: 1
+  Size: 39,310,128 bytes (37.49 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Bromley.zip:
+  GML files: 1
+  Size: 124,322,617 bytes (118.56 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Preston_City_Council.zip:
+  GML files: 1
+  Size: 70,457,541 bytes (67.19 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+City_of_York_Council.zip:
+  GML files: 1
+  Size: 84,503,347 bytes (80.59 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Solihull_Metropolitan_Borough_Council.zip:
+  GML files: 1
+  Size: 100,008,440 bytes (95.38 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Norwich_City_Council.zip:
+  GML files: 1
+  Size: 49,393,115 bytes (47.10 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Halton_Borough_Council.zip:
+  GML files: 1
+  Size: 62,258,573 bytes (59.37 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Forest_of_Dean_District_Council.zip:
+  GML files: 1
+  Size: 75,009,910 bytes (71.54 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+North_Norfolk_District_Council.zip:
+  GML files: 1
+  Size: 91,621,888 bytes (87.38 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Broxbourne_Borough_Council.zip:
+  GML files: 1
+  Size: 41,415,304 bytes (39.50 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+South_Gloucestershire_Council.zip:
+  GML files: 1
+  Size: 176,503,091 bytes (168.33 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Crawley_Borough_Council.zip:
+  GML files: 1
+  Size: 43,544,013 bytes (41.53 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+East_Hertfordshire_District_Council.zip:
+  GML files: 1
+  Size: 88,559,900 bytes (84.46 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Staffordshire_Moorlands_District_Council.zip:
+  GML files: 1
+  Size: 76,919,394 bytes (73.36 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+North_East_Derbyshire_District_Council.zip:
+  GML files: 1
+  Size: 62,542,429 bytes (59.65 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Knowsley_Metropolitan_Borough_Council.zip:
+  GML files: 1
+  Size: 62,467,038 bytes (59.57 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Rushcliffe_Borough_Council.zip:
+  GML files: 1
+  Size: 72,157,277 bytes (68.81 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Calderdale_Metropolitan_Borough_Council.zip:
+  GML files: 1
+  Size: 114,545,963 bytes (109.24 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Newark_and_Sherwood_District_Council.zip:
+  GML files: 1
+  Size: 81,650,354 bytes (77.87 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Horsham_District_Council.zip:
+  GML files: 1
+  Size: 101,390,357 bytes (96.69 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Newham.zip:
+  GML files: 1
+  Size: 59,475,731 bytes (56.72 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Tamworth_Borough_Council.zip:
+  GML files: 1
+  Size: 36,225,529 bytes (34.55 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+North_Somerset_Council.zip:
+  GML files: 1
+  Size: 131,515,808 bytes (125.42 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Stafford_Borough_Council.zip:
+  GML files: 1
+  Size: 89,306,351 bytes (85.17 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Slough_Borough_Council.zip:
+  GML files: 1
+  Size: 42,823,483 bytes (40.84 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+West_Northamptonshire_Council.zip:
+  GML files: 1
+  Size: 237,806,936 bytes (226.79 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+North_Hertfordshire_District_Council.zip:
+  GML files: 1
+  Size: 63,407,685 bytes (60.47 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Bolton_Metropolitan_Borough_Council.zip:
+  GML files: 1
+  Size: 85,223,842 bytes (81.28 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Wiltshire_Council.zip:
+  GML files: 1
+  Size: 326,529,330 bytes (311.40 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+South_Derbyshire_District_Council.zip:
+  GML files: 1
+  Size: 72,835,318 bytes (69.46 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Reigate_and_Banstead_Borough_Council.zip:
+  GML files: 1
+  Size: 69,762,696 bytes (66.53 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Stroud_District_Council.zip:
+  GML files: 1
+  Size: 94,092,941 bytes (89.73 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+West_Suffolk_Council.zip:
+  GML files: 1
+  Size: 108,243,791 bytes (103.23 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Cheshire_West_and_Chester_Council.zip:
+  GML files: 1
+  Size: 212,137,212 bytes (202.31 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Castle_Point_Borough_Council.zip:
+  GML files: 1
+  Size: 36,966,491 bytes (35.25 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Hillingdon.zip:
+  GML files: 1
+  Size: 97,772,138 bytes (93.24 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Northumberland_County_Council.zip:
+  GML files: 1
+  Size: 241,639,136 bytes (230.45 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Tunbridge_Wells_Borough_Council.zip:
+  GML files: 1
+  Size: 78,791,597 bytes (75.14 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Bath_and_North_East_Somerset_Council.zip:
+  GML files: 1
+  Size: 104,655,383 bytes (99.81 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Waverley_Borough_Council.zip:
+  GML files: 1
+  Size: 85,022,242 bytes (81.08 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Rushmoor_Borough_Council.zip:
+  GML files: 1
+  Size: 36,021,778 bytes (34.35 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Teignbridge_District_Council.zip:
+  GML files: 1
+  Size: 116,706,361 bytes (111.30 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Torridge_District_Council.zip:
+  GML files: 1
+  Size: 93,948,332 bytes (89.60 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Adur_District_Council.zip:
+  GML files: 1
+  Size: 26,259,927 bytes (25.04 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Lichfield_District_Council.zip:
+  GML files: 1
+  Size: 71,764,236 bytes (68.44 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Torfaen_County_Borough_Council.zip:
+  GML files: 1
+  Size: 50,625,919 bytes (48.28 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Basildon_Borough_Council.zip:
+  GML files: 1
+  Size: 91,473,588 bytes (87.24 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Ashford_Borough_Council.zip:
+  GML files: 1
+  Size: 104,275,629 bytes (99.44 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Ashfield_District_Council.zip:
+  GML files: 1
+  Size: 63,267,643 bytes (60.34 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Enfield.zip:
+  GML files: 1
+  Size: 90,525,203 bytes (86.33 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Torbay_Council.zip:
+  GML files: 1
+  Size: 65,568,140 bytes (62.53 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Stratford-on-Avon_District_Council.zip:
+  GML files: 1
+  Size: 109,095,689 bytes (104.04 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Boston_Borough_Council.zip:
+  GML files: 1
+  Size: 43,341,886 bytes (41.33 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+London_Borough_of_Ealing.zip:
+  GML files: 1
+  Size: 83,670,027 bytes (79.79 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Worthing_Borough_Council.zip:
+  GML files: 1
+  Size: 41,784,650 bytes (39.85 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Manchester_City_Council.zip:
+  GML files: 1
+  Size: 123,441,723 bytes (117.72 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Rochdale_Metropolitan_Borough_Council.zip:
+  GML files: 1
+  Size: 76,053,245 bytes (72.53 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+South_Cambridgeshire_District_Council.zip:
+  GML files: 1
+  Size: 103,576,604 bytes (98.78 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Sheffield_City_Council.zip:
+  GML files: 1
+  Size: 188,001,606 bytes (179.29 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+North_Northamptonshire_Council.zip:
+  GML files: 1
+  Size: 189,090,310 bytes (180.33 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+Swale_Borough_Council.zip:
+  GML files: 1
+  Size: 102,045,912 bytes (97.32 MB)
+  Files: Land_Registry_Cadastral_Parcels.gml
+
+============================================================
+SUMMARY
+============================================================
+Total .zip files: 318
+Total .gml files: 318
+Total data volume: 29,645,860,605 bytes (27.61 GB)

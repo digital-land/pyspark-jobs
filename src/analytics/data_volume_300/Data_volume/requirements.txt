@@ -1,0 +1,6 @@
+requests
+beautifulsoup4
+duckdb
+lxml
+pandas
+pyarrow
