@@ -248,24 +248,6 @@ class TestIntegrationScenarios:
         assert results[0]["id"] == 1
         assert results[1]["id"] == 2
         assert results[2]["nested"]["key"] == "value"
-            '"{""id"": 2, ""name"": ""Item 2""}"',  # Double-escaped
-            '{"id": 3, "nested": {"value": "test"}}',
-            'invalid json',
-            None,
-            '[]',
-            'null'
-        ]
-        
-        results = []
-        for json_str in json_strings:
-            parsed = parse_possible_json(json_str)
-            if parsed is not None:
-                results.append(parsed)
-        
-        # Should have 5 valid results (excluding invalid json and None)
-        assert len(results) == 5
-        assert results[0] == {"id": 1, "name": "Item 1"}
-        assert results[1] == {"id": 2, "name": "Item 2"}
 
     @patch('boto3.client')
     def test_s3_operations_workflow(self, mock_boto3):
