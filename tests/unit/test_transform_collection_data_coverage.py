@@ -555,9 +555,7 @@ class TestTransformDataErrorHandling:
         mock_spark = Mock()
         
         with pytest.raises(Exception, match="Test error"):
-            transform_data_entity(error_mock, "test-dataset", mock_spark, "development")ntity_without_priority_column(self, mock_show_df, mock_typology):
-        """Test entity transformation when priority column is missing."""
-        mock_typology.return_value = "test-typology"
+            transform_data_entity(error_mock, "test-dataset", mock_spark, "development")
         
         # Create mock DataFrames with PySpark operation support
         mock_df_no_priority = create_mock_dataframe(["entity", "field", "entry_date", "entry_number"])
