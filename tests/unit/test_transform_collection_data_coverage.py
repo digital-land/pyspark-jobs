@@ -20,15 +20,25 @@ with patch.dict('sys.modules', {
     )
 
 
+def create_mock_dataframe(columns=None):
+    """Create a mock DataFrame that supports PySpark operations."""
+    mock_df = Mock()
+    if columns:
+        mock_df.columns = columns
+        mock_df.__iter__ = Mock(return_value=iter(columns))
+    mock_df.__getitem__ = Mock(return_value=Mock())
+    return mock_df
+
+
 @pytest.mark.unit
 class TestTransformDataFactCoverage:
     """Test transform_data_fact function coverage."""
 
     def test_transform_data_fact_window_operations(self):
         """Test window operations and row numbering logic."""
-        # Mock DataFrame with proper method chaining
-        mock_df = Mock()
-        mock_window_df = Mock()
+        # Create mock DataFrames with PySpark operation support
+        mock_df = create_mock_dataframe()
+        mock_window_df = create_mock_dataframe()
         mock_filtered_df = Mock()
         mock_selected_df = Mock()
         mock_final_df = Mock()
@@ -46,13 +56,13 @@ class TestTransformDataFactCoverage:
         mock_df.withColumn.assert_called_once()
         mock_window_df.filter.assert_called_once()
         mock_filtered_df.drop.assert_called_once_with("row_num")
-        assert mock_selected_df.select.call_count == 2  # Called twice for column reordering
+        assert mock_selected_df.select.call_count == 2
         assert result == mock_final_df
 
     def test_transform_data_fact_column_selection(self):
         """Test specific column selection logic."""
-        mock_df = Mock()
-        mock_window_df = Mock()
+        mock_df = create_mock_dataframe()
+        mock_window_df = create_mock_dataframe()
         mock_filtered_df = Mock()
         mock_selected_df = Mock()
         mock_final_df = Mock()
@@ -177,13 +187,10 @@ class TestTransformDataEntityCoverage:
         """Test priority column existence check and ordering logic."""
         mock_typology.return_value = "test-typology"
         
-        # Test with priority column
-        mock_df_with_priority = Mock()
-        mock_df_with_priority.columns = ["entity", "field", "priority", "entry_date", "entry_number"]
-        
-        # Mock the transformation chain
+        # Create mock DataFrames with PySpark operation support
+        mock_df_with_priority = create_mock_dataframe(["entity", "field", "priority", "entry_date", "entry_number"])
         mock_ranked_df = Mock()
-        mock_pivot_df = Mock()
+        mock_pivot_df = create_mock_dataframe(["entity", "name", "dataset"])
         mock_final_df = Mock()
         
         mock_df_with_priority.withColumn.return_value = mock_ranked_df
@@ -216,13 +223,10 @@ class TestTransformDataEntityCoverage:
         """Test entity transformation when priority column is missing."""
         mock_typology.return_value = "test-typology"
         
-        # Test without priority column
-        mock_df_no_priority = Mock()
-        mock_df_no_priority.columns = ["entity", "field", "entry_date", "entry_number"]
-        
-        # Mock the transformation chain
+        # Create mock DataFrames with PySpark operation support
+        mock_df_no_priority = create_mock_dataframe(["entity", "field", "entry_date", "entry_number"])
         mock_ranked_df = Mock()
-        mock_pivot_df = Mock()
+        mock_pivot_df = create_mock_dataframe(["entity", "name", "dataset"])
         mock_final_df = Mock()
         
         mock_df_no_priority.withColumn.return_value = mock_ranked_df
@@ -254,12 +258,8 @@ class TestTransformDataEntityCoverage:
         """Test kebab-case to snake_case column normalization."""
         mock_typology.return_value = "test-typology"
         
-        mock_df = Mock()
-        mock_df.columns = ["entity", "field"]
-        
-        # Mock pivot DataFrame with kebab-case columns
-        mock_pivot_df = Mock()
-        mock_pivot_df.columns = ["entity", "test-field", "another-column", "normal_column"]
+        mock_df = create_mock_dataframe(["entity", "field"])
+        mock_pivot_df = create_mock_dataframe(["entity", "test-field", "another-column", "normal_column"])
         
         # Mock the transformation chain
         mock_ranked_df = Mock()
@@ -288,12 +288,6 @@ class TestTransformDataEntityCoverage:
         # Verify withColumnRenamed is called for kebab-case columns
         rename_calls = mock_pivot_df.withColumnRenamed.call_args_list
         
-        # Should rename kebab-case columns to snake_case
-        expected_renames = [
-            call("test-field", "test_field"),
-            call("another-column", "another_column")
-        ]
-        
         # Check that kebab-case columns are renamed
         kebab_columns_renamed = any(
             "-" in str(call_args) and "_" in str(call_args) 
@@ -307,12 +301,8 @@ class TestTransformDataEntityCoverage:
         """Test handling of missing standard columns."""
         mock_typology.return_value = "test-typology"
         
-        mock_df = Mock()
-        mock_df.columns = ["entity", "field"]
-        
-        # Mock pivot DataFrame missing standard columns
-        mock_pivot_df = Mock()
-        mock_pivot_df.columns = ["entity", "name"]  # Missing geometry, end_date, etc.
+        mock_df = create_mock_dataframe(["entity", "field"])
+        mock_pivot_df = create_mock_dataframe(["entity", "name"])  # Missing geometry, end_date, etc.
         
         # Mock the transformation chain
         mock_ranked_df = Mock()
@@ -355,12 +345,8 @@ class TestTransformDataEntityCoverage:
         """Test JSON creation for non-standard columns."""
         mock_typology.return_value = "test-typology"
         
-        mock_df = Mock()
-        mock_df.columns = ["entity", "field"]
-        
-        # Mock pivot DataFrame with extra columns
-        mock_pivot_df = Mock()
-        mock_pivot_df.columns = ["entity", "name", "custom_field", "another_field", "dataset"]
+        mock_df = create_mock_dataframe(["entity", "field"])
+        mock_pivot_df = create_mock_dataframe(["entity", "name", "custom_field", "another_field", "dataset"])
         
         # Mock the transformation chain
         mock_ranked_df = Mock()
@@ -389,7 +375,6 @@ class TestTransformDataEntityCoverage:
                 transform_data_entity(mock_df, "test-dataset", mock_spark, "development")
                 
                 # Verify JSON creation is called for non-standard columns
-                # Should create JSON from custom_field and another_field
                 json_calls = mock_pivot_df.withColumn.call_args_list
                 json_column_added = any("json" in str(call) for call in json_calls)
                 assert json_column_added or mock_to_json.called
@@ -400,12 +385,8 @@ class TestTransformDataEntityCoverage:
         """Test date column normalization logic."""
         mock_typology.return_value = "test-typology"
         
-        mock_df = Mock()
-        mock_df.columns = ["entity", "field"]
-        
-        # Mock pivot DataFrame with date columns
-        mock_pivot_df = Mock()
-        mock_pivot_df.columns = ["entity", "end_date", "entry_date", "start_date"]
+        mock_df = create_mock_dataframe(["entity", "field"])
+        mock_pivot_df = create_mock_dataframe(["entity", "end_date", "entry_date", "start_date"])
         
         # Mock the transformation chain
         mock_ranked_df = Mock()
@@ -446,12 +427,8 @@ class TestTransformDataEntityCoverage:
         """Test geometry column normalization logic."""
         mock_typology.return_value = "test-typology"
         
-        mock_df = Mock()
-        mock_df.columns = ["entity", "field"]
-        
-        # Mock pivot DataFrame with geometry columns
-        mock_pivot_df = Mock()
-        mock_pivot_df.columns = ["entity", "geometry", "point"]
+        mock_df = create_mock_dataframe(["entity", "field"])
+        mock_pivot_df = create_mock_dataframe(["entity", "geometry", "point"])
         
         # Mock the transformation chain
         mock_ranked_df = Mock()
@@ -493,11 +470,8 @@ class TestTransformDataEntityCoverage:
         """Test final column projection and deduplication."""
         mock_typology.return_value = "test-typology"
         
-        mock_df = Mock()
-        mock_df.columns = ["entity", "field"]
-        
-        mock_pivot_df = Mock()
-        mock_pivot_df.columns = ["entity"]
+        mock_df = create_mock_dataframe(["entity", "field"])
+        mock_pivot_df = create_mock_dataframe(["entity"])
         
         # Mock the transformation chain
         mock_ranked_df = Mock()
