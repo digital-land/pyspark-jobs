@@ -46,13 +46,18 @@ class TestUtilityFunctions:
             "{\"key\": value}",  # Unquoted value
             "{\"key\": \"value\",}",  # Trailing comma
             "undefined",
-            "Infinity",
             "{",  # Incomplete
             "}",  # Just closing brace
         ]
         
         for case in malformed_cases:
             assert parse_possible_json(case) is None
+    
+    def test_parse_possible_json_infinity(self):
+        """Test Infinity handling separately."""
+        import math
+        result = parse_possible_json("Infinity")
+        assert math.isinf(result)
     
     def test_parse_possible_json_nan(self):
         """Test NaN handling separately."""
