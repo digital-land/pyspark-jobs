@@ -56,16 +56,17 @@ def test_unit_marker():
 class TestBasicFixtures:
     """Test basic fixtures and configuration."""
     
-    def test_test_config(self, test_config):
-        """Test that test_config fixture works."""
-        assert hasattr(test_config, 'TEST_DB_HOST')
-        assert hasattr(test_config, 'TEST_S3_BUCKET')
+    def test_sample_database_config(self, sample_database_config):
+        """Test that sample_database_config fixture works."""
+        assert 'host' in sample_database_config
+        assert 'port' in sample_database_config
+        assert sample_database_config['host'] == 'localhost'
     
-    def test_environment_setup(self, setup_test_environment):
-        """Test that environment setup fixture works."""
-        # The fixture runs automatically, just verify some env vars are set
-        assert os.getenv('TEST_MODE') == 'true'
-        assert os.getenv('AWS_ACCESS_KEY_ID') is not None
+    def test_sample_s3_config(self, sample_s3_config):
+        """Test that sample_s3_config fixture works."""
+        assert 'bucket' in sample_s3_config
+        assert 'region' in sample_s3_config
+        assert sample_s3_config['bucket'] == 'test-bucket'
 
 
 if __name__ == "__main__":

@@ -293,6 +293,9 @@ class TestCSVS3Writer:
         # Mock head_object to return large file size (>5GB)
         mock_s3.head_object.return_value = {'ContentLength': 6 * 1024 * 1024 * 1024}
         
+        # Mock create_multipart_upload to return proper response
+        mock_s3.create_multipart_upload.return_value = {'UploadId': 'test-upload-id'}
+        
         with patch('boto3.s3.transfer.create_transfer_manager') as mock_transfer:
             mock_manager = Mock()
             mock_future = Mock()
