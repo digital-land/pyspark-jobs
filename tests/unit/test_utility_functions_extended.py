@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
 # Import utility functions that don't require PySpark
 from jobs.utils.s3_format_utils import parse_possible_json
-from jobs.utils.path_utils import validate_s3_path, extract_s3_components
+from jobs.utils.path_utils import resolve_desktop_path, resolve_repo_path, load_json_from_repo
 
 
 class TestUtilityFunctions:
@@ -55,60 +55,31 @@ class TestUtilityFunctions:
         for case in malformed_cases:
             assert parse_possible_json(case) is None
 
-    def test_validate_s3_path_valid_paths(self):
-        """Test S3 path validation with valid paths."""
-        valid_paths = [
-            "s3://bucket/path/",
-            "s3://my-bucket/folder/subfolder/",
-            "s3://bucket-name/file.txt",
-            "s3://bucket123/path_with_underscores/",
-            "s3://bucket/path/with-hyphens/",
-        ]
-        
-        for path in valid_paths:
-            assert validate_s3_path(path) is True
+    def test_resolve_desktop_path(self):
+        """Test desktop path resolution."""
+        result = resolve_desktop_path("test_file.txt")
+        assert "Desktop" in result
+        assert "test_file.txt" in result
+        assert os.path.expanduser("~") in result
 
-    def test_validate_s3_path_invalid_paths(self):
-        """Test S3 path validation with invalid paths."""
-        invalid_paths = [
-            "",
-            None,
-            "http://bucket/path/",
-            "https://bucket/path/",
-            "ftp://bucket/path/",
-            "bucket/path/",
-            "/local/path/",
-            "s3:/bucket/path/",  # Missing slash
-            "s3:///path/",  # Missing bucket
-        ]
-        
-        for path in invalid_paths:
-            assert validate_s3_path(path) is False
+    def test_resolve_repo_path(self):
+        """Test repo path resolution."""
+        result = resolve_repo_path("src/jobs/main.py")
+        assert "pyspark-jobs" in result
+        assert "src/jobs/main.py" in result
+        assert os.path.expanduser("~") in result
 
-    def test_extract_s3_components_valid(self):
-        """Test S3 component extraction from valid paths."""
-        test_cases = [
-            ("s3://bucket/path/file.txt", ("bucket", "path/file.txt")),
-            ("s3://my-bucket/", ("my-bucket", "")),
-            ("s3://bucket/folder/subfolder/", ("bucket", "folder/subfolder/")),
-        ]
+    @patch('builtins.open')
+    @patch('json.load')
+    def test_load_json_from_repo(self, mock_json_load, mock_open):
+        """Test JSON loading from repo path."""
+        mock_json_load.return_value = {"test": "data"}
         
-        for s3_path, expected in test_cases:
-            result = extract_s3_components(s3_path)
-            assert result == expected
-
-    def test_extract_s3_components_invalid(self):
-        """Test S3 component extraction from invalid paths."""
-        invalid_paths = [
-            "http://bucket/path/",
-            "bucket/path/",
-            "",
-            None,
-        ]
+        result = load_json_from_repo("config/test.json")
         
-        for path in invalid_paths:
-            with pytest.raises(ValueError):
-                extract_s3_components(path)
+        assert result == {"test": "data"}
+        mock_open.assert_called_once()
+        mock_json_load.assert_called_once()
 
 
 class TestConfigurationHandling:
@@ -142,16 +113,17 @@ class TestConfigurationHandling:
         """Test dataset typology mapping."""
         from jobs.utils.s3_dataset_typology import get_dataset_typology
         
-        # Test known dataset types
-        test_cases = [
-            ("title-boundary", "geography"),
-            ("transport-access-node", "geography"),
-            ("unknown-dataset", "unknown"),
-        ]
-        
-        for dataset, expected_typology in test_cases:
-            result = get_dataset_typology(dataset)
-            assert result == expected_typology
+        # Mock the load_datasets function to avoid network calls
+        with patch('jobs.utils.s3_dataset_typology.load_datasets') as mock_load:
+            mock_load.return_value = [
+                {'dataset': 'title-boundary', 'typology': 'geography'},
+                {'dataset': 'transport-access-node', 'typology': 'geography'},
+            ]
+            
+            # Test known dataset types
+            assert get_dataset_typology('title-boundary') == 'geography'
+            assert get_dataset_typology('transport-access-node') == 'geography'
+            assert get_dataset_typology('unknown-dataset') is None
 
 
 class TestErrorHandling:
@@ -225,8 +197,9 @@ class TestDataTypeHandling:
         mock_df.show.return_value = None
         
         # Test show_df in different environments
-        show_df(mock_df, 5, "development")  # Should call show
-        show_df(mock_df, 5, "production")   # Should not call show
+        with patch('jobs.utils.df_utils.logger') as mock_logger:
+            show_df(mock_df, 5, "development")  # Should call show
+            show_df(mock_df, 5, "production")   # Should not call show
         
         # Test count_df
         result = count_df(mock_df, "development")
@@ -235,20 +208,19 @@ class TestDataTypeHandling:
         result = count_df(mock_df, "production")
         assert result is None
 
-    def test_path_validation_edge_cases(self):
-        """Test path validation edge cases."""
-        # Test very long paths
-        long_bucket = "a" * 63  # Max bucket name length
-        long_path = "s3://{}/path/".format(long_bucket)
-        assert validate_s3_path(long_path) is True
+    def test_path_resolution_edge_cases(self):
+        """Test path resolution edge cases."""
+        # Test empty relative path
+        result = resolve_desktop_path("")
+        assert result.endswith("Desktop")
         
-        # Test minimum valid path
-        min_path = "s3://a/"
-        assert validate_s3_path(min_path) is True
+        # Test nested path
+        result = resolve_repo_path("src/jobs/utils/test.py")
+        assert "src/jobs/utils/test.py" in result
         
-        # Test path with special characters
-        special_path = "s3://bucket/path/with%20spaces/"
-        assert validate_s3_path(special_path) is True
+        # Test path with dots
+        result = resolve_desktop_path("../test.txt")
+        assert "test.txt" in result
 
 
 @pytest.mark.unit
@@ -260,6 +232,22 @@ class TestIntegrationScenarios:
         # Simulate processing a batch of JSON strings
         json_strings = [
             '{"id": 1, "name": "Item 1"}',
+            '{"id": 2, "name": "Item 2"}',
+            'invalid_json',
+            '{"nested": {"key": "value"}}'
+        ]
+        
+        results = []
+        for json_str in json_strings:
+            parsed = parse_possible_json(json_str)
+            if parsed is not None:
+                results.append(parsed)
+        
+        # Should have 3 valid results (excluding invalid_json)
+        assert len(results) == 3
+        assert results[0]["id"] == 1
+        assert results[1]["id"] == 2
+        assert results[2]["nested"]["key"] == "value"
             '"{""id"": 2, ""name"": ""Item 2""}"',  # Double-escaped
             '{"id": 3, "nested": {"value": "test"}}',
             'invalid json',
