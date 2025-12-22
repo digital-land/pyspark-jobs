@@ -109,9 +109,9 @@ class TestPostgresConnectivity:
         """Test staging table creation when pg8000 is not available."""
         conn_params = {'host': 'test', 'port': 5432}
         
-        result = create_and_prepare_staging_table(conn_params, "test-dataset")
+        with pytest.raises(ImportError, match="pg8000 required for direct database connections"):
+            create_and_prepare_staging_table(conn_params, "test-dataset")
         
-        assert result is None
         assert "pg8000 not available" in caplog.text
 
     @pytest.mark.parametrize("staging_count,insert_count,expected_success,expected_error", [
