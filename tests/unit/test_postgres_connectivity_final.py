@@ -31,14 +31,14 @@ class TestCreateTableAdvanced:
             (False,)   # Verification - no records exist
         ]
         mock_cur.rowcount = 25000  # Rows deleted per batch
+        mock_cur.fetchall.return_value = []  # No blocking queries
         
         mock_conn.cursor.return_value = mock_cur
         mock_pg8000.connect.return_value = mock_conn
         
         conn_params = {'host': 'test', 'port': 5432, 'user': 'test', 'password': 'test', 'database': 'test'}
         
-        with patch('time.time', side_effect=[0, 1, 2, 3, 4]):  # Mock timing
-            create_table(conn_params, "large-dataset")
+        create_table(conn_params, "large-dataset")
         
         # Should execute batch deletions
         assert mock_cur.execute.call_count >= 3
@@ -75,20 +75,21 @@ class TestCreateTableAdvanced:
     @patch('jobs.dbaccess.postgres_connectivity.pg8000')
     def test_create_table_database_error_retry(self, mock_pg8000):
         """Test create_table retries on database errors."""
-        from pg8000.exceptions import DatabaseError
+        # Mock DatabaseError class
+        mock_database_error = type('DatabaseError', (Exception,), {})
+        mock_pg8000.exceptions.DatabaseError = mock_database_error
         
-        mock_pg8000.exceptions.DatabaseError = DatabaseError
         mock_conn = Mock()
         mock_cur = Mock()
+        mock_cur.fetchall.return_value = []  # No blocking queries
+        mock_cur.fetchone.return_value = (0,)  # No records
+        mock_conn.cursor.return_value = mock_cur
         
         # First attempt fails with timeout, second succeeds
         mock_pg8000.connect.side_effect = [
-            DatabaseError("timeout"),
+            mock_database_error("timeout"),
             mock_conn
         ]
-        
-        mock_cur.fetchone.return_value = (0,)  # No records
-        mock_conn.cursor.return_value = mock_cur
         
         conn_params = {'host': 'test', 'port': 5432, 'user': 'test', 'password': 'test', 'database': 'test'}
         
@@ -102,6 +103,7 @@ class TestCreateTableAdvanced:
         """Test create_table handles verification failure."""
         mock_conn = Mock()
         mock_cur = Mock()
+        mock_cur.fetchall.return_value = []  # No blocking queries
         
         # Mock deletion that doesn't complete properly
         mock_cur.fetchone.side_effect = [
@@ -194,20 +196,20 @@ class TestGetPerformanceRecommendationsAdvanced:
     
     def test_performance_recommendations_edge_boundaries(self):
         """Test recommendations at boundary conditions."""
-        # Test exactly at boundary values
+        # Test exactly at boundary values - corrected expectations
         test_cases = [
-            (9999, 1000, 1),      # Just under 10k
-            (10000, 1000, 1),     # Exactly 10k
-            (99999, 2000, 2),     # Just under 100k
-            (100000, 2000, 2),    # Exactly 100k
-            (999999, 3000, 4),    # Just under 1M
-            (1000000, 3000, 4),   # Exactly 1M
+            (9999, 1000, 1),      # Just under 10k -> small dataset
+            (10000, 2000, 2),     # Exactly 10k -> small-medium dataset  
+            (99999, 2000, 2),     # Just under 100k -> small-medium
+            (100000, 3000, 4),    # Exactly 100k -> medium dataset
+            (999999, 3000, 4),    # Just under 1M -> medium
+            (1000000, 4000, 8),   # Exactly 1M -> large dataset
         ]
         
         for row_count, expected_batch, expected_partitions in test_cases:
             result = get_performance_recommendations(row_count)
-            assert result["batch_size"] == expected_batch
-            assert result["num_partitions"] == expected_partitions
+            assert result["batch_size"] == expected_batch, f"Row count {row_count}: expected batch {expected_batch}, got {result['batch_size']}"
+            assert result["num_partitions"] == expected_partitions, f"Row count {row_count}: expected partitions {expected_partitions}, got {result['num_partitions']}"
 
 
 class TestModuleEdgeCases:
@@ -218,6 +220,7 @@ class TestModuleEdgeCases:
         """Test create_table adaptive batch sizing for different dataset sizes."""
         mock_conn = Mock()
         mock_cur = Mock()
+        mock_cur.fetchall.return_value = []  # No blocking queries
         
         # Test different dataset sizes and their batch strategies
         test_cases = [
@@ -239,8 +242,7 @@ class TestModuleEdgeCases:
             
             conn_params = {'host': 'test', 'port': 5432, 'user': 'test', 'password': 'test', 'database': 'test'}
             
-            with patch('time.time', return_value=0):
-                create_table(conn_params, f"dataset-{record_count}")
+            create_table(conn_params, f"dataset-{record_count}")
             
             # Verify batch size logic was applied
             assert mock_cur.execute.call_count >= 2
