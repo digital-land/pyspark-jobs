@@ -290,6 +290,27 @@ class TestGetPerformanceRecommendations:
         assert "Very large dataset" in result["notes"][0]
 
 
+class TestWriteToPostgresOptimized:
+    """Test _write_to_postgres_optimized function."""
+    
+    @patch('jobs.dbaccess.postgres_connectivity.create_table')
+    @patch('jobs.dbaccess.postgres_connectivity._prepare_geometry_columns')
+    def test_write_optimized_basic(self, mock_prepare, mock_create):
+        """Test basic optimized write functionality."""
+        mock_df = Mock()
+        mock_df.count.return_value = 1000
+        mock_df.rdd.getNumPartitions.return_value = 2
+        mock_df.write.mode.return_value.option.return_value.jdbc = Mock()
+        mock_prepare.return_value = mock_df
+        
+        conn_params = {'host': 'test', 'port': 5432, 'user': 'test', 'password': 'test', 'database': 'test'}
+        
+        _write_to_postgres_optimized(mock_df, "test-dataset", conn_params)
+        
+        mock_create.assert_called_once()
+        mock_prepare.assert_called_once()
+
+
 class TestWriteToPostgres:
     """Test write_to_postgres function."""
     
