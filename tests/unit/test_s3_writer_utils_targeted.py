@@ -327,8 +327,8 @@ fields:
         mock_df.withColumnRenamed.return_value = mock_df
         mock_df.printSchema = Mock()
         
-        # Mock load_metadata
-        with patch('jobs.utils.s3_writer_utils.load_metadata') as mock_load_metadata:
+        # Mock load_metadata from main_collection_data
+        with patch('jobs.main_collection_data.load_metadata') as mock_load_metadata:
             mock_load_metadata.return_value = {
                 "schema_fact_res_fact_entity": ["entity", "field_name", "value"]
             }
@@ -359,8 +359,8 @@ fields:
         mock_df.withColumnRenamed.return_value = mock_df
         mock_df.printSchema = Mock()
         
-        # Mock load_metadata
-        with patch('jobs.utils.s3_writer_utils.load_metadata') as mock_load_metadata:
+        # Mock load_metadata from main_collection_data
+        with patch('jobs.main_collection_data.load_metadata') as mock_load_metadata:
             mock_load_metadata.return_value = {}
             
             mock_spark = Mock()
