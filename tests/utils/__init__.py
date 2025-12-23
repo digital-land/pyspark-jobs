@@ -10,7 +10,7 @@ from .test_utils import (
     get_test_log_file,
     cleanup_test_logs,
     create_temp_log_file,
-    TestLogContext,
+    LogContext,
     ensure_test_logs_gitignored,
     setup_test_file_logging
 )
@@ -20,7 +20,7 @@ __all__ = [
     'get_test_log_file', 
     'cleanup_test_logs',
     'create_temp_log_file',
-    'TestLogContext',
+    'LogContext',
     'ensure_test_logs_gitignored',
     'setup_test_file_logging'
 ]

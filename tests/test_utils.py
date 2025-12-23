@@ -106,7 +106,7 @@ def create_temp_log_file(prefix: str = "test_", suffix: str = ".log",
     return path
 
 
-class TestLogContext:
+class LogContext:
     """
     Context manager for test logging with automatic cleanup.
     
