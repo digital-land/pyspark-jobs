@@ -205,7 +205,7 @@ if __name__ == "__main__":
     print(f"Test logs properly gitignored: {gitignored}")
     
     # Test context manager
-    with TestLogContext("context_test") as log_file:
+    with LogContext("context_test") as log_file:
         print(f"Context log file: {log_file}")
         # Write something to the file
         with open(log_file, 'w') as f:

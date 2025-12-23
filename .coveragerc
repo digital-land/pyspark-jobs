@@ -6,6 +6,7 @@ omit =
     */__init__.py
     */setup.py
     */conftest.py
+    */Athena-connectivity.py
     */Athena-to-sqlite.py
     */setting_secrets.py
     */sqlite_writer_utils.py
