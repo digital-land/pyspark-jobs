@@ -89,8 +89,8 @@ class TestCreateAndPrepareStagingTable:
     def test_create_staging_no_pg8000(self):
         """Test staging table creation when pg8000 is not available."""
         with patch('jobs.dbaccess.postgres_connectivity.pg8000', None):
-            result = create_and_prepare_staging_table({}, "test-dataset")
-            assert result is None
+            with pytest.raises(ImportError, match="pg8000 required"):
+                create_and_prepare_staging_table({}, "test-dataset")
     
     @patch('jobs.dbaccess.postgres_connectivity.pg8000')
     @patch('jobs.dbaccess.postgres_connectivity.cleanup_old_staging_tables')
@@ -113,24 +113,24 @@ class TestCreateAndPrepareStagingTable:
     @patch('jobs.dbaccess.postgres_connectivity.pg8000')
     def test_create_staging_retry_on_interface_error(self, mock_pg8000):
         """Test staging table creation retries on InterfaceError."""
-        from pg8000.exceptions import InterfaceError
-        
-        mock_pg8000.connect.side_effect = [
-            InterfaceError("Network error"),
-            Mock()
-        ]
+        # Mock InterfaceError class
+        mock_interface_error = type('InterfaceError', (Exception,), {})
+        mock_pg8000.exceptions.InterfaceError = mock_interface_error
         
         mock_conn = Mock()
         mock_cur = Mock()
         mock_conn.cursor.return_value = mock_cur
-        mock_pg8000.connect.side_effect = [InterfaceError("Network error"), mock_conn]
+        
+        # First call raises error, second succeeds
+        mock_pg8000.connect.side_effect = [mock_interface_error("Network error"), mock_conn]
         
         conn_params = {'host': 'test', 'port': 5432}
         
-        with patch('time.sleep'):
+        with patch('time.sleep'), patch('jobs.dbaccess.postgres_connectivity.cleanup_old_staging_tables'):
             result = create_and_prepare_staging_table(conn_params, "test-dataset", max_retries=2)
         
         assert mock_pg8000.connect.call_count == 2
+        assert result is not None
 
 
 class TestCommitStagingToProduction:
@@ -139,8 +139,8 @@ class TestCommitStagingToProduction:
     def test_commit_no_pg8000(self):
         """Test commit when pg8000 is not available."""
         with patch('jobs.dbaccess.postgres_connectivity.pg8000', None):
-            result = commit_staging_to_production({}, "staging_table", "dataset")
-            assert result is None
+            with pytest.raises(ImportError, match="pg8000 required"):
+                commit_staging_to_production({}, "staging_table", "dataset")
     
     @patch('jobs.dbaccess.postgres_connectivity.pg8000')
     def test_commit_empty_staging_table(self, mock_pg8000):
@@ -199,8 +199,8 @@ class TestCalculateCentroidWkt:
     def test_calculate_centroid_no_pg8000(self):
         """Test centroid calculation when pg8000 is not available."""
         with patch('jobs.dbaccess.postgres_connectivity.pg8000', None):
-            result = calculate_centroid_wkt({})
-            assert result is None
+            with pytest.raises(AttributeError):
+                calculate_centroid_wkt({})
     
     @patch('jobs.dbaccess.postgres_connectivity.pg8000')
     def test_calculate_centroid_success(self, mock_pg8000):
@@ -239,26 +239,21 @@ class TestCalculateCentroidWkt:
 class TestPrepareGeometryColumns:
     """Test _prepare_geometry_columns function."""
     
-    @patch('jobs.dbaccess.postgres_connectivity.logger')
-    def test_prepare_geometry_columns_basic(self, mock_logger):
+    def test_prepare_geometry_columns_basic(self):
         """Test basic geometry column preparation."""
         # Mock DataFrame
         mock_df = Mock()
         mock_df.columns = ["entity", "geometry", "point", "other_col"]
         
-        # Mock column operations
-        mock_col = Mock()
-        mock_when = Mock()
-        mock_expr = Mock()
-        
-        with patch('jobs.dbaccess.postgres_connectivity.col', return_value=mock_col), \
-             patch('jobs.dbaccess.postgres_connectivity.when', return_value=mock_when), \
-             patch('jobs.dbaccess.postgres_connectivity.expr', return_value=mock_expr):
+        # Mock PySpark functions
+        with patch('pyspark.sql.functions.col') as mock_col, \
+             patch('pyspark.sql.functions.when') as mock_when, \
+             patch('pyspark.sql.functions.expr') as mock_expr:
             
             mock_df.withColumn.return_value = mock_df
-            mock_col.cast.return_value = mock_col
-            mock_when.when.return_value = mock_when
-            mock_when.otherwise.return_value = mock_col
+            mock_col.return_value.cast.return_value = mock_col.return_value
+            mock_when.return_value.when.return_value = mock_when.return_value
+            mock_when.return_value.otherwise.return_value = mock_col.return_value
             
             result = _prepare_geometry_columns(mock_df)
             
