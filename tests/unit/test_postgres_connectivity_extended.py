@@ -234,19 +234,91 @@ class TestCalculateCentroidWkt:
         mock_cur.execute.assert_called()
         mock_conn.commit.assert_called_once()
 
-
-
-
-
-class TestModuleConstants:
-    """Test module-level constants and configurations."""
+class TestPrepareGeometryColumns:
+    """Test _prepare_geometry_columns function."""
     
-    def test_entity_table_name_constant(self):
-        """Test ENTITY_TABLE_NAME constant is properly set."""
-        assert ENTITY_TABLE_NAME == "entity"
-        assert isinstance(ENTITY_TABLE_NAME, str)
-        assert len(ENTITY_TABLE_NAME) > 0
+    def test_prepare_geometry_columns_basic(self):
+        """Test basic geometry column preparation."""
+        # Mock DataFrame with simple return
+        mock_df = Mock()
+        mock_df.columns = ["entity", "geometry", "point", "other_col"]
+        mock_df.withColumn.return_value = mock_df
+        
+        result = _prepare_geometry_columns(mock_df)
+        
+        # Should return the DataFrame (possibly modified)
+        assert result is not None
+        # Should call withColumn for entity, geometry, point
+        assert mock_df.withColumn.call_count >= 3
 
+
+class TestGetPerformanceRecommendations:
+    """Test get_performance_recommendations function."""
+    
+    def test_small_dataset_recommendations(self):
+        """Test recommendations for small dataset."""
+        result = get_performance_recommendations(5000)
+        
+        assert result["method"] == "optimized"
+        assert result["batch_size"] == 1000
+        assert result["num_partitions"] == 1
+        assert "Small dataset" in result["notes"][0]
+    
+    def test_medium_dataset_recommendations(self):
+        """Test recommendations for medium dataset."""
+        result = get_performance_recommendations(500000)
+        
+        assert result["method"] == "optimized"
+        assert result["batch_size"] == 3000
+        assert result["num_partitions"] == 4
+    
+    def test_large_dataset_recommendations(self):
+        """Test recommendations for large dataset."""
+        result = get_performance_recommendations(5000000)
+        
+        assert result["method"] == "optimized"
+        assert result["batch_size"] == 4000
+        assert result["num_partitions"] == 8
+    
+    def test_very_large_dataset_recommendations(self):
+        """Test recommendations for very large dataset."""
+        result = get_performance_recommendations(20000000, available_memory_gb=16)
+        
+        assert result["method"] == "optimized"
+        assert result["batch_size"] == 5000
+        assert result["num_partitions"] >= 6
+        assert "Very large dataset" in result["notes"][0]
+
+
+class TestWriteToPostgres:
+    """Test write_to_postgres function."""
+    
+    @patch('jobs.dbaccess.postgres_connectivity._write_to_postgres_optimized')
+    def test_write_to_postgres_default_method(self, mock_optimized):
+        """Test write_to_postgres uses optimized method by default."""
+        mock_df = Mock()
+        conn_params = {'host': 'test'}
+        
+        write_to_postgres(mock_df, "test-dataset", conn_params)
+        
+        mock_optimized.assert_called_once_with(
+            mock_df, "test-dataset", conn_params, None, None, None
+        )
+    
+    @patch('jobs.dbaccess.postgres_connectivity._write_to_postgres_optimized')
+    def test_write_to_postgres_with_parameters(self, mock_optimized):
+        """Test write_to_postgres with custom parameters."""
+        mock_df = Mock()
+        conn_params = {'host': 'test'}
+        
+        write_to_postgres(
+            mock_df, "test-dataset", conn_params, 
+            method="optimized", batch_size=2000, num_partitions=4, target_table="staging"
+        )
+        
+        mock_optimized.assert_called_once_with(
+            mock_df, "test-dataset", conn_params, 2000, 4, "staging"
+        )
 
 
 class TestModuleConstants:
