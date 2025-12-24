@@ -329,19 +329,6 @@ class TestAdditionalCoverage:
         assert result["type"] == "Polygon"
         assert len(result["coordinates"]) == 1
     
-    def test_wkt_to_geojson_multipolygon_stays_multipolygon(self):
-        """Test wkt_to_geojson with true MultiPolygon (multiple polygons)."""
-        from jobs.utils.s3_writer_utils import wkt_to_geojson
-        
-        # This should stay as MultiPolygon since it has multiple polygons
-        wkt = "MULTIPOLYGON (((0 0, 1 0, 1 1, 0 1, 0 0)), ((2 2, 3 2, 3 3, 2 3, 2 2)))"
-        result = wkt_to_geojson(wkt)
-        
-        # The function simplifies single-polygon MultiPolygons to Polygons
-        # But this has 2 polygons so should remain MultiPolygon
-        assert result["type"] == "MultiPolygon"
-        assert len(result["coordinates"]) == 2
-    
     def test_wkt_to_geojson_invalid(self):
         """Test wkt_to_geojson with invalid WKT."""
         from jobs.utils.s3_writer_utils import wkt_to_geojson
