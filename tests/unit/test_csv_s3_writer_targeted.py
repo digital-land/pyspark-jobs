@@ -163,3 +163,137 @@ class TestCreateSparkSessionForCsv:
         
         result = create_spark_session_for_csv()
         assert result is not None
+
+
+class TestPrepareDataframeForCsvExtended:
+    """Extended tests for prepare_dataframe_for_csv function - targets lines 129-130, 138, 143-154, 163-164, 176-177."""
+    
+    def test_prepare_dataframe_json_columns(self):
+        """Test DataFrame preparation with JSON columns."""
+        mock_df = Mock()
+        mock_field = Mock()
+        mock_field.name = 'geojson'
+        mock_field.dataType = 'struct<type:string>'
+        mock_df.schema.fields = [mock_field]
+        mock_df.withColumn.return_value = mock_df
+        
+        result = prepare_dataframe_for_csv(mock_df)
+        assert result is not None
+        mock_df.withColumn.assert_called()
+    
+    def test_prepare_dataframe_date_columns(self):
+        """Test DataFrame preparation with date columns."""
+        mock_df = Mock()
+        mock_field = Mock()
+        mock_field.name = 'created_date'
+        mock_field.dataType = 'date'
+        mock_df.schema.fields = [mock_field]
+        mock_df.withColumn.return_value = mock_df
+        
+        result = prepare_dataframe_for_csv(mock_df)
+        assert result is not None
+        mock_df.withColumn.assert_called()
+    
+    def test_prepare_dataframe_geometry_columns(self):
+        """Test DataFrame preparation with geometry columns."""
+        mock_df = Mock()
+        mock_field = Mock()
+        mock_field.name = 'geometry'
+        mock_field.dataType = 'string'
+        mock_df.schema.fields = [mock_field]
+        mock_df.withColumn.return_value = mock_df
+        
+        result = prepare_dataframe_for_csv(mock_df)
+        assert result is not None
+        mock_df.withColumn.assert_called()
+    
+    def test_prepare_dataframe_boolean_columns(self):
+        """Test DataFrame preparation with boolean columns."""
+        mock_df = Mock()
+        mock_field = Mock()
+        mock_field.name = 'active_flag'
+        mock_field.dataType = 'boolean'
+        mock_df.schema.fields = [mock_field]
+        mock_df.withColumn.return_value = mock_df
+        
+        result = prepare_dataframe_for_csv(mock_df)
+        assert result is not None
+        mock_df.withColumn.assert_called()
+
+
+class TestWriteDataframeToCsvS3Extended:
+    """Extended tests for write_dataframe_to_csv_s3 - targets lines 247, 255, 289."""
+    
+    @patch('jobs.csv_s3_writer.prepare_dataframe_for_csv')
+    @patch('jobs.csv_s3_writer.cleanup_dataset_data')
+    @patch('jobs.csv_s3_writer.validate_s3_path')
+    def test_write_csv_invalid_s3_path(self, mock_validate, mock_cleanup, mock_prepare):
+        """Test CSV writing with invalid S3 path."""
+        mock_validate.return_value = False
+        mock_df = Mock()
+        
+        with pytest.raises(Exception):  # Should raise CSVWriterError
+            write_dataframe_to_csv_s3(
+                mock_df, "invalid://path", "entity", "test-dataset"
+            )
+    
+    @patch('jobs.csv_s3_writer.prepare_dataframe_for_csv')
+    @patch('jobs.csv_s3_writer.cleanup_dataset_data')
+    def test_write_csv_no_cleanup(self, mock_cleanup, mock_prepare):
+        """Test CSV writing without cleanup."""
+        mock_df = Mock()
+        mock_df.count.return_value = 1000
+        mock_prepare.return_value = mock_df
+        
+        # Mock the coalesce and write operations
+        mock_coalesced = Mock()
+        mock_df.coalesce.return_value = mock_coalesced
+        mock_writer = Mock()
+        mock_coalesced.write = mock_writer
+        mock_writer.format.return_value = mock_writer
+        mock_writer.option.return_value = mock_writer
+        mock_writer.mode.return_value = mock_writer
+        
+        with patch('jobs.csv_s3_writer._move_csv_to_final_location') as mock_move:
+            mock_move.return_value = "s3://bucket/final.csv"
+            
+            result = write_dataframe_to_csv_s3(
+                mock_df, "s3://bucket/output/", "entity", "test-dataset", 
+                cleanup_existing=False
+            )
+            
+            mock_cleanup.assert_not_called()
+            assert result == "s3://bucket/final.csv"
+
+
+class TestImportCsvToAuroraExtended:
+    """Extended tests for import_csv_to_aurora - targets error handling paths."""
+    
+    @patch('jobs.csv_s3_writer._import_via_jdbc')
+    @patch('jobs.csv_s3_writer.cleanup_temp_csv_files')
+    def test_import_jdbc_method(self, mock_cleanup, mock_import):
+        """Test Aurora JDBC import method."""
+        mock_import.return_value = {'rows_imported': 500}
+        
+        result = import_csv_to_aurora(
+            "s3://bucket/file.csv", "entity", "test-dataset", "development",
+            use_s3_import=False
+        )
+        
+        assert result['import_successful'] is True
+        assert result['import_method_used'] == 'jdbc'
+        mock_cleanup.assert_called_once()
+    
+    @patch('jobs.csv_s3_writer._import_via_aurora_s3')
+    @patch('jobs.csv_s3_writer.cleanup_temp_csv_files')
+    def test_import_failure_cleanup(self, mock_cleanup, mock_import):
+        """Test cleanup occurs even when import fails."""
+        mock_import.side_effect = Exception("Import failed")
+        
+        with pytest.raises(Exception):
+            import_csv_to_aurora(
+                "s3://bucket/file.csv", "entity", "test-dataset", "development"
+            )
+        
+        # Cleanup should still be called even on failure
+        mock_cleanup.assert_called_once()
