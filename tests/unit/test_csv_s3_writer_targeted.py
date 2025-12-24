@@ -297,3 +297,120 @@ class TestImportCsvToAuroraExtended:
         
         # Cleanup should still be called even on failure
         mock_cleanup.assert_called_once()
+
+
+class TestPrivateFunctions:
+    """Test private helper functions - targets lines 301-305, 310-346, 386-405."""
+    
+    @patch('jobs.csv_s3_writer._cleanup_temp_path')
+    @patch('boto3.client')
+    def test_move_csv_to_final_location(self, mock_boto3, mock_cleanup):
+        """Test _move_csv_to_final_location function."""
+        from jobs.csv_s3_writer import _move_csv_to_final_location
+        
+        mock_s3 = Mock()
+        mock_s3.list_objects_v2.return_value = {
+            'Contents': [{'Key': 'temp/part-00000.csv'}]
+        }
+        mock_s3.head_object.return_value = {'ContentLength': 1024}  # Small file
+        mock_boto3.return_value = mock_s3
+        
+        result = _move_csv_to_final_location(
+            "s3://bucket/temp/", "s3://bucket/final.csv"
+        )
+        
+        assert result == "s3://bucket/final.csv"
+        mock_s3.copy_object.assert_called_once()
+        mock_cleanup.assert_called_once()
+    
+    @patch('boto3.client')
+    def test_cleanup_temp_path(self, mock_boto3):
+        """Test _cleanup_temp_path function."""
+        from jobs.csv_s3_writer import _cleanup_temp_path
+        
+        mock_s3 = Mock()
+        mock_s3.list_objects_v2.return_value = {
+            'Contents': [{'Key': 'temp/file1.csv'}, {'Key': 'temp/file2.csv'}]
+        }
+        mock_boto3.return_value = mock_s3
+        
+        _cleanup_temp_path("s3://bucket/temp/")
+        
+        mock_s3.delete_objects.assert_called_once()
+    
+    def test_write_single_csv_file(self):
+        """Test _write_single_csv_file function."""
+        from jobs.csv_s3_writer import _write_single_csv_file
+        
+        mock_df = Mock()
+        mock_coalesced = Mock()
+        mock_df.coalesce.return_value = mock_coalesced
+        mock_writer = Mock()
+        mock_coalesced.write = mock_writer
+        mock_writer.format.return_value = mock_writer
+        mock_writer.option.return_value = mock_writer
+        mock_writer.mode.return_value = mock_writer
+        
+        config = {'include_header': True, 'sep': ',', 'quote_char': '"', 
+                 'escape_char': '"', 'null_value': '', 'date_format': 'yyyy-MM-dd',
+                 'timestamp_format': 'yyyy-MM-dd HH:mm:ss', 'compression': None}
+        
+        with patch('jobs.csv_s3_writer._move_csv_to_final_location') as mock_move:
+            mock_move.return_value = "s3://bucket/final.csv"
+            
+            result = _write_single_csv_file(
+                mock_df, "s3://bucket/output/", "entity", "test-dataset", config, 123456
+            )
+            
+            assert result == "s3://bucket/final.csv"
+
+
+class TestReadCsvFromS3Extended:
+    """Extended tests for read_csv_from_s3 - targets error handling."""
+    
+    @patch('jobs.csv_s3_writer.validate_s3_path')
+    def test_read_csv_invalid_path(self, mock_validate):
+        """Test reading CSV with invalid S3 path."""
+        mock_validate.return_value = False
+        mock_spark = Mock()
+        
+        with pytest.raises(Exception):  # Should raise CSVWriterError
+            read_csv_from_s3(mock_spark, "invalid://path")
+    
+    def test_read_csv_no_schema_inference(self):
+        """Test reading CSV without schema inference."""
+        mock_spark = Mock()
+        mock_reader = Mock()
+        mock_df = Mock()
+        mock_df.count.return_value = 100
+        
+        mock_spark.read = mock_reader
+        mock_reader.format.return_value = mock_reader
+        mock_reader.option.return_value = mock_reader
+        mock_reader.load.return_value = mock_df
+        
+        result = read_csv_from_s3(mock_spark, "s3://bucket/file.csv", infer_schema=False)
+        assert result == mock_df
+
+
+class TestGetAuroraConnectionParamsExtended:
+    """Extended tests for get_aurora_connection_params - targets error handling."""
+    
+    @patch('jobs.csv_s3_writer.get_secret_emr_compatible')
+    def test_get_connection_params_missing_fields(self, mock_get_secret):
+        """Test connection params with missing required fields."""
+        mock_get_secret.return_value = json.dumps({
+            'host': 'test-host',
+            # Missing required fields
+        })
+        
+        with pytest.raises(Exception):  # Should raise AuroraImportError
+            get_aurora_connection_params('development')
+    
+    @patch('jobs.csv_s3_writer.get_secret_emr_compatible')
+    def test_get_connection_params_secret_failure(self, mock_get_secret):
+        """Test connection params when secret retrieval fails."""
+        mock_get_secret.side_effect = Exception("Secret not found")
+        
+        with pytest.raises(Exception):  # Should raise AuroraImportError
+            get_aurora_connection_params('development')
