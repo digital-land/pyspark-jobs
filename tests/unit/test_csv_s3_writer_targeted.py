@@ -414,3 +414,68 @@ class TestGetAuroraConnectionParamsExtended:
         
         with pytest.raises(Exception):  # Should raise AuroraImportError
             get_aurora_connection_params('development')
+
+
+class TestAuroraS3Import:
+    """Test _import_via_aurora_s3 function - targets lines 706-814."""
+    
+    @patch('jobs.csv_s3_writer.get_aurora_connection_params')
+    def test_import_via_aurora_s3_no_pg8000(self, mock_get_params):
+        """Test Aurora S3 import when pg8000 is not available."""
+        from jobs.csv_s3_writer import _import_via_aurora_s3
+        
+        with patch('jobs.csv_s3_writer.pg8000', None):
+            with pytest.raises(Exception):  # Should raise AuroraImportError
+                _import_via_aurora_s3(
+                    "s3://bucket/file.csv", "entity", "test-dataset", True, "development"
+                )
+    
+    @patch('jobs.csv_s3_writer.get_aurora_connection_params')
+    @patch('pg8000.connect')
+    def test_import_via_aurora_s3_success(self, mock_connect, mock_get_params):
+        """Test successful Aurora S3 import."""
+        from jobs.csv_s3_writer import _import_via_aurora_s3
+        
+        mock_get_params.return_value = {
+            'host': 'test-host', 'port': '5432', 'database': 'testdb',
+            'username': 'testuser', 'password': 'testpass'
+        }
+        
+        mock_conn = Mock()
+        mock_cursor = Mock()
+        mock_cursor.fetchone.return_value = (100,)  # 100 rows imported
+        mock_cursor.rowcount = 50  # 50 rows deleted in truncate
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+        
+        result = _import_via_aurora_s3(
+            "s3://bucket/file.csv", "entity", "test-dataset", True, "development"
+        )
+        
+        assert result['rows_imported'] == 100
+        mock_cursor.execute.assert_called()
+        mock_conn.commit.assert_called()
+
+
+class TestMainFunction:
+    """Test main function - targets lines 864-993."""
+    
+    @patch('sys.argv', ['csv_s3_writer.py', '--import-csv', 's3://bucket/file.csv', 
+                        '--table', 'entity', '--dataset', 'test-dataset'])
+    @patch('jobs.csv_s3_writer.import_csv_to_aurora')
+    def test_main_import_csv(self, mock_import):
+        """Test main function with import-csv argument."""
+        from jobs.csv_s3_writer import main
+        
+        mock_import.return_value = {
+            'rows_imported': 1000,
+            'import_method_used': 'aurora_s3'
+        }
+        
+        try:
+            main()
+        except SystemExit as e:
+            assert e.code == 0 or e.code is NoneException("Secret not found")
+        
+        with pytest.raises(Exception):  # Should raise AuroraImportError
+            get_aurora_connection_params('development')
