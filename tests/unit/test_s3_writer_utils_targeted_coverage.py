@@ -280,7 +280,7 @@ fields:
         mock_df.count.return_value = 100
         mock_df.coalesce.return_value.write.partitionBy.return_value.mode.return_value.option.return_value.option.return_value.parquet = Mock()
         
-        with patch('jobs.utils.s3_writer_utils.cleanup_dataset_data', return_value={"objects_deleted": 0}):
+        with patch('jobs.utils.s3_writer_utils.cleanup_dataset_data', return_value={"objects_deleted": 0, "errors": []}):
             with patch('jobs.utils.s3_writer_utils.show_df'):
                 with patch('jobs.utils.s3_writer_utils.get_logger', return_value=Mock()):
                     write_to_s3(mock_df, "s3://test/", "test", "entity", "dev")
