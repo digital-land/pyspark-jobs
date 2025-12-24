@@ -304,3 +304,96 @@ class TestWriteToS3Format:
         """Test complete write_to_s3_format flow."""
         from jobs.utils.s3_writer_utils import write_to_s3_format
         assert callable(write_to_s3_format)
+
+
+class TestAdditionalCoverage:
+    """Additional tests to target remaining uncovered lines."""
+    
+    def test_wkt_to_geojson_point(self):
+        """Test wkt_to_geojson with POINT geometry."""
+        from jobs.utils.s3_writer_utils import wkt_to_geojson
+        
+        wkt = "POINT (1.5 2.5)"
+        result = wkt_to_geojson(wkt)
+        
+        assert result["type"] == "Point"
+        assert result["coordinates"] == [1.5, 2.5]
+    
+    def test_wkt_to_geojson_polygon(self):
+        """Test wkt_to_geojson with POLYGON geometry."""
+        from jobs.utils.s3_writer_utils import wkt_to_geojson
+        
+        wkt = "POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))"
+        result = wkt_to_geojson(wkt)
+        
+        assert result["type"] == "Polygon"
+        assert len(result["coordinates"]) == 1
+    
+    def test_wkt_to_geojson_multipolygon_multiple(self):
+        """Test wkt_to_geojson with multiple polygons in MultiPolygon."""
+        from jobs.utils.s3_writer_utils import wkt_to_geojson
+        
+        wkt = "MULTIPOLYGON (((0 0, 1 0, 1 1, 0 1, 0 0)), ((2 2, 3 2, 3 3, 2 3, 2 2)))"
+        result = wkt_to_geojson(wkt)
+        
+        assert result["type"] == "MultiPolygon"
+        assert len(result["coordinates"]) == 2
+    
+    def test_wkt_to_geojson_invalid(self):
+        """Test wkt_to_geojson with invalid WKT."""
+        from jobs.utils.s3_writer_utils import wkt_to_geojson
+        
+        result = wkt_to_geojson("INVALID WKT")
+        assert result is None
+    
+    @patch('jobs.utils.s3_writer_utils.fetch_dataset_schema_fields')
+    @patch('jobs.utils.s3_writer_utils.get_logger')
+    def test_ensure_schema_fields_missing_fields(self, mock_logger, mock_fetch):
+        """Test ensure_schema_fields when some fields are missing."""
+        from jobs.utils.s3_writer_utils import ensure_schema_fields
+        
+        mock_logger.return_value = Mock()
+        mock_fetch.return_value = ["entity", "name", "geometry"]
+        
+        mock_df = Mock()
+        mock_df.columns = ["entity", "name"]  # Missing 'geometry'
+        mock_df.withColumn.return_value = mock_df
+        mock_df.select.return_value = mock_df
+        
+        result = ensure_schema_fields(mock_df, "test-dataset")
+        assert result == mock_df
+    
+    @patch('requests.get')
+    @patch('jobs.utils.s3_writer_utils.get_logger')
+    def test_fetch_schema_fields_partial_frontmatter(self, mock_logger, mock_requests):
+        """Test fetch_dataset_schema_fields with partial YAML frontmatter."""
+        from jobs.utils.s3_writer_utils import fetch_dataset_schema_fields
+        
+        mock_logger.return_value = Mock()
+        mock_response = Mock()
+        mock_response.text = """---
+fields:
+- field: entity
+other_section:
+  value: test
+---
+# Documentation
+"""
+        mock_requests.return_value = mock_response
+        
+        result = fetch_dataset_schema_fields("test-dataset")
+        assert result == ["entity"]
+    
+    @patch('requests.get')
+    @patch('jobs.utils.s3_writer_utils.get_logger')
+    def test_fetch_schema_fields_http_error(self, mock_logger, mock_requests):
+        """Test fetch_dataset_schema_fields with HTTP error."""
+        from jobs.utils.s3_writer_utils import fetch_dataset_schema_fields
+        
+        mock_logger.return_value = Mock()
+        mock_response = Mock()
+        mock_response.raise_for_status.side_effect = Exception("HTTP 404")
+        mock_requests.return_value = mock_response
+        
+        result = fetch_dataset_schema_fields("test-dataset")
+        assert result == []
