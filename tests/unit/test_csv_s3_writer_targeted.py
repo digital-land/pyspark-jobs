@@ -424,7 +424,8 @@ class TestAuroraS3Import:
         """Test Aurora S3 import when pg8000 is not available."""
         from jobs.csv_s3_writer import _import_via_aurora_s3
         
-        with patch('jobs.csv_s3_writer.pg8000', None):
+        # Mock the import to raise ImportError
+        with patch('builtins.__import__', side_effect=ImportError("No module named 'pg8000'")):
             with pytest.raises(Exception):  # Should raise AuroraImportError
                 _import_via_aurora_s3(
                     "s3://bucket/file.csv", "entity", "test-dataset", True, "development"
@@ -475,7 +476,4 @@ class TestMainFunction:
         try:
             main()
         except SystemExit as e:
-            assert e.code == 0 or e.code is NoneException("Secret not found")
-        
-        with pytest.raises(Exception):  # Should raise AuroraImportError
-            get_aurora_connection_params('development')
+            assert e.code == 0 or e.code is None
