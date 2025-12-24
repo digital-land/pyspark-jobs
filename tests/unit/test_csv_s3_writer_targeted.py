@@ -477,3 +477,88 @@ class TestMainFunction:
             main()
         except SystemExit as e:
             assert e.code == 0 or e.code is None
+
+
+class TestRemainingUncoveredLines:
+    """Target the final remaining uncovered lines for maximum coverage."""
+    
+    def test_write_multiple_csv_files(self):
+        """Test _write_multiple_csv_files function - targets lines 310-346."""
+        from jobs.csv_s3_writer import _write_multiple_csv_files
+        
+        mock_df = Mock()
+        mock_df.count.return_value = 50000
+        mock_df.repartition.return_value = mock_df
+        mock_writer = Mock()
+        mock_df.write = mock_writer
+        mock_writer.format.return_value = mock_writer
+        mock_writer.option.return_value = mock_writer
+        mock_writer.mode.return_value = mock_writer
+        
+        config = {'include_header': True, 'sep': ',', 'quote_char': '"', 
+                 'escape_char': '"', 'null_value': '', 'date_format': 'yyyy-MM-dd',
+                 'timestamp_format': 'yyyy-MM-dd HH:mm:ss', 'compression': None,
+                 'max_records_per_file': 10000}
+        
+        result = _write_multiple_csv_files(
+            mock_df, "s3://bucket/output/", "entity", "test-dataset", config
+        )
+        
+        assert "csv/entity_test-dataset/" in result
+    
+    @patch('jobs.csv_s3_writer.get_aurora_connection_params')
+    @patch('pg8000.connect')
+    def test_aurora_s3_import_error_handling(self, mock_connect, mock_get_params):
+        """Test Aurora S3 import error handling - targets lines 798-808."""
+        from jobs.csv_s3_writer import _import_via_aurora_s3
+        
+        mock_get_params.return_value = {
+            'host': 'test-host', 'port': '5432', 'database': 'testdb',
+            'username': 'testuser', 'password': 'testpass'
+        }
+        
+        # Mock connection failure
+        mock_connect.side_effect = Exception("Connection failed")
+        
+        with pytest.raises(Exception):  # Should raise AuroraImportError
+            _import_via_aurora_s3(
+                "s3://bucket/file.csv", "entity", "test-dataset", True, "development"
+            )
+    
+    @patch('sys.argv', ['csv_s3_writer.py', '--help'])
+    def test_main_help_argument(self):
+        """Test main function with help argument - targets lines 941-972."""
+        from jobs.csv_s3_writer import main
+        
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+        # Help should exit with code 0
+        assert exc_info.value.code == 0
+    
+    @patch('sys.argv', ['csv_s3_writer.py', '--table', 'entity'])
+    def test_main_missing_required_args(self):
+        """Test main function with missing required arguments - targets lines 989-993."""
+        from jobs.csv_s3_writer import main
+        
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+        # Missing required args should exit with non-zero code
+        assert exc_info.value.code != 0
+    
+    @patch('jobs.csv_s3_writer.create_spark_session_for_csv')
+    def test_jdbc_import_error_handling(self, mock_create_spark):
+        """Test JDBC import error handling - targets lines 819-855."""
+        from jobs.csv_s3_writer import _import_via_jdbc
+        
+        mock_spark = Mock()
+        mock_create_spark.return_value = mock_spark
+        
+        # Mock read_csv_from_s3 to raise exception
+        with patch('jobs.csv_s3_writer.read_csv_from_s3', side_effect=Exception("Read failed")):
+            with pytest.raises(Exception):  # Should raise AuroraImportError
+                _import_via_jdbc(
+                    "s3://bucket/file.csv", "entity", "test-dataset", "development", True
+                )
+            
+            # Spark should still be stopped even on error
+            mock_spark.stop.assert_called_once()
