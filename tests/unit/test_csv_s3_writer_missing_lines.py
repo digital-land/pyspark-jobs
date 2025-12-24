@@ -75,9 +75,11 @@ class TestCsvS3WriterMissingLines:
             }
             mock_s3.head_object.return_value = {'ContentLength': 6 * 1024 * 1024 * 1024}  # 6GB
             
+            # Mock the transfer manager to avoid complex S3 transfer mocking
             with patch('boto3.s3.transfer.create_transfer_manager') as mock_transfer:
                 mock_manager = Mock()
                 mock_future = Mock()
+                mock_future.result.return_value = None  # Successful completion
                 mock_manager.copy.return_value = mock_future
                 mock_transfer.return_value = mock_manager
                 
