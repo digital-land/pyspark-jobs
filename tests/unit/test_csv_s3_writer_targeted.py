@@ -7,6 +7,7 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 import tempfile
 import os
+import json
 
 # Import functions from csv_s3_writer
 from jobs.csv_s3_writer import (
