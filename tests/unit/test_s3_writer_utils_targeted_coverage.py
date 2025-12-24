@@ -1,0 +1,261 @@
+"""
+Targeted tests for s3_writer_utils.py uncovered lines.
+Focuses on lines: 70, 76, 94-149, 189, 334, 345-355, 386, 490-711, 718-721
+"""
+
+import pytest
+from unittest.mock import Mock, patch
+
+
+class TestS3WriterUtilsUncoveredLines:
+    """Target specific uncovered lines in s3_writer_utils.py."""
+    
+    def test_transform_entity_no_priority_column(self):
+        """Target lines 70, 76 - missing priority column logic."""
+        from jobs.utils.s3_writer_utils import transform_data_entity_format
+        
+        mock_df = Mock()
+        mock_df.columns = ["entity", "field", "value", "entry_date", "entry_number"]  # No priority
+        mock_df.withColumn.return_value = mock_df
+        mock_df.filter.return_value = mock_df
+        mock_df.drop.return_value = mock_df
+        mock_df.groupBy.return_value.pivot.return_value.agg.return_value = mock_df
+        mock_df.withColumnRenamed.return_value = mock_df
+        mock_df.join.return_value.select.return_value.drop.return_value = mock_df
+        mock_df.select.return_value.dropDuplicates.return_value = mock_df
+        
+        mock_spark = Mock()
+        mock_spark.read.option.return_value.csv.return_value = Mock()
+        
+        with patch('jobs.utils.s3_writer_utils.get_dataset_typology', return_value="test"):
+            with patch('jobs.utils.s3_writer_utils.show_df'):
+                with patch('jobs.utils.s3_writer_utils.get_logger', return_value=Mock()):
+                    result = transform_data_entity_format(mock_df, "test", mock_spark, "dev")
+                    assert result is not None
+    
+    def test_transform_entity_geojson_drop(self):
+        """Target lines 94-149 - geojson column handling."""
+        from jobs.utils.s3_writer_utils import transform_data_entity_format
+        
+        mock_df = Mock()
+        mock_df.columns = ["entity", "field", "value", "priority", "entry_date", "entry_number"]
+        mock_df.withColumn.return_value = mock_df
+        mock_df.filter.return_value = mock_df
+        mock_df.drop.return_value = mock_df
+        mock_df.groupBy.return_value.pivot.return_value.agg.return_value = mock_df
+        mock_df.withColumnRenamed.return_value = mock_df
+        mock_df.join.return_value.select.return_value.drop.return_value = mock_df
+        mock_df.select.return_value.dropDuplicates.return_value = mock_df
+        
+        # Mock pivot result with geojson column
+        mock_pivot = Mock()
+        mock_pivot.columns = ["entity", "name", "geojson", "custom_field"]
+        mock_pivot.withColumn.return_value = mock_pivot
+        mock_pivot.withColumnRenamed.return_value = mock_pivot
+        mock_pivot.drop.return_value = mock_pivot
+        mock_pivot.join.return_value.select.return_value.drop.return_value = mock_pivot
+        mock_pivot.select.return_value.dropDuplicates.return_value = mock_pivot
+        
+        mock_df.groupBy.return_value.pivot.return_value.agg.return_value = mock_pivot
+        
+        mock_spark = Mock()
+        mock_spark.read.option.return_value.csv.return_value = Mock()
+        
+        with patch('jobs.utils.s3_writer_utils.get_dataset_typology', return_value="test"):
+            with patch('jobs.utils.s3_writer_utils.show_df'):
+                with patch('jobs.utils.s3_writer_utils.get_logger', return_value=Mock()):
+                    result = transform_data_entity_format(mock_df, "test", mock_spark, "dev")
+                    assert result is not None
+    
+    def test_normalise_schema_unknown_table(self):
+        """Target line 189 - unknown table name error."""
+        from jobs.utils.s3_writer_utils import normalise_dataframe_schema
+        
+        mock_df = Mock()
+        mock_df.columns = ["field1", "field2"]
+        mock_df.withColumnRenamed.return_value = mock_df
+        mock_df.printSchema = Mock()
+        
+        with patch('jobs.utils.s3_writer_utils.load_metadata', return_value={"schema_fact_res_fact_entity": []}):
+            with patch('jobs.utils.s3_writer_utils.show_df'):
+                with patch('jobs.utils.s3_writer_utils.get_logger', return_value=Mock()):
+                    with pytest.raises(ValueError, match="Unknown table name"):
+                        normalise_dataframe_schema(mock_df, "unknown", "test", Mock(), "dev")
+    
+    def test_write_to_s3_entity_global(self):
+        """Target line 334 - setting global df_entity."""
+        from jobs.utils.s3_writer_utils import write_to_s3
+        
+        mock_df = Mock()
+        mock_df.withColumn.return_value = mock_df
+        mock_df.drop.return_value = mock_df
+        mock_df.count.return_value = 1000
+        mock_df.coalesce.return_value.write.partitionBy.return_value.mode.return_value.option.return_value.option.return_value.parquet = Mock()
+        
+        with patch('jobs.utils.s3_writer_utils.cleanup_dataset_data', return_value={"objects_deleted": 0, "errors": []}):
+            with patch('jobs.utils.s3_writer_utils.show_df'):
+                with patch('jobs.utils.s3_writer_utils.get_logger', return_value=Mock()):
+                    write_to_s3(mock_df, "s3://bucket/", "test", "entity", "dev")
+                    
+                    # Check global was set
+                    from jobs.utils.s3_writer_utils import df_entity
+                    assert df_entity == mock_df
+    
+    def test_cleanup_temp_path_with_contents(self):
+        """Target lines 345-355 - cleanup with S3 objects."""
+        from jobs.utils.s3_writer_utils import cleanup_temp_path
+        
+        with patch('boto3.client') as mock_boto3:
+            mock_s3 = Mock()
+            mock_boto3.return_value = mock_s3
+            
+            mock_paginator = Mock()
+            mock_s3.get_paginator.return_value = mock_paginator
+            mock_paginator.paginate.return_value = [
+                {'Contents': [{'Key': 'temp/file1.csv'}, {'Key': 'temp/file2.csv'}]}
+            ]
+            
+            with patch('jobs.utils.s3_writer_utils.get_logger', return_value=Mock()):
+                cleanup_temp_path("dev", "test")
+                
+                mock_s3.delete_objects.assert_called_once()
+    
+    def test_wkt_to_geojson_invalid_return(self):
+        """Target line 386 - invalid WKT return None."""
+        from jobs.utils.s3_writer_utils import wkt_to_geojson
+        
+        result = wkt_to_geojson("INVALID WKT FORMAT")
+        assert result is None
+    
+    def test_round_point_coordinates_no_point_col(self):
+        """Target lines 410-411 - no point column."""
+        from jobs.utils.s3_writer_utils import round_point_coordinates
+        
+        mock_df = Mock()
+        mock_df.columns = ["entity", "name"]  # No point column
+        
+        result = round_point_coordinates(mock_df)
+        assert result == mock_df
+    
+    @patch('requests.get')
+    def test_fetch_schema_fields_success(self, mock_get):
+        """Target lines 490-711 - successful schema fetch."""
+        from jobs.utils.s3_writer_utils import fetch_dataset_schema_fields
+        
+        mock_response = Mock()
+        mock_response.text = """---
+fields:
+- field: entity
+- field: name
+---"""
+        mock_get.return_value = mock_response
+        
+        with patch('jobs.utils.s3_writer_utils.get_logger', return_value=Mock()):
+            result = fetch_dataset_schema_fields("test")
+            assert "entity" in result
+            assert "name" in result
+    
+    @patch('requests.get')
+    def test_fetch_schema_fields_error(self, mock_get):
+        """Target lines 490-711 - request error handling."""
+        from jobs.utils.s3_writer_utils import fetch_dataset_schema_fields
+        
+        mock_get.side_effect = Exception("Network error")
+        
+        with patch('jobs.utils.s3_writer_utils.get_logger', return_value=Mock()):
+            result = fetch_dataset_schema_fields("test")
+            assert result == []
+    
+    def test_ensure_schema_fields_no_schema(self):
+        """Target lines 718-721 - no schema fields."""
+        from jobs.utils.s3_writer_utils import ensure_schema_fields
+        
+        mock_df = Mock()
+        
+        with patch('jobs.utils.s3_writer_utils.fetch_dataset_schema_fields', return_value=[]):
+            with patch('jobs.utils.s3_writer_utils.get_logger', return_value=Mock()):
+                result = ensure_schema_fields(mock_df, "test")
+                assert result == mock_df
+    
+    def test_ensure_schema_fields_missing_fields(self):
+        """Target lines 718-721 - missing fields addition."""
+        from jobs.utils.s3_writer_utils import ensure_schema_fields
+        
+        mock_df = Mock()
+        mock_df.columns = ["entity"]
+        mock_df.withColumn.return_value = mock_df
+        mock_df.select.return_value = mock_df
+        
+        with patch('jobs.utils.s3_writer_utils.fetch_dataset_schema_fields', return_value=["entity", "name"]):
+            with patch('jobs.utils.s3_writer_utils.get_logger', return_value=Mock()):
+                result = ensure_schema_fields(mock_df, "test")
+                assert result == mock_df
+    
+    def test_ensure_schema_fields_error(self):
+        """Target lines 718-721 - error handling."""
+        from jobs.utils.s3_writer_utils import ensure_schema_fields
+        
+        mock_df = Mock()
+        
+        with patch('jobs.utils.s3_writer_utils.fetch_dataset_schema_fields', side_effect=Exception("Error")):
+            with patch('jobs.utils.s3_writer_utils.get_logger', return_value=Mock()):
+                result = ensure_schema_fields(mock_df, "test")
+                assert result == mock_df
+
+
+class TestS3WriterUtilsAdditionalCoverage:
+    """Additional coverage for remaining functions."""
+    
+    def test_wkt_to_geojson_point(self):
+        """Test POINT geometry conversion."""
+        from jobs.utils.s3_writer_utils import wkt_to_geojson
+        
+        result = wkt_to_geojson("POINT (1.5 2.5)")
+        assert result["type"] == "Point"
+        assert result["coordinates"] == [1.5, 2.5]
+    
+    def test_wkt_to_geojson_polygon(self):
+        """Test POLYGON geometry conversion."""
+        from jobs.utils.s3_writer_utils import wkt_to_geojson
+        
+        result = wkt_to_geojson("POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))")
+        assert result["type"] == "Polygon"
+        assert len(result["coordinates"]) == 1
+    
+    def test_wkt_to_geojson_multipolygon_single(self):
+        """Test MULTIPOLYGON simplification."""
+        from jobs.utils.s3_writer_utils import wkt_to_geojson
+        
+        result = wkt_to_geojson("MULTIPOLYGON (((0 0, 1 0, 1 1, 0 1, 0 0)))")
+        assert result["type"] == "Polygon"  # Should be simplified
+    
+    @patch('boto3.client')
+    def test_s3_rename_and_move_existing_file(self, mock_boto3):
+        """Test S3 rename with existing file."""
+        from jobs.utils.s3_writer_utils import s3_rename_and_move
+        
+        mock_s3 = Mock()
+        mock_boto3.return_value = mock_s3
+        mock_s3.head_object.return_value = {}
+        mock_s3.list_objects_v2.return_value = {'Contents': [{'Key': 'temp/file.csv'}]}
+        
+        with patch('jobs.utils.s3_writer_utils.get_logger', return_value=Mock()):
+            s3_rename_and_move("dev", "test", "csv", "bucket")
+            mock_s3.delete_object.assert_called()
+            mock_s3.copy_object.assert_called()
+    
+    @patch('boto3.client')
+    def test_s3_rename_and_move_no_existing_file(self, mock_boto3):
+        """Test S3 rename without existing file."""
+        from jobs.utils.s3_writer_utils import s3_rename_and_move
+        
+        mock_s3 = Mock()
+        mock_boto3.return_value = mock_s3
+        mock_s3.head_object.side_effect = mock_s3.exceptions.ClientError(
+            {'Error': {'Code': 'NoSuchKey'}}, 'HeadObject'
+        )
+        mock_s3.list_objects_v2.return_value = {'Contents': [{'Key': 'temp/file.csv'}]}
+        
+        with patch('jobs.utils.s3_writer_utils.get_logger', return_value=Mock()):
+            s3_rename_and_move("dev", "test", "csv", "bucket")
+            mock_s3.copy_object.assert_called()
