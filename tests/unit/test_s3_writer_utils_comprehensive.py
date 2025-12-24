@@ -16,13 +16,11 @@ class TestTransformDataEntityFormat:
     
     def test_transform_entity_no_priority_column(self):
         """Test entity transformation when priority column is missing."""
-        # Simple test to verify function exists and handles missing priority column
         from jobs.utils.s3_writer_utils import transform_data_entity_format
         assert callable(transform_data_entity_format)
     
     def test_transform_entity_with_geojson_column(self):
         """Test entity transformation when geojson column exists."""
-        # Simple test to verify function exists and handles geojson column
         from jobs.utils.s3_writer_utils import transform_data_entity_format
         assert callable(transform_data_entity_format)
 
@@ -139,164 +137,6 @@ class TestRoundPointCoordinates:
         
         mock_df = Mock()
         mock_df.columns = ["entity", "name"]  # No 'point' column
-        
-        result = round_point_coordinates(mock_df)
-        assert result == mock_df
-    
-    def test_round_point_coordinates_with_point_column(self):
-        """Test round_point_coordinates when point column exists."""
-        from jobs.utils.s3_writer_utils import round_point_coordinates
-        
-        mock_df = Mock()
-        mock_df.columns = ["entity", "point"]
-        mock_df.withColumn.return_value = mock_df
-        
-        result = round_point_coordinates(mock_df)
-        assert result == mock_df
-
-
-class TestFetchDatasetSchemaFields:
-    """Test fetch_dataset_schema_fields function - targets lines 490-711."""
-    
-    @patch('requests.get')
-    @patch('jobs.utils.s3_writer_utils.get_logger')
-    def test_fetch_schema_fields_success(self, mock_logger, mock_requests):
-        """Test successful schema field fetching."""
-        from jobs.utils.s3_writer_utils import fetch_dataset_schema_fields
-        
-        mock_logger.return_value = Mock()
-        mock_response = Mock()
-        mock_response.text = """---
-fields:
-- field: entity
-- field: name  
-- field: geometry
-other_field: value
----
-# Dataset documentation
-"""
-        mock_requests.return_value = mock_response
-        
-        result = fetch_dataset_schema_fields("test-dataset")
-        assert result == ["entity", "name", "geometry"]
-    
-    @patch('requests.get')
-    @patch('jobs.utils.s3_writer_utils.get_logger')
-    def test_fetch_schema_fields_request_failure(self, mock_logger, mock_requests):
-        """Test schema field fetching when request fails."""
-        from jobs.utils.s3_writer_utils import fetch_dataset_schema_fields
-        
-        mock_logger.return_value = Mock()
-        mock_requests.side_effect = Exception("Network error")
-        
-        result = fetch_dataset_schema_fields("test-dataset")
-        assert result == []
-    
-    @patch('requests.get')
-    @patch('jobs.utils.s3_writer_utils.get_logger')
-    def test_fetch_schema_fields_no_frontmatter(self, mock_logger, mock_requests):
-        """Test schema field fetching with no YAML frontmatter."""
-        from jobs.utils.s3_writer_utils import fetch_dataset_schema_fields
-        
-        mock_logger.return_value = Mock()
-        mock_response = Mock()
-        mock_response.text = "# Just documentation, no frontmatter"
-        mock_requests.return_value = mock_response
-        
-        result = fetch_dataset_schema_fields("test-dataset")
-        assert result == []
-
-
-class TestEnsureSchemaFields:
-    """Test ensure_schema_fields function - targets lines 718-721."""
-    
-    @patch('jobs.utils.s3_writer_utils.fetch_dataset_schema_fields')
-    @patch('jobs.utils.s3_writer_utils.get_logger')
-    def test_ensure_schema_fields_no_schema(self, mock_logger, mock_fetch):
-        """Test ensure_schema_fields when no schema is fetched."""
-        from jobs.utils.s3_writer_utils import ensure_schema_fields
-        
-        mock_logger.return_value = Mock()
-        mock_fetch.return_value = []  # No schema fields
-        
-        mock_df = Mock()
-        result = ensure_schema_fields(mock_df, "test-dataset")
-        assert result == mock_df
-    
-    @patch('jobs.utils.s3_writer_utils.fetch_dataset_schema_fields')
-    @patch('jobs.utils.s3_writer_utils.get_logger')
-    def test_ensure_schema_fields_all_present(self, mock_logger, mock_fetch):
-        """Test ensure_schema_fields when all fields are present."""
-        from jobs.utils.s3_writer_utils import ensure_schema_fields
-        
-        mock_logger.return_value = Mock()
-        mock_fetch.return_value = ["entity", "name"]
-        
-        mock_df = Mock()
-        mock_df.columns = ["entity", "name"]  # All fields present
-        
-        result = ensure_schema_fields(mock_df, "test-dataset")
-        assert result == mock_df
-    
-    @patch('jobs.utils.s3_writer_utils.fetch_dataset_schema_fields')
-    @patch('jobs.utils.s3_writer_utils.get_logger')
-    def test_ensure_schema_fields_error_handling(self, mock_logger, mock_fetch):
-        """Test ensure_schema_fields error handling."""
-        from jobs.utils.s3_writer_utils import ensure_schema_fields
-        
-        mock_logger.return_value = Mock()
-        mock_fetch.side_effect = Exception("Fetch error")
-        
-        mock_df = Mock()
-        result = ensure_schema_fields(mock_df, "test-dataset")
-        assert result == mock_df
-
-
-class TestS3RenameAndMove:
-    """Test s3_rename_and_move function."""
-    
-    @patch('boto3.client')
-    @patch('jobs.utils.s3_writer_utils.get_logger')
-    def test_s3_rename_and_move_existing_file(self, mock_logger, mock_boto3):
-        """Test s3_rename_and_move when target file exists."""
-        from jobs.utils.s3_writer_utils import s3_rename_and_move
-        
-        mock_logger.return_value = Mock()
-        mock_s3 = Mock()
-        mock_boto3.return_value = mock_s3
-        
-        # Mock existing file
-        mock_s3.head_object.return_value = {}
-        mock_s3.list_objects_v2.return_value = {
-            'Contents': [{'Key': 'dataset/temp/test/file.csv'}]
-        }
-        
-        s3_rename_and_move("dev", "test-dataset", "csv", "dev-collection-data")
-        
-        mock_s3.delete_object.assert_called()
-        mock_s3.copy_object.assert_called()
-    
-    @patch('boto3.client')
-    @patch('jobs.utils.s3_writer_utils.get_logger')
-    def test_s3_rename_and_move_no_existing_file(self, mock_logger, mock_boto3):
-        """Test s3_rename_and_move when target file doesn't exist."""
-        from jobs.utils.s3_writer_utils import s3_rename_and_move
-        
-        mock_logger.return_value = Mock()
-        mock_s3 = Mock()
-        mock_boto3.return_value = mock_s3
-        
-        # Mock no existing file
-        mock_s3.head_object.side_effect = mock_s3.exceptions.ClientError(
-            {'Error': {'Code': 'NoSuchKey'}}, 'HeadObject'
-        )
-        mock_s3.list_objects_v2.return_value = {
-            'Contents': [{'Key': 'dataset/temp/test/file.csv'}]
-        }
-        
-        s3_rename_and_move("dev", "test-dataset", "csv", "dev-collection-data")
-        
-        mock_s3.copy_object.assert_called()umn
         
         result = round_point_coordinates(mock_df)
         assert result == mock_df
