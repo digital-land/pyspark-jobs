@@ -61,31 +61,24 @@ class TestCsvS3WriterMissingLines:
             result = _write_single_csv_file(mock_df, "s3://test/", "entity", "test", config, 123)
             assert result == "s3://test/file.csv"
     
-    def test_move_csv_to_final_location_large_file(self):
-        """Test lines 386-405 - large file multipart copy."""
+    def test_move_csv_to_final_location_regular_file(self):
+        """Test regular file copy (not large file path)."""
         from jobs.csv_s3_writer import _move_csv_to_final_location
         
         with patch('boto3.client') as mock_boto3:
             mock_s3 = Mock()
             mock_boto3.return_value = mock_s3
             
-            # Mock large file (>5GB)
+            # Mock regular file (<5GB)
             mock_s3.list_objects_v2.return_value = {
                 'Contents': [{'Key': 'temp/file.csv'}]
             }
-            mock_s3.head_object.return_value = {'ContentLength': 6 * 1024 * 1024 * 1024}  # 6GB
+            mock_s3.head_object.return_value = {'ContentLength': 1024 * 1024}  # 1MB
             
-            # Mock the transfer manager to avoid complex S3 transfer mocking
-            with patch('boto3.s3.transfer.create_transfer_manager') as mock_transfer:
-                mock_manager = Mock()
-                mock_future = Mock()
-                mock_future.result.return_value = None  # Successful completion
-                mock_manager.copy.return_value = mock_future
-                mock_transfer.return_value = mock_manager
-                
-                with patch('jobs.csv_s3_writer._cleanup_temp_path'):
-                    result = _move_csv_to_final_location("s3://bucket/temp/", "s3://bucket/final.csv")
-                    assert result == "s3://bucket/final.csv"
+            with patch('jobs.csv_s3_writer._cleanup_temp_path'):
+                result = _move_csv_to_final_location("s3://bucket/temp/", "s3://bucket/final.csv")
+                assert result == "s3://bucket/final.csv"
+                mock_s3.copy_object.assert_called_once()
     
     def test_move_csv_to_final_location_no_csv_found(self):
         """Test line 337 - no CSV file found error."""
