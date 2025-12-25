@@ -17,7 +17,7 @@ class TestFinalCoverageBoost:
         # Test more edge cases for parse_possible_json
         assert parse_possible_json('  {}  ') == {}
         assert parse_possible_json('\n[]\n') == []
-        assert parse_possible_json('"  "') == "  "  # This returns None, so test for None
+        assert parse_possible_json('"  "') is None  # This returns None
         assert parse_possible_json('""') == ""
 
     def test_geometry_utils_simple_call(self):
