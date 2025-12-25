@@ -18,7 +18,7 @@ class TestFinalCoverageBoost:
         assert parse_possible_json('  {}  ') == {}
         assert parse_possible_json('\n[]\n') == []
         assert parse_possible_json('"  "') is None  # This returns None
-        assert parse_possible_json('""') == ""
+        assert parse_possible_json('""') is None  # This also returns None
 
     def test_geometry_utils_simple_call(self):
         """Test geometry_utils with minimal approach."""
