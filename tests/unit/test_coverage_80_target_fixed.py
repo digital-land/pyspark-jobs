@@ -262,9 +262,9 @@ fields:
             from jobs.main_collection_data import load_metadata
             
             # Test with invalid JSON content
-            with patch('builtins.open', Mock()) as mock_open:
-                mock_open.return_value.__enter__.return_value.read.return_value = "invalid json"
-                
+            mock_file = Mock()
+            mock_file.read.return_value = "invalid json"
+            with patch('builtins.open', Mock(return_value=mock_file)):
                 try:
                     load_metadata("invalid.json")
                 except Exception:
