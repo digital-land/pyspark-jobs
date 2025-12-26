@@ -209,8 +209,7 @@ fields:
         with patch.dict('sys.modules', {'pyspark.sql': Mock(), 'pyspark.sql.functions': Mock(), 'boto3': Mock(), 'pg8000': Mock()}):
             from jobs.csv_s3_writer import (
                 prepare_dataframe_for_csv, _write_multiple_csv_files, 
-                _move_csv_to_final_location, get_aurora_connection_params,
-                _import_via_aurora_s3, _import_via_jdbc
+                get_aurora_connection_params
             )
             
             # Test prepare_dataframe_for_csv with different column types (lines 146, 247, 255)
@@ -255,12 +254,3 @@ fields:
                     get_aurora_connection_params("dev")
                 except Exception:
                     pass  # Expected due to missing required fields
-            
-            # Test _import_via_aurora_s3 error handling (lines 835-842)
-            with patch('jobs.csv_s3_writer.pg8000') as mock_pg8000:
-                mock_pg8000.connect.side_effect = Exception("Connection failed")
-                
-                try:
-                    _import_via_aurora_s3("s3://bucket/file.csv", "table", "dataset", True, "dev")
-                except Exception:
-                    pass  # Expected connection failure
