@@ -28,7 +28,6 @@ class TestPrecisionTargeted:
             'pyspark.sql.window': Mock()
         }):
             # Mock the Window and functions
-            from unittest.mock import Mock
             mock_window = Mock()
             mock_window.partitionBy.return_value.orderBy.return_value.rowsBetween.return_value = "window_spec"
             
