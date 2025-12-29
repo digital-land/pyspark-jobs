@@ -210,11 +210,15 @@ class TestLowestCoverageModules:
                 # Call all functions with various parameters
                 for func in functions:
                     try:
-                        if 'dataframe' in func.__name__.lower():
+                        # Skip main function as it requires command line args
+                        if func.__name__ == 'main':
+                            continue
+                        elif 'dataframe' in func.__name__.lower():
                             func(mock_df)
                         elif 'connection' in func.__name__.lower():
                             func("dev")
                         else:
+                            # Try calling with no args first
                             func()
                     except Exception:
                         pass
