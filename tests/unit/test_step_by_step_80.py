@@ -45,3 +45,18 @@ class TestStepByStep80:
                     load_metadata("/definitely/does/not/exist.json")
                 except FileNotFoundError:
                     pass  # This hits line 99
+
+    def test_step_4_s3_utils_lines_166_169(self):
+        """Step 4: Target s3_utils.py lines 166-169 - S3 exception handling (92.59% -> higher)."""
+        with patch.dict('sys.modules', {'boto3': Mock()}):
+            from jobs.utils.s3_utils import cleanup_dataset_data
+            
+            with patch('jobs.utils.s3_utils.boto3') as mock_boto3:
+                mock_s3 = Mock()
+                mock_boto3.client.return_value = mock_s3
+                
+                # Make list_objects_v2 raise exception to hit lines 166-169
+                mock_s3.list_objects_v2.side_effect = Exception("S3 Access Denied")
+                
+                # This should hit lines 166-169 (exception handling)
+                cleanup_dataset_data("s3://test-bucket/", "test-dataset")
