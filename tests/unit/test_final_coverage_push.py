@@ -53,6 +53,7 @@ class TestPostgresWriterUtilsTargeted:
         
         mock_conn = Mock()
         mock_cur = Mock()
+        mock_cur.rowcount = 100
         mock_conn.cursor.return_value = mock_cur
         mock_connect.return_value = mock_conn
         
@@ -108,7 +109,7 @@ class TestS3FormatUtilsTargeted:
         mock_df.schema = [mock_field]
         
         mock_row = Mock()
-        mock_row.__getitem__.return_value = '{"key": "value"}'
+        mock_row.__getitem__ = Mock(return_value='{"key": "value"}')
         mock_df.select.return_value.dropna.return_value.limit.return_value.collect.return_value = [mock_row]
         
         with patch('jobs.utils.s3_format_utils.parse_possible_json') as mock_parse:
@@ -122,8 +123,14 @@ class TestS3FormatUtilsTargeted:
     def test_flatten_s3_json_structs(self):
         """Test struct flattening."""
         mock_df = create_mock_df()
+        # Mock dtypes as a list of tuples
         mock_df.dtypes = [('flat_col', 'string'), ('struct_col', 'struct<field1:string>')]
         mock_df.select.return_value.columns = ['field1']
+        
+        # Mock the iteration behavior
+        def mock_dtypes_iter():
+            return iter([('flat_col', 'string'), ('struct_col', 'struct<field1:string>')])
+        mock_df.dtypes = mock_dtypes_iter()
         
         with patch('jobs.utils.s3_format_utils.col') as mock_col:
             mock_col.return_value.alias.return_value = 'aliased_col'
