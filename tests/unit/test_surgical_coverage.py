@@ -30,14 +30,14 @@ class TestSurgicalCoverage:
             # This should trigger both logger.warning (missing) and logger.info (extra)
             postgres_writer_utils._ensure_required_columns(
                 mock_df, 
-                ['existing', 'missing_col'],  # missing_col will trigger warning
+                ['missing_col'],  # missing_col will trigger warning, existing will be extra
                 {'missing_col': 'default'}, 
                 logger=mock_logger
             )
             
             # Verify logger paths were hit
-            mock_logger.warning.assert_called()
-            mock_logger.info.assert_called()
+            mock_logger.warning.assert_called()  # Missing columns
+            mock_logger.info.assert_called()     # Extra columns
 
     def test_ensure_required_columns_all_column_types(self):
         """Test lines 37-44: all column type branches."""
