@@ -38,9 +38,10 @@ class TestDynamicExecution:
             pyspark_funcs.lit = Mock()
             pyspark_funcs.to_json = Mock()
             
-            # Mock PySpark types - use string names instead of Mock objects
-            pyspark_types.LongType.return_value = 'LongType'
-            pyspark_types.DateType.return_value = 'DateType'
+            # Mock PySpark types - return actual type objects
+            from pyspark.sql.types import LongType, DateType
+            pyspark_types.LongType = LongType
+            pyspark_types.DateType = DateType
             
             # Mock logger
             logger_mock = mock_modules['jobs.utils.logger_config']
