@@ -133,10 +133,12 @@ class TestMonkeyPatchCoverage:
             mock_hash.hexdigest.return_value = 'abcd1234'
             hashlib_mock.md5.return_value = mock_hash
             
-            # Mock datetime
-            from datetime import datetime
-            with patch('jobs.utils.postgres_writer_utils.datetime') as mock_datetime:
-                mock_datetime.now.return_value.strftime.return_value = '20231201_120000'
+            # Mock datetime import at module level
+            import datetime as dt_module
+            postgres_writer_utils.datetime = dt_module
+            
+            with patch.object(dt_module, 'datetime') as mock_datetime_class:
+                mock_datetime_class.now.return_value.strftime.return_value = '20231201_120000'
                 
                 # Mock _ensure_required_columns
                 postgres_writer_utils._ensure_required_columns = Mock(return_value=mock_df)
