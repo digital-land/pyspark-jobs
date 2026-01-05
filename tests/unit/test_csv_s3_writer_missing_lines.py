@@ -1,5 +1,6 @@
-from pyspark.sql.functions import when, col, litimport os
+import os
 import sys
+from pyspark.sql.functions import when, col, lit
 
 import pytest
 

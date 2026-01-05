@@ -194,8 +194,7 @@ fields:
 
     @patch("jobs.utils.s3_writer_utils.cleanup_dataset_data")
     @patch("jobs.utils.s3_writer_utils.get_logger")
-    @patch("jobs.utils.s3_writer_utils.get_logger")
-    def test_write_to_s3_basic_flow(self, mock_get_loggerf, mock_get_loggerf, mock_cleanup):
+    def test_write_to_s3_basic_flow(self, mock_get_logger, mock_cleanup):
         """Test write_to_s3 basic flow."""
         from jobs.utils.s3_writer_utils import write_to_s3
 
@@ -265,9 +264,8 @@ fields:
     @patch("jobs.utils.s3_writer_utils.normalise_dataframe_schema")
     @patch("jobs.utils.s3_writer_utils.cleanup_dataset_data")
     @patch("jobs.utils.s3_writer_utils.get_logger")
-    @patch("jobs.utils.s3_writer_utils.get_logger")
     def test_write_to_s3_format_basic_flow(
-        self, mock_get_loggerf, mock_get_loggerf, mock_cleanup, mock_normalise, mock_read_csv
+        self, mock_get_logger, mock_cleanup, mock_normalise, mock_read_csv
     ):
         """Test write_to_s3_format basic flow."""
         from jobs.utils.s3_writer_utils import write_to_s3_format
@@ -289,7 +287,7 @@ fields:
         # Mock other functions
         mock_normalise.return_value = mock_df
         mock_cleanup.return_value = {"objects_deleted": 0, "errors": []}
-        mock_get_loggerf.return_value = 1000
+        mock_get_logger.return_value = 1000
 
         # Mock Spark
         mock_spark = Mock()
