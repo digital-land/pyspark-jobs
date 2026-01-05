@@ -296,7 +296,7 @@ class TestValidateS3Path:
             validate_s3_path("")
 
         # Test whitespace only
-        with pytest.raises(ValueError, match="non - empty string"):
+        with pytest.raises(ValueError, match="Invalid S3 path format"):
             validate_s3_path("   ")
 
 
