@@ -195,7 +195,7 @@ class TestCsvS3WriterHighImpact:
             # Function may require specific connection setup
             pass
 
-    @patch("os")
+    @patch("jobs.csv_s3_writer.os")
     def test_cleanup_temp_csv_files_operations(self, mock_os):
         """Test cleanup_temp_csv_files file operations."""
         from jobs.csv_s3_writer import cleanup_temp_csv_files
