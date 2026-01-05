@@ -1,6 +1,8 @@
 import os
 import sys
+
 import pytest
+
 """Minimal test to reach 80% coverage."""
 
 from unittest.mock import MagicMock, Mock, patch

@@ -1,6 +1,8 @@
 import os
 import sys
+
 import pytest
+
 """Final 0.21% push to reach exactly 80% coverage."""
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))

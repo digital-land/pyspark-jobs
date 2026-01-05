@@ -1,6 +1,8 @@
 import os
 import sys
+
 import pytest
+
 """Step - by - step strategic approach to reach 80% coverage."""
 
 from unittest.mock import Mock, patch

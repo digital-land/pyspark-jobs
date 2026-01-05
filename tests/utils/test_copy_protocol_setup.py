@@ -5,6 +5,8 @@ Test script to check COPY protocol setup and S3 bucket configuration.
 This script helps diagnose COPY protocol issues and provides setup guidance.
 """
 
+import os
+import sys
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))

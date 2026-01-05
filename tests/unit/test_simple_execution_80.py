@@ -1,6 +1,8 @@
 import os
 import sys
+
 import pytest
+
 """Extremely simple direct execution for 80% coverage."""
 
 

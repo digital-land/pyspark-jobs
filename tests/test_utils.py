@@ -8,7 +8,6 @@ import os
 import sys
 import tempfile
 from typing import Optional
-from typing import Optional
 
 
 def get_test_logs_dir() -> str:

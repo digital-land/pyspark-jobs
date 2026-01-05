@@ -1,6 +1,8 @@
 import os
 import sys
+
 import pytest
+
 """Focus on lowest coverage modules for biggest numerical impact."""
 
 from unittest.mock import MagicMock, Mock, patch

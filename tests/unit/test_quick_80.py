@@ -1,6 +1,8 @@
 import os
 import sys
+
 import pytest
+
 """Single lightweight test for 80% coverage."""
 
 

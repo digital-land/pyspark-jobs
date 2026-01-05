@@ -1,6 +1,8 @@
 import os
 import sys
+
 import pytest
+
 """Final push to reach 80% - we're only 99 lines away!"""
 
 from unittest.mock import Mock, patch

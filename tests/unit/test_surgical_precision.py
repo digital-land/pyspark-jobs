@@ -1,6 +1,8 @@
 import os
 import sys
+
 import pytest
+
 """Surgical precision tests targeting exact missing lines for 80% coverage."""
 
 from unittest.mock import MagicMock, Mock, patch

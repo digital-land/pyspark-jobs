@@ -1,6 +1,8 @@
 import os
 import sys
+
 import pytest
+
 """
 Highly targeted tests for specific uncovered lines in s3_writer_utils.py.
 Focus on lines: 70, 76, 94 - 149, 189, 334, 345 - 355, 386, 490 - 711, 718 - 721

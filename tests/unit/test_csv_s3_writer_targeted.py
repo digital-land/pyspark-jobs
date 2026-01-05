@@ -1,6 +1,8 @@
 import os
 import sys
+
 import pytest
+
 """
 Targeted tests for csv_s3_writer.py to improve coverage from 51.46% to 60%+.
 Focuses on uncovered lines: 115 - 186, 238 - 259, 268 - 305, 310 - 346, 386 - 405, etc.

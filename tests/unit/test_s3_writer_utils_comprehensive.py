@@ -1,16 +1,24 @@
 import os
 import sys
-import pytest
-"""
-Comprehensive tests for s3_writer_utils.py module.
-Targets uncovered lines: 70, 76, 94 - 149, 189, 334, 345 - 355, 386, 410 - 411, 490 - 711, 718 - 721
-"""
-
 from datetime import date, datetime
 from unittest.mock import MagicMock, Mock, patch
 
-from pyspark.sql import DataFrame
-from pyspark.sql.types import IntegerType, StringType, StructField, StructType
+import pytest
+
+# Add src to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
+
+# Mock PySpark imports
+with patch.dict(
+    "sys.modules",
+    {
+        "pyspark": MagicMock(),
+        "pyspark.sql": MagicMock(),
+        "pyspark.sql.functions": MagicMock(),
+        "pyspark.sql.types": MagicMock(),
+    },
+):
+    from jobs.utils import s3_writer_utils
 
 
 class TestTransformDataEntityFormat:

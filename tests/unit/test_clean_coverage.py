@@ -1,5 +1,6 @@
 import os
 import sys
+
 import pytest
 
 """Clean coverage test without failing assertions."""

@@ -1,6 +1,8 @@
 import os
 import sys
+
 import pytest
+
 """Unit tests for postgres_writer_utils module to increase coverage."""
 
 from unittest.mock import MagicMock, Mock, patch

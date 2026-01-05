@@ -1,6 +1,8 @@
 import os
 import sys
+
 import pytest
+
 """Target postgres_connectivity missing lines for coverage boost."""
 
 from unittest.mock import Mock, patch

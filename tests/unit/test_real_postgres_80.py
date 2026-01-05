@@ -1,6 +1,8 @@
 import os
 import sys
+
 import pytest
+
 """Real PostgreSQL database test to hit missing lines for 80% coverage."""
 
 # Add src to path

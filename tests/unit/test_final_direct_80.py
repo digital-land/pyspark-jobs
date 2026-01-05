@@ -1,6 +1,8 @@
 import os
 import sys
+
 import pytest
+
 """Final direct approach to hit exact missing lines for 80% coverage."""
 
 from unittest.mock import MagicMock, Mock, patch

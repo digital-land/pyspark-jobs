@@ -1,6 +1,8 @@
 import os
 import sys
+
 import pytest
+
 """Ultra - targeted test to hit exact missing lines in s3_format_utils."""
 
 from unittest.mock import MagicMock, Mock, patch

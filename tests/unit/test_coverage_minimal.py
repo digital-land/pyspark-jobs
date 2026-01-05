@@ -1,6 +1,8 @@
 import os
 import sys
+
 import pytest
+
 """Minimal coverage tests for CI performance."""
 
 from unittest.mock import Mock, patch

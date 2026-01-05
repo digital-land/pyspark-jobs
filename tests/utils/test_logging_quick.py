@@ -9,6 +9,9 @@ Usage:
     python3 test_logging_quick.py
 """
 
+import logging
+import os
+import sys
 
 # Add src to path (utils -> tests -> project_root -> src)
 utils_dir = os.path.dirname(__file__)
