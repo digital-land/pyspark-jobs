@@ -80,10 +80,10 @@ class TestS3WriterUtilsAdditional:
         ) as mock_normalise, patch(
             "jobs.utils.s3_writer_utils.cleanup_dataset_data"
         ) as mock_cleanup, patch(
-            "jobs.utils.s3_writer_utils.count_d"
-        ) as mock_count_df, patch(
-            "jobs.utils.s3_writer_utils.show_d"
-        ) as mock_show_df, patch(
+            "jobs.utils.s3_writer_utils.get_logger"
+        ) as mock_get_loggerf, patch(
+            "jobs.utils.s3_writer_utils.get_logger"
+        ) as mock_get_loggerf, patch(
             "jobs.utils.s3_writer_utils.ensure_schema_fields"
         ) as mock_ensure_schema, patch(
             "jobs.utils.s3_writer_utils.s3_rename_and_move"
@@ -95,7 +95,7 @@ class TestS3WriterUtilsAdditional:
             mock_read_csv.return_value = mock_df_bake
             mock_normalise.return_value = mock_df
             mock_cleanup.return_value = {"objects_deleted": 0, "errors": []}
-            mock_count_df.return_value = 1000
+            mock_get_loggerf.return_value = 1000
             mock_ensure_schema.return_value = mock_df
 
             mock_spark = Mock()
@@ -153,8 +153,8 @@ class TestS3WriterUtilsAdditional:
         with patch(
             "jobs.utils.s3_writer_utils.get_dataset_typology"
         ) as mock_get_typology, patch(
-            "jobs.utils.s3_writer_utils.show_d"
-        ) as mock_show_df:
+            "jobs.utils.s3_writer_utils.get_logger"
+        ) as mock_get_loggerf:
 
             mock_get_typology.return_value = "test - typology"
 
@@ -210,8 +210,8 @@ class TestS3WriterUtilsAdditional:
         with patch(
             "jobs.utils.s3_writer_utils.get_dataset_typology"
         ) as mock_get_typology, patch(
-            "jobs.utils.s3_writer_utils.show_d"
-        ) as mock_show_df:
+            "jobs.utils.s3_writer_utils.get_logger"
+        ) as mock_get_loggerf:
 
             mock_get_typology.return_value = "test - typology"
 

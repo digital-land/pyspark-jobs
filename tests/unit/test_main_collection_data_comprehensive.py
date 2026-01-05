@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 
@@ -154,7 +155,7 @@ class TestTransformData:
     """Test transform_data function - targets lines 164 - 166, 170 - 198."""
 
     @patch("jobs.main_collection_data.load_metadata")
-    @patch("jobs.main_collection_data.show_d")
+    @patch("jobs.main_collection_data.get_logger")
     @patch("jobs.main_collection_data.get_logger")
     def test_transform_data_none_dataframe(self, mock_logger, mock_show, mock_load):
         """Test transform_data with None DataFrame."""
@@ -166,7 +167,7 @@ class TestTransformData:
             transform_data(None, "fact", "test - dataset", Mock())
 
     @patch("jobs.main_collection_data.load_metadata")
-    @patch("jobs.main_collection_data.show_d")
+    @patch("jobs.main_collection_data.get_logger")
     @patch("jobs.main_collection_data.get_logger")
     def test_transform_data_empty_dataframe(self, mock_logger, mock_show, mock_load):
         """Test transform_data with empty DataFrame."""
@@ -181,7 +182,7 @@ class TestTransformData:
 
     @patch("jobs.main_collection_data.load_metadata")
     @patch("jobs.main_collection_data.transform_data_fact_res")
-    @patch("jobs.main_collection_data.show_d")
+    @patch("jobs.main_collection_data.get_logger")
     @patch("jobs.main_collection_data.get_logger")
     def test_transform_data_fact_resource_table(
         self, mock_logger, mock_show, mock_transform, mock_load
@@ -206,7 +207,7 @@ class TestTransformData:
 
     @patch("jobs.main_collection_data.load_metadata")
     @patch("jobs.main_collection_data.transform_data_fact")
-    @patch("jobs.main_collection_data.show_d")
+    @patch("jobs.main_collection_data.get_logger")
     @patch("jobs.main_collection_data.get_logger")
     def test_transform_data_fact_table(
         self, mock_logger, mock_show, mock_transform, mock_load
@@ -230,7 +231,7 @@ class TestTransformData:
 
     @patch("jobs.main_collection_data.load_metadata")
     @patch("jobs.main_collection_data.transform_data_issue")
-    @patch("jobs.main_collection_data.show_d")
+    @patch("jobs.main_collection_data.get_logger")
     @patch("jobs.main_collection_data.get_logger")
     def test_transform_data_issue_table(
         self, mock_logger, mock_show, mock_transform, mock_load
@@ -390,8 +391,8 @@ class TestMainFunction:
     @patch("jobs.main_collection_data.transform_data")
     @patch("jobs.main_collection_data.write_to_s3")
     @patch("jobs.main_collection_data.write_dataframe_to_postgres_jdbc")
-    @patch("jobs.main_collection_data.show_d")
-    @patch("jobs.main_collection_data.count_d")
+    @patch("jobs.main_collection_data.get_logger")
+    @patch("jobs.main_collection_data.get_logger")
     @patch("jobs.main_collection_data.get_logger")
     def test_main_full_load_success(
         self,

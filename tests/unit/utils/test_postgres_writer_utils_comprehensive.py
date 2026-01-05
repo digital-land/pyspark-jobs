@@ -156,10 +156,10 @@ class TestWriteDataframeToPostgresJdbc:
     """Test write_dataframe_to_postgres_jdbc function."""
 
     @patch("jobs.utils.postgres_writer_utils.get_aws_secret")
-    @patch("jobs.utils.postgres_writer_utils.show_d")
+    @patch("jobs.utils.postgres_writer_utils.get_logger")
     @patch("jobs.utils.postgres_writer_utils._ensure_required_columns")
     def test_write_dataframe_success(
-        self, mock_ensure_cols, mock_show_df, mock_get_secret
+        self, mock_ensure_cols, mock_get_loggerf, mock_get_secret
     ):
         """Test successful DataFrame write to PostgreSQL."""
         # Setup mocks

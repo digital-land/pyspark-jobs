@@ -59,7 +59,7 @@ class TestS3WriterUtils:
     """Test s3_writer_utils functions."""
 
     @patch("jobs.utils.s3_writer_utils.cleanup_dataset_data")
-    @patch("jobs.utils.s3_writer_utils.show_d")
+    @patch("jobs.utils.s3_writer_utils.get_logger")
     @patch("jobs.utils.s3_writer_utils.lit")
     @patch("jobs.utils.s3_writer_utils.to_date")
     @patch("jobs.utils.s3_writer_utils.year")
@@ -72,7 +72,7 @@ class TestS3WriterUtils:
         mock_year,
         mock_to_date,
         mock_lit,
-        mock_show_df,
+        mock_get_loggerf,
         mock_cleanup,
     ):
         """Test basic write_to_s3 functionality."""

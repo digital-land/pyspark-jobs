@@ -41,7 +41,7 @@ class TestS3WriterUtilsUncoveredLines:
             "jobs.main_collection_data.load_metadata",
             return_value={"schema_fact_res_fact_entity": []},
         ):
-            with patch("jobs.utils.s3_writer_utils.show_d"):
+            with patch("jobs.utils.s3_writer_utils.get_logger"):
                 with patch(
                     "jobs.utils.s3_writer_utils.get_logger", return_value=Mock()
                 ):
@@ -66,7 +66,7 @@ class TestS3WriterUtilsUncoveredLines:
             "jobs.utils.s3_writer_utils.cleanup_dataset_data",
             return_value={"objects_deleted": 0, "errors": []},
         ):
-            with patch("jobs.utils.s3_writer_utils.show_d"):
+            with patch("jobs.utils.s3_writer_utils.get_logger"):
                 with patch(
                     "jobs.utils.s3_writer_utils.get_logger", return_value=Mock()
                 ):
@@ -315,7 +315,7 @@ fields:
             "jobs.utils.s3_writer_utils.cleanup_dataset_data",
             return_value={"objects_deleted": 0, "errors": []},
         ):
-            with patch("jobs.utils.s3_writer_utils.show_d"):
+            with patch("jobs.utils.s3_writer_utils.get_logger"):
                 with patch(
                     "jobs.utils.s3_writer_utils.get_logger", return_value=Mock()
                 ):

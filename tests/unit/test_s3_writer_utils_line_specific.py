@@ -22,7 +22,7 @@ class TestSpecificUncoveredLines:
         mock_df.columns = ["entity", "field", "value"]  # No priority column
 
         with patch("jobs.utils.s3_writer_utils.get_logger", return_value=Mock()):
-            with patch("jobs.utils.s3_writer_utils.show_d"):
+            with patch("jobs.utils.s3_writer_utils.get_logger"):
                 with patch(
                     "jobs.utils.s3_writer_utils.get_dataset_typology",
                     return_value="test",
@@ -40,7 +40,7 @@ class TestSpecificUncoveredLines:
         mock_df.columns = ["entity", "field", "value", "priority"]  # Has priority
 
         with patch("jobs.utils.s3_writer_utils.get_logger", return_value=Mock()):
-            with patch("jobs.utils.s3_writer_utils.show_d"):
+            with patch("jobs.utils.s3_writer_utils.get_logger"):
                 with patch(
                     "jobs.utils.s3_writer_utils.get_dataset_typology",
                     return_value="test",
@@ -71,7 +71,7 @@ class TestSpecificUncoveredLines:
         mock_df.groupBy.return_value.pivot.return_value.agg.return_value = mock_pivot
 
         with patch("jobs.utils.s3_writer_utils.get_logger", return_value=Mock()):
-            with patch("jobs.utils.s3_writer_utils.show_d"):
+            with patch("jobs.utils.s3_writer_utils.get_logger"):
                 with patch(
                     "jobs.utils.s3_writer_utils.get_dataset_typology",
                     return_value="test",
@@ -114,7 +114,7 @@ class TestSpecificUncoveredLines:
             "jobs.utils.s3_writer_utils.cleanup_dataset_data",
             return_value={"objects_deleted": 0, "errors": []},
         ):
-            with patch("jobs.utils.s3_writer_utils.show_d"):
+            with patch("jobs.utils.s3_writer_utils.get_logger"):
                 with patch(
                     "jobs.utils.s3_writer_utils.get_logger", return_value=Mock()
                 ):

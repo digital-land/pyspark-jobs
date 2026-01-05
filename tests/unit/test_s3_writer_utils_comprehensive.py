@@ -51,7 +51,7 @@ class TestWriteToS3:
     """Test write_to_s3 function - targets lines 334."""
 
     @patch("jobs.utils.s3_writer_utils.cleanup_dataset_data")
-    @patch("jobs.utils.s3_writer_utils.show_d")
+    @patch("jobs.utils.s3_writer_utils.get_logger")
     @patch("jobs.utils.s3_writer_utils.get_logger")
     def test_write_to_s3_entity_table(self, mock_logger, mock_show, mock_cleanup):
         """Test write_to_s3 with entity table to set global df_entity."""

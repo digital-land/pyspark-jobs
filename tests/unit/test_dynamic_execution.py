@@ -58,7 +58,7 @@ class TestDynamicExecution:
 
             # Mock df_utils
             df_utils_mock = mock_modules["jobs.utils.df_utils"]
-            df_utils_mock.show_df = Mock()
+            df_utils_mock.get_loggerf = Mock()
 
             # Now import and test
             from jobs.utils import postgres_writer_utils

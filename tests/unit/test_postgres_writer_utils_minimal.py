@@ -67,7 +67,7 @@ class TestPostgresWriterUtilsUncoveredLines:
                 mock_cur.rowcount = 100
                 mock_connect.return_value = mock_conn
 
-                with patch("jobs.utils.postgres_writer_utils.show_d"):
+                with patch("jobs.utils.postgres_writer_utils.get_logger", return_value=Mock()):
                     with patch(
                         "jobs.utils.postgres_writer_utils._ensure_required_columns",
                         return_value=mock_df,
@@ -116,7 +116,7 @@ class TestPostgresWriterUtilsUncoveredLines:
                 mock_connect.return_value = mock_conn
 
                 with patch("time.sleep"):  # Mock sleep for retry
-                    with patch("jobs.utils.postgres_writer_utils.show_d"):
+                    with patch("jobs.utils.postgres_writer_utils.get_logger"):
                         with patch(
                             "jobs.utils.postgres_writer_utils._ensure_required_columns",
                             return_value=mock_df,
@@ -159,7 +159,7 @@ class TestPostgresWriterUtilsUncoveredLines:
                 mock_cur.rowcount = 10
                 mock_connect.return_value = mock_conn
 
-                with patch("jobs.utils.postgres_writer_utils.show_d"):
+                with patch("jobs.utils.postgres_writer_utils.get_logger"):
                     with patch(
                         "jobs.utils.postgres_writer_utils._ensure_required_columns",
                         return_value=mock_df,
@@ -202,7 +202,7 @@ class TestPostgresWriterUtilsUncoveredLines:
                 mock_cur.rowcount = 5
                 mock_connect.return_value = mock_conn
 
-                with patch("jobs.utils.postgres_writer_utils.show_d"):
+                with patch("jobs.utils.postgres_writer_utils.get_logger"):
                     with patch(
                         "jobs.utils.postgres_writer_utils._ensure_required_columns",
                         return_value=mock_df,

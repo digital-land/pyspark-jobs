@@ -185,7 +185,7 @@ class TestSimpleFunctionCalls:
         mock_df.printSchema = Mock()
 
         with patch("jobs.main_collection_data.load_metadata", return_value={}):
-            with patch("jobs.utils.s3_writer_utils.show_d"):
+            with patch("jobs.utils.s3_writer_utils.get_logger"):
                 with patch(
                     "jobs.utils.s3_writer_utils.get_logger", return_value=Mock()
                 ):
@@ -210,7 +210,7 @@ class TestSimpleFunctionCalls:
             "jobs.utils.s3_writer_utils.cleanup_dataset_data",
             return_value={"objects_deleted": 0, "errors": []},
         ):
-            with patch("jobs.utils.s3_writer_utils.show_d"):
+            with patch("jobs.utils.s3_writer_utils.get_logger"):
                 with patch(
                     "jobs.utils.s3_writer_utils.get_logger", return_value=Mock()
                 ):

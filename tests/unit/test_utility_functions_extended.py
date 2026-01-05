@@ -210,22 +210,22 @@ class TestDataTypeHandling:
 
     def test_df_utils_functions(self):
         """Test DataFrame utility functions."""
-        from jobs.utils.df_utils import count_df, show_df
+        from jobs.utils.df_utils import get_loggerf, get_loggerf
 
         # Mock DataFrame
         mock_df = Mock()
         mock_df.count.return_value = 100
         mock_df.show.return_value = None
 
-        # Test show_df in different environments (no logger patching needed)
-        show_df(mock_df, 5, "development")  # Should call show
-        show_df(mock_df, 5, "production")  # Should not call show
+        # Test get_loggerf in different environments (no logger patching needed)
+        get_loggerf(mock_df, 5, "development")  # Should call show
+        get_loggerf(mock_df, 5, "production")  # Should not call show
 
-        # Test count_df
-        result = count_df(mock_df, "development")
+        # Test get_loggerf
+        result = get_loggerf(mock_df, "development")
         assert result == 100
 
-        result = count_df(mock_df, "production")
+        result = get_loggerf(mock_df, "production")
         assert result is None
 
     def test_path_resolution_edge_cases(self):

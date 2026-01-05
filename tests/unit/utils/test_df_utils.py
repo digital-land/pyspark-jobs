@@ -9,119 +9,119 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "sr
 
 import pytest
 
-from jobs.utils.df_utils import count_df, show_df
+from jobs.utils.df_utils import get_loggerf, get_loggerf
 
 
 class TestDFUtils:
     """Test suite for df_utils module."""
 
-    def test_show_df_development_environment(self, caplog):
-        """Test show_df in development environment."""
+    def test_get_loggerf_development_environment(self, caplog):
+        """Test get_loggerf in development environment."""
         mock_df = Mock()
 
         with caplog.at_level("INFO"):
-            show_df(mock_df, 5, "development")
+            get_loggerf(mock_df, 5, "development")
 
         # In development, should call show
         mock_df.show.assert_called_once_with(5)
 
-    def test_show_df_production_environment(self, caplog):
-        """Test show_df in production environment."""
+    def test_get_loggerf_production_environment(self, caplog):
+        """Test get_loggerf in production environment."""
         mock_df = Mock()
 
         with caplog.at_level("INFO"):
-            show_df(mock_df, 5, "production")
+            get_loggerf(mock_df, 5, "production")
 
         # In production, should not call show
         mock_df.show.assert_not_called()
 
-    def test_show_df_with_mock_dataframe(self, caplog):
-        """Test show_df with mock DataFrame."""
+    def test_get_loggerf_with_mock_dataframe(self, caplog):
+        """Test get_loggerf with mock DataFrame."""
         mock_df = Mock()
 
         with caplog.at_level("INFO"):
-            show_df(mock_df, 10, "development")
+            get_loggerf(mock_df, 10, "development")
 
         # Should call show on the DataFrame in development
         mock_df.show.assert_called_once_with(10)
 
-    def test_show_df_production_no_show(self, caplog):
-        """Test that show_df doesn't call show in production."""
+    def test_get_loggerf_production_no_show(self, caplog):
+        """Test that get_loggerf doesn't call show in production."""
         mock_df = Mock()
 
         with caplog.at_level("INFO"):
-            show_df(mock_df, 10, "production")
+            get_loggerf(mock_df, 10, "production")
 
         # Should not call show on the DataFrame in production
         mock_df.show.assert_not_called()
 
-    def test_count_df_development_environment(self, caplog):
-        """Test count_df in development environment."""
+    def test_get_loggerf_development_environment(self, caplog):
+        """Test get_loggerf in development environment."""
         mock_df = Mock()
         mock_df.count.return_value = 3
 
         with caplog.at_level("INFO"):
-            result = count_df(mock_df, "development")
+            result = get_loggerf(mock_df, "development")
 
         assert result == 3
         mock_df.count.assert_called_once()
 
-    def test_count_df_production_environment(self, caplog):
-        """Test count_df in production environment."""
+    def test_get_loggerf_production_environment(self, caplog):
+        """Test get_loggerf in production environment."""
         mock_df = Mock()
 
         with caplog.at_level("INFO"):
-            result = count_df(mock_df, "production")
+            result = get_loggerf(mock_df, "production")
 
         # In production, should return None and not call count
         assert result is None
         mock_df.count.assert_not_called()
 
-    def test_count_df_with_mock_dataframe(self, caplog):
-        """Test count_df with mock DataFrame."""
+    def test_get_loggerf_with_mock_dataframe(self, caplog):
+        """Test get_loggerf with mock DataFrame."""
         mock_df = Mock()
         mock_df.count.return_value = 100
 
         with caplog.at_level("INFO"):
-            result = count_df(mock_df, "development")
+            result = get_loggerf(mock_df, "development")
 
         assert result == 100
         mock_df.count.assert_called_once()
 
-    def test_count_df_production_no_count(self, caplog):
-        """Test that count_df doesn't call count in production."""
+    def test_get_loggerf_production_no_count(self, caplog):
+        """Test that get_loggerf doesn't call count in production."""
         mock_df = Mock()
 
         with caplog.at_level("INFO"):
-            result = count_df(mock_df, "production")
+            result = get_loggerf(mock_df, "production")
 
         assert result is None
         # Should not call count on the DataFrame in production
         mock_df.count.assert_not_called()
 
-    def test_show_df_empty_dataframe(self, caplog):
-        """Test show_df with empty DataFrame."""
+    def test_get_loggerf_empty_dataframe(self, caplog):
+        """Test get_loggerf with empty DataFrame."""
         mock_df = Mock()
 
         with caplog.at_level("INFO"):
-            show_df(mock_df, 5, "development")
+            get_loggerf(mock_df, 5, "development")
 
         # Should handle empty DataFrame without error
         mock_df.show.assert_called_once_with(5)
 
-    def test_count_df_empty_dataframe(self, caplog):
-        """Test count_df with empty DataFrame."""
+    def test_get_loggerf_empty_dataframe(self, caplog):
+        """Test get_loggerf with empty DataFrame."""
         mock_df = Mock()
         mock_df.count.return_value = 0
 
         with caplog.at_level("INFO"):
-            result = count_df(mock_df, "development")
+            result = get_loggerf(mock_df, "development")
 
         assert result == 0
         mock_df.count.assert_called_once()
 
-    def test_show_df_different_environments(self, caplog):
-        """Test show_df with different environment values."""
+    def test_get_loggerf_different_environments(self, caplog):
+        """Test get_loggerf with different environment values."""
         mock_df = Mock()
 
         environments = ["development", "dev", "local", "staging", "production", "prod"]
@@ -129,7 +129,7 @@ class TestDFUtils:
         for env in environments:
             mock_df.reset_mock()
             with caplog.at_level("INFO"):
-                show_df(mock_df, 5, env)
+                get_loggerf(mock_df, 5, env)
 
             # Current implementation only shows for development and staging
             if env in ["development", "staging"]:
@@ -137,8 +137,8 @@ class TestDFUtils:
             else:
                 mock_df.show.assert_not_called()
 
-    def test_count_df_different_environments(self, caplog):
-        """Test count_df with different environment values."""
+    def test_get_loggerf_different_environments(self, caplog):
+        """Test get_loggerf with different environment values."""
         mock_df = Mock()
         mock_df.count.return_value = 42
 
@@ -147,7 +147,7 @@ class TestDFUtils:
         for env in environments:
             mock_df.reset_mock()
             with caplog.at_level("INFO"):
-                result = count_df(mock_df, env)
+                result = get_loggerf(mock_df, env)
 
             # Current implementation only counts for development and staging
             if env in ["development", "staging"]:
@@ -157,23 +157,23 @@ class TestDFUtils:
                 assert result is None
                 mock_df.count.assert_not_called()
 
-    def test_show_df_with_exception(self, caplog):
-        """Test show_df when DataFrame.show raises exception."""
+    def test_get_loggerf_with_exception(self, caplog):
+        """Test get_loggerf when DataFrame.show raises exception."""
         mock_df = Mock()
         mock_df.show.side_effect = Exception("Show failed")
 
         with pytest.raises(Exception, match="Show failed"):
-            show_df(mock_df, 5, "development")
+            get_loggerf(mock_df, 5, "development")
 
         mock_df.show.assert_called_once_with(5)
 
-    def test_count_df_with_exception(self, caplog):
-        """Test count_df when DataFrame.count raises exception."""
+    def test_get_loggerf_with_exception(self, caplog):
+        """Test get_loggerf when DataFrame.count raises exception."""
         mock_df = Mock()
         mock_df.count.side_effect = Exception("Count failed")
 
         with pytest.raises(Exception, match="Count failed"):
-            count_df(mock_df, "development")
+            get_loggerf(mock_df, "development")
 
         mock_df.count.assert_called_once()
 
@@ -189,8 +189,8 @@ class TestDFUtilsIntegration:
 
         # Test in development environment
         with caplog.at_level("INFO"):
-            show_df(mock_df, 3, "development")
-            count = count_df(mock_df, "development")
+            get_loggerf(mock_df, 3, "development")
+            count = get_loggerf(mock_df, "development")
 
         assert count == 5
         mock_df.show.assert_called_with(3)
@@ -200,8 +200,8 @@ class TestDFUtilsIntegration:
 
         # Test in production environment
         with caplog.at_level("INFO"):
-            show_df(mock_df, 3, "production")
-            count = count_df(mock_df, "production")
+            get_loggerf(mock_df, 3, "production")
+            count = get_loggerf(mock_df, "production")
 
         assert count is None
         mock_df.show.assert_not_called()

@@ -16,12 +16,12 @@ class TestDirectExecution:
     """Direct execution of missing code paths."""
 
     @patch("jobs.utils.postgres_writer_utils.get_aws_secret")
-    @patch("jobs.utils.postgres_writer_utils.show_d")
+    @patch("jobs.utils.postgres_writer_utils.get_logger")
     @patch("pg8000.connect")
     @patch("hashlib.md5")
     @patch("time.sleep")
     def test_write_dataframe_to_postgres_jdbc_direct(
-        self, mock_sleep, mock_md5, mock_connect, mock_show_df, mock_get_secret
+        self, mock_sleep, mock_md5, mock_connect, mock_get_loggerf, mock_get_secret
     ):
         """Direct test of write_dataframe_to_postgres_jdbc to hit missing lines."""
         # Import here to avoid early import issues

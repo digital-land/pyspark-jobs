@@ -44,7 +44,7 @@ class TestRemainingUncoveredSections:
         mock_pivot.join.return_value.select.return_value.drop.return_value = mock_pivot
 
         with patch("jobs.utils.s3_writer_utils.get_logger", return_value=Mock()):
-            with patch("jobs.utils.s3_writer_utils.show_d"):
+            with patch("jobs.utils.s3_writer_utils.get_logger"):
                 with patch(
                     "jobs.utils.s3_writer_utils.get_dataset_typology",
                     return_value="test",

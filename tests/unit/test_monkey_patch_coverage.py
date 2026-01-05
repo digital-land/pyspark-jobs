@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 
@@ -131,7 +132,7 @@ class TestMonkeyPatchCoverage:
                     "password": "pass",
                 }
             )
-            postgres_writer_utils.show_df = Mock()
+            postgres_writer_utils.get_loggerf = Mock()
             postgres_writer_utils.logger = Mock()
 
             # Create mock DataFrame

@@ -1,11 +1,12 @@
+import json
 import os
 import sys
+from datetime import datetime
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
 """Unit tests for main_collection_data module."""
-
-from unittest.mock import MagicMock, Mock, patch
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))

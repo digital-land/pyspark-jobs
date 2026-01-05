@@ -239,9 +239,9 @@ class TestTransformDataEntityCoverage:
     """Test transform_data_entity function coverage."""
 
     @patch("jobs.transform_collection_data.get_dataset_typology")
-    @patch("jobs.transform_collection_data.show_d")
+    @patch("jobs.transform_collection_data.get_logger")
     def test_transform_data_entity_priority_column_check(
-        self, mock_show_df, mock_typology
+        self, mock_get_loggerf, mock_typology
     ):
         """Test priority column existence check and ordering logic."""
         mock_typology.return_value = "test - typology"
@@ -285,9 +285,9 @@ class TestTransformDataEntityCoverage:
         assert result == mock_final_df
 
     @patch("jobs.transform_collection_data.get_dataset_typology")
-    @patch("jobs.transform_collection_data.show_d")
+    @patch("jobs.transform_collection_data.get_logger")
     def test_transform_data_entity_without_priority_column(
-        self, mock_show_df, mock_typology
+        self, mock_get_loggerf, mock_typology
     ):
         """Test entity transformation when priority column is missing."""
         mock_typology.return_value = "test - typology"
@@ -330,9 +330,9 @@ class TestTransformDataEntityCoverage:
         assert result == mock_final_df
 
     @patch("jobs.transform_collection_data.get_dataset_typology")
-    @patch("jobs.transform_collection_data.show_d")
+    @patch("jobs.transform_collection_data.get_logger")
     def test_transform_data_entity_column_normalization(
-        self, mock_show_df, mock_typology
+        self, mock_get_loggerf, mock_typology
     ):
         """Test kebab - case to snake_case column normalization."""
         mock_typology.return_value = "test - typology"
@@ -381,9 +381,9 @@ class TestTransformDataEntityCoverage:
         assert kebab_columns_renamed or len(rename_calls) >= 2
 
     @patch("jobs.transform_collection_data.get_dataset_typology")
-    @patch("jobs.transform_collection_data.show_d")
+    @patch("jobs.transform_collection_data.get_logger")
     def test_transform_data_entity_missing_columns_handling(
-        self, mock_show_df, mock_typology
+        self, mock_get_loggerf, mock_typology
     ):
         """Test handling of missing standard columns."""
         mock_typology.return_value = "test - typology"
@@ -441,9 +441,9 @@ class TestTransformDataEntityCoverage:
         assert missing_columns_added or len(withColumn_calls) >= 5
 
     @patch("jobs.transform_collection_data.get_dataset_typology")
-    @patch("jobs.transform_collection_data.show_d")
+    @patch("jobs.transform_collection_data.get_logger")
     def test_transform_data_entity_json_creation_logic(
-        self, mock_show_df, mock_typology
+        self, mock_get_loggerf, mock_typology
     ):
         """Test JSON creation for non - standard columns."""
         mock_typology.return_value = "test - typology"
@@ -491,9 +491,9 @@ class TestTransformDataEntityCoverage:
                 assert json_column_added or mock_to_json.called
 
     @patch("jobs.transform_collection_data.get_dataset_typology")
-    @patch("jobs.transform_collection_data.show_d")
+    @patch("jobs.transform_collection_data.get_logger")
     def test_transform_data_entity_date_normalization(
-        self, mock_show_df, mock_typology
+        self, mock_get_loggerf, mock_typology
     ):
         """Test date column normalization logic."""
         mock_typology.return_value = "test - typology"
@@ -539,9 +539,9 @@ class TestTransformDataEntityCoverage:
         assert date_columns_processed or len(withColumn_calls) >= 3
 
     @patch("jobs.transform_collection_data.get_dataset_typology")
-    @patch("jobs.transform_collection_data.show_d")
+    @patch("jobs.transform_collection_data.get_logger")
     def test_transform_data_entity_geometry_normalization(
-        self, mock_show_df, mock_typology
+        self, mock_get_loggerf, mock_typology
     ):
         """Test geometry column normalization logic."""
         mock_typology.return_value = "test - typology"
@@ -587,8 +587,8 @@ class TestTransformDataEntityCoverage:
         assert geometry_columns_processed or len(withColumn_calls) >= 2
 
     @patch("jobs.transform_collection_data.get_dataset_typology")
-    @patch("jobs.transform_collection_data.show_d")
-    def test_transform_data_entity_final_projection(self, mock_show_df, mock_typology):
+    @patch("jobs.transform_collection_data.get_logger")
+    def test_transform_data_entity_final_projection(self, mock_get_loggerf, mock_typology):
         """Test final column projection and deduplication."""
         mock_typology.return_value = "test - typology"
 
@@ -729,9 +729,9 @@ class TestTransformDataErrorHandling:
         assert result == mock_final_df
 
     @patch("jobs.transform_collection_data.get_dataset_typology")
-    @patch("jobs.transform_collection_data.show_d")
+    @patch("jobs.transform_collection_data.get_logger")
     def test_transform_data_entity_column_normalization(
-        self, mock_show_df, mock_typology
+        self, mock_get_loggerf, mock_typology
     ):
         """Test kebab - case to snake_case column normalization."""
         mock_typology.return_value = "test - typology"
@@ -780,9 +780,9 @@ class TestTransformDataErrorHandling:
         assert kebab_columns_renamed or len(rename_calls) >= 2
 
     @patch("jobs.transform_collection_data.get_dataset_typology")
-    @patch("jobs.transform_collection_data.show_d")
+    @patch("jobs.transform_collection_data.get_logger")
     def test_transform_data_entity_missing_columns_handling(
-        self, mock_show_df, mock_typology
+        self, mock_get_loggerf, mock_typology
     ):
         """Test handling of missing standard columns."""
         mock_typology.return_value = "test - typology"
@@ -840,9 +840,9 @@ class TestTransformDataErrorHandling:
         assert missing_columns_added or len(withColumn_calls) >= 5
 
     @patch("jobs.transform_collection_data.get_dataset_typology")
-    @patch("jobs.transform_collection_data.show_d")
+    @patch("jobs.transform_collection_data.get_logger")
     def test_transform_data_entity_json_creation_logic(
-        self, mock_show_df, mock_typology
+        self, mock_get_loggerf, mock_typology
     ):
         """Test JSON creation for non - standard columns."""
         mock_typology.return_value = "test - typology"
@@ -890,9 +890,9 @@ class TestTransformDataErrorHandling:
                 assert json_column_added or mock_to_json.called
 
     @patch("jobs.transform_collection_data.get_dataset_typology")
-    @patch("jobs.transform_collection_data.show_d")
+    @patch("jobs.transform_collection_data.get_logger")
     def test_transform_data_entity_date_normalization(
-        self, mock_show_df, mock_typology
+        self, mock_get_loggerf, mock_typology
     ):
         """Test date column normalization logic."""
         mock_typology.return_value = "test - typology"
@@ -938,9 +938,9 @@ class TestTransformDataErrorHandling:
         assert date_columns_processed or len(withColumn_calls) >= 3
 
     @patch("jobs.transform_collection_data.get_dataset_typology")
-    @patch("jobs.transform_collection_data.show_d")
+    @patch("jobs.transform_collection_data.get_logger")
     def test_transform_data_entity_geometry_normalization(
-        self, mock_show_df, mock_typology
+        self, mock_get_loggerf, mock_typology
     ):
         """Test geometry column normalization logic."""
         mock_typology.return_value = "test - typology"
@@ -986,8 +986,8 @@ class TestTransformDataErrorHandling:
         assert geometry_columns_processed or len(withColumn_calls) >= 2
 
     @patch("jobs.transform_collection_data.get_dataset_typology")
-    @patch("jobs.transform_collection_data.show_d")
-    def test_transform_data_entity_final_projection(self, mock_show_df, mock_typology):
+    @patch("jobs.transform_collection_data.get_logger")
+    def test_transform_data_entity_final_projection(self, mock_get_loggerf, mock_typology):
         """Test final column projection and deduplication."""
         mock_typology.return_value = "test - typology"
 
