@@ -1,6 +1,7 @@
-from pyspark.sql.functions import when, col, litimport json
+import json
 import os
 import sys
+from pyspark.sql.functions import when, col, lit
 
 import pytest
 
@@ -501,12 +502,12 @@ class TestMainFunction:
         "sys.argv",
         [
             "csv_s3_writer.py",
-            "--import - csv",
+            "--import_csv",
             "s3://bucket/file.csv",
             "--table",
             "entity",
             "--dataset",
-            "test - dataset",
+            "test_dataset",
         ],
     )
     @patch("jobs.csv_s3_writer.import_csv_to_aurora")

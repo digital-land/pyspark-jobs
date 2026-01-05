@@ -221,8 +221,8 @@ fields:
 
         result = convert_row_logic(test_data.copy())
 
-        assert result["date_field"] == "2023 - 01 - 01"
-        assert result["datetime_field"] == "2023 - 01 - 01T10:30:00"
+        assert result["date_field"] == "2023-01-01"
+        assert result["datetime_field"] == "2023-01-01T10:30:00"
         assert result["null_field"] == ""
         assert result["string_field"] == "test"
 
