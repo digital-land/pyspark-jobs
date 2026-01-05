@@ -19,16 +19,13 @@ sys.path.insert(
 )  # noqa: E402
 
 import pytest  # noqa: E402
-from pyspark.sql import SparkSession  # noqa: E402
-from pyspark.sql.functions import col, first, lit, struct, to_json  # noqa: E402
-from pyspark.sql.types import StringType, StructField, StructType  # noqa: E402
-
-from jobs.transform_collection_data import transform_data_entity  # noqa: E402
 
 
 @pytest.fixture(scope="session")
 def spark():
     """Create a Spark session for testing."""
+    from pyspark.sql import SparkSession
+
     return (
         SparkSession.builder.appName("EntityAcceptanceTestSuite")
         .master("local[2]")
@@ -40,6 +37,8 @@ def spark():
 @pytest.fixture
 def sample_entity_csv_data(spark):
     """Create sample entity data in CSV format."""
+    from pyspark.sql.types import StringType, StructField, StructType
+
     schema = StructType(
         [
             StructField("entry - number", StringType(), True),
@@ -142,6 +141,8 @@ def sample_entity_csv_data(spark):
 @pytest.fixture
 def sample_organisation_data(spark):
     """Create sample organisation reference data."""
+    from pyspark.sql.types import StringType, StructField, StructType
+
     schema = StructType(
         [
             StructField("organisation", StringType(), True),
@@ -161,6 +162,8 @@ def sample_organisation_data(spark):
 @pytest.fixture
 def sample_dataset_data(spark):
     """Create sample dataset reference data."""
+    from pyspark.sql.types import StringType, StructField, StructType
+
     schema = StructType(
         [
             StructField("dataset", StringType(), True),
@@ -222,6 +225,8 @@ def test_end_to_end_entity_processing_workflow(spark, temp_csv_files):
     7. Joining with dataset typology
     8. Generating final output
     """
+    from pyspark.sql.functions import col, first, lit, struct, to_json
+
     # Step 1: Load the main entity CSV data
     df = spark.read.option("header", True).csv(temp_csv_files["entity_csv"])
 
@@ -329,6 +334,8 @@ def test_end_to_end_entity_processing_workflow(spark, temp_csv_files):
 
 def test_entity_workflow_with_missing_data(spark, temp_csv_files):
     """Test entity processing workflow with missing/incomplete data."""
+    from pyspark.sql.types import StringType, StructField, StructType
+
     # Create dataset with missing values
     incomplete_schema = StructType(
         [
@@ -364,6 +371,9 @@ def test_entity_workflow_with_missing_data(spark, temp_csv_files):
 
 def test_entity_workflow_performance_with_large_dataset(spark):
     """Test entity processing workflow performance with larger dataset."""
+    from pyspark.sql.functions import first
+    from pyspark.sql.types import StringType, StructField, StructType
+
     # Generate larger test dataset
     large_schema = StructType(
         [
@@ -405,6 +415,8 @@ def test_entity_workflow_performance_with_large_dataset(spark):
 @pytest.mark.acceptance
 def test_entity_data_quality_validation(spark, sample_entity_csv_data):
     """Test data quality validation in entity processing."""
+    from pyspark.sql.functions import col
+
     # Test for required fields
     required_fields = ["entity", "field", "value"]
     for field in required_fields:
@@ -429,8 +441,9 @@ def test_entity_data_quality_validation(spark, sample_entity_csv_data):
 @pytest.mark.acceptance
 def test_complete_etl_pipeline_integration(spark, temp_csv_files):
     """Test complete ETL pipeline integration with all components."""
-    # This test simulates the complete main_collection_data.py workflow
+    from pyspark.sql.functions import first, lit
 
+    # This test simulates the complete main_collection_data.py workflow
     # Step 1: Data extraction (simulated)
     raw_df = spark.read.option("header", True).csv(temp_csv_files["entity_csv"])
     assert raw_df.count() > 0

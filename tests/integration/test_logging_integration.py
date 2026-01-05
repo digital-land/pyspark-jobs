@@ -5,7 +5,11 @@ These tests verify that logging works correctly with external dependencies
 and in integration scenarios.
 """
 
+import logging
+import os
+import sys
 import tempfile
+import time
 import traceback
 
 # Add src to path

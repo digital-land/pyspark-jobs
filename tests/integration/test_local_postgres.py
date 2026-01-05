@@ -1,4 +1,13 @@
+import json
+import os
+import sys
+from datetime import date
+
 import pg8000
+import pytest
+
+# Add src to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 # Define table schema
 TABLE_NAME = "entity_test"

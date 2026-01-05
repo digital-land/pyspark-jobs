@@ -8,7 +8,6 @@ import tempfile
 from unittest.mock import MagicMock, patch
 
 import pytest
-from pyspark.sql import SparkSession
 
 
 @pytest.fixture(scope="module")
@@ -19,6 +18,8 @@ def integration_spark():
     Integration tests may involve more complex operations
     so this uses slightly more resources.
     """
+    from pyspark.sql import SparkSession
+
     spark_session = (
         SparkSession.builder.appName("IntegrationTestSpark")
         .master("local[2]")

@@ -1,3 +1,6 @@
+import os
+import sys
+
 """Integration tests for Spark operations."""
 
 from unittest.mock import Mock, patch

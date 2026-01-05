@@ -1,3 +1,6 @@
+import os
+import sys
+
 # !/usr/bin/env python3
 """
 Standalone logging test script to diagnose logging configuration issues.

@@ -1,3 +1,6 @@
+import os
+import sys
+
 """Unit tests for Athena - connectivity module."""
 
 from unittest.mock import MagicMock, Mock, patch

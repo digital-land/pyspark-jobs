@@ -1,6 +1,12 @@
-"""Minimal working tests to boost coverage for the three lowest coverage modules."""
-
+import os
+import re
+import sys
+from datetime import date, datetime
 from unittest.mock import MagicMock, Mock, patch
+
+import pytest
+
+"""Minimal working tests to boost coverage for the three lowest coverage modules."""
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))

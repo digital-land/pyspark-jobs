@@ -1,3 +1,6 @@
+import os
+import sys
+
 """Comprehensive test to hit remaining missing lines across all modules."""
 
 from unittest.mock import Mock, patch

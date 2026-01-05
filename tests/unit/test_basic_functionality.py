@@ -1,9 +1,13 @@
+import os
+import sys
+from unittest.mock import Mock, patch
+
+import pytest
+
 """
 Simple unit tests for basic module functionality.
 Tests module imports and basic functions without complex PySpark integration.
 """
-
-from unittest.mock import Mock, patch
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))

@@ -1,3 +1,6 @@
+import os
+import sys
+
 """Clean coverage test without failing assertions."""
 
 # Add src to path

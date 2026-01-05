@@ -8,18 +8,6 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-# Ensure PySpark types are properly imported and available globally
-import pyspark.sql.types as spark_types
-from pyspark.sql import SparkSession
-from pyspark.sql.types import (
-    BooleanType,
-    DateType,
-    IntegerType,
-    StringType,
-    StructField,
-    StructType,
-)
-
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -32,6 +20,9 @@ def spark():
     This fixture is session - scoped to avoid creating multiple Spark sessions
     which can cause resource conflicts.
     """
+    # Import PySpark only when needed to avoid circular import issues
+    from pyspark.sql import SparkSession
+
     spark_session = (
         SparkSession.builder.appName("PySparkJobsUnitTests")
         .master("local[1]")
@@ -53,6 +44,8 @@ def spark():
 @pytest.fixture
 def sample_fact_data(spark):
     """Create sample fact data for testing."""
+    from pyspark.sql.types import IntegerType, StringType, StructField, StructType
+
     schema = StructType(
         [
             StructField("fact", StringType(), True),
@@ -113,6 +106,8 @@ def sample_fact_data(spark):
 @pytest.fixture
 def sample_entity_data(spark):
     """Create sample entity data for testing."""
+    from pyspark.sql.types import IntegerType, StringType, StructField, StructType
+
     schema = StructType(
         [
             StructField("entity", StringType(), True),
@@ -165,6 +160,8 @@ def sample_entity_data(spark):
 @pytest.fixture
 def sample_issue_data(spark):
     """Create sample issue data for testing."""
+    from pyspark.sql.types import StringType, StructField, StructType
+
     schema = StructType(
         [
             StructField("entity", StringType(), True),

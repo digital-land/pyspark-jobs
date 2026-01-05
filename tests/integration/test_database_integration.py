@@ -1,6 +1,10 @@
 """Integration tests for database operations."""
 
+import os
+import sys
 from unittest.mock import Mock, patch
+
+import pytest
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))

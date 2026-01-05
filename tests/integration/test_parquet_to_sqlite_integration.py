@@ -1,3 +1,6 @@
+import os
+import sys
+
 # !/usr/bin/env python3
 """
 Integration tests for the parquet_to_sqlite.py script.
