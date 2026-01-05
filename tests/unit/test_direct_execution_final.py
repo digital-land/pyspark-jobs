@@ -9,6 +9,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.unit
 class TestDirectExecution:
     """Direct execution of missing code paths."""
+import os
+import sys
+import pytest
 
     @patch("jobs.utils.postgres_writer_utils.get_aws_secret")
     @patch("jobs.utils.postgres_writer_utils.show_d")

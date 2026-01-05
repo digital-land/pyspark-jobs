@@ -6,6 +6,7 @@ Priority targets based on missing lines:
 2. postgres_connectivity.py: 336 missing lines (43.24% coverage)
 3. csv_s3_writer.py: 184 missing lines (51.19% coverage)
 """
+import pytest
 
 from unittest.mock import MagicMock, Mock, patch
 

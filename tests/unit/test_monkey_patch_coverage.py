@@ -9,6 +9,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.unit
 class TestMonkeyPatchCoverage:
     """Use monkey patching to force code execution."""
+import os
+import sys
+import pytest
 
     def test_postgres_writer_utils_monkey_patch(self):
         """Monkey patch to execute missing lines in postgres_writer_utils."""

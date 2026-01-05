@@ -9,6 +9,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.unit
 class TestPostgresConnectivityBoost:
     """Target postgres_connectivity missing lines."""
+import os
+import sys
+import pytest
 
     def test_get_postgres_connection_comprehensive(self):
         """Test get_postgres_connection with various scenarios."""

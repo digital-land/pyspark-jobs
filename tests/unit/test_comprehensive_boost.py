@@ -9,6 +9,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.unit
 class TestComprehensiveCoverageBoost:
     """Hit remaining missing lines across all modules."""
+import os
+import sys
+import pytest
 
     def test_postgres_writer_utils_missing_lines(self):
         """Target postgres_writer_utils lines 176 - 177, 225 - 256."""

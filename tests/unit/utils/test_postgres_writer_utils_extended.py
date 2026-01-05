@@ -23,6 +23,9 @@ with patch.dict(
 )
 class TestPostgresWriterUtils:
     """Test suite for postgres_writer_utils module."""
+import os
+import sys
+import pytest
 
     def test_ensure_required_columns_basic(self, spark):
         """Test basic column ensuring functionality."""

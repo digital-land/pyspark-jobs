@@ -1,6 +1,9 @@
 """
 Integration tests for SQLite database operations.
 """
+import os
+import sys
+import pytest
 
 import sqlite3
 import tempfile

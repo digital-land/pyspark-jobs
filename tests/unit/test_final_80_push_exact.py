@@ -9,6 +9,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.unit
 class TestFinal80Push:
     """Target exact missing line ranges to reach 80%."""
+import os
+import sys
+import pytest
 
     def test_s3_format_utils_lines_34_152(self):
         """Target s3_format_utils lines 34 - 152 specifically."""

@@ -2,6 +2,9 @@
 Targeted tests for low - coverage modules.
 Focus on improving coverage for specific functions without complex integration.
 """
+import os
+import sys
+import pytest
 
 from unittest.mock import MagicMock, Mock, patch
 

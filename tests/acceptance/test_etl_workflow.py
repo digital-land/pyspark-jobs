@@ -9,6 +9,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.acceptance
 class TestETLWorkflow:
     """End - to - end acceptance tests for ETL workflows."""
+import os
+import sys
+import pytest
 
     @patch("jobs.main_collection_data.create_spark_session")
     @patch("jobs.main_collection_data.read_data")

@@ -1,6 +1,9 @@
 """
 Integration tests for reading Parquet files with PySpark.
 """
+import os
+import sys
+import pytest
 
 import tempfile
 

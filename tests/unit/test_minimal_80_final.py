@@ -9,6 +9,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.unit
 class TestMinimal80Coverage:
     """Minimal test to hit missing lines for 80% coverage."""
+import os
+import sys
+import pytest
 
     def test_parse_possible_json(self):
         """Test parse_possible_json function to hit missing lines."""

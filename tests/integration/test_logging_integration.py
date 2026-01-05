@@ -4,6 +4,8 @@ Integration tests for logging configuration to diagnose logging issues.
 These tests verify that logging works correctly with external dependencies
 and in integration scenarios.
 """
+import os
+import sys
 
 import tempfile
 import traceback

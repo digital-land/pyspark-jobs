@@ -27,6 +27,9 @@ with patch.dict(
 
 class TestTransformCollectionData:
     """Test suite for transform_collection_data module."""
+import os
+import sys
+import pytest
 
     @pytest.mark.skip(reason="PySpark type checking issues in test environment")
     def test_transform_data_fact_success(self, spark, sample_fact_data):

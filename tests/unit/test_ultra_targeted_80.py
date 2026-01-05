@@ -9,6 +9,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.unit
 class TestUltraTargeted80:
     """Ultra - targeted tests for exact missing lines."""
+import os
+import sys
+import pytest
 
     def test_s3_format_utils_exact_missing_lines(self):
         """Target exact missing lines 34 - 152 in s3_format_utils."""

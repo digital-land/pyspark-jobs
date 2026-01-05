@@ -9,6 +9,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.unit
 class TestS3WriterUtilsBoost:
     """Target s3_writer_utils missing lines 490 - 711."""
+import os
+import sys
+import pytest
 
     def test_fetch_dataset_schema_fields_comprehensive(self):
         """Test fetch_dataset_schema_fields with various YAML formats."""

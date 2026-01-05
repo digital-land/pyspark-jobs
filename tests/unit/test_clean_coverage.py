@@ -7,6 +7,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.unit
 class TestCleanCoverage:
     """Clean tests for coverage without assertions."""
+import os
+import sys
+import pytest
 
     def test_import_all_modules(self):
         """Import all modules to hit import lines."""

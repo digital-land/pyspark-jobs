@@ -6,6 +6,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.unit
 def test_final_021_percent():
     """Hit remaining lines for exactly 80% coverage."""
+import os
+import sys
+import pytest
+
     # Test s3_format_utils remaining lines 114 - 152
     try:
         from unittest.mock import MagicMock, patch

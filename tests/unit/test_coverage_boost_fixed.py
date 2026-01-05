@@ -22,6 +22,9 @@ with patch.dict(
 @pytest.mark.unit
 class TestS3FormatUtilsFixed:
     """Fixed tests for s3_format_utils."""
+import os
+import sys
+import pytest
 
     def test_parse_possible_json_simple_cases(self):
         """Test parse_possible_json with simple cases."""

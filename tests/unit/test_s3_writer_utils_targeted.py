@@ -12,6 +12,7 @@ Focus on the actual functions and code paths in the module:
 - s3_rename_and_move
 - write_to_s3_format
 """
+import pytest
 
 from unittest.mock import MagicMock, Mock, patch
 

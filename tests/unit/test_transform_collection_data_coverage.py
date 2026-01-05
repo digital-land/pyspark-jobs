@@ -25,6 +25,10 @@ with patch.dict(
 
 def create_mock_dataframe(columns=None):
     """Create a mock DataFrame that supports PySpark operations."""
+import os
+import sys
+import pytest
+
     mock_df = Mock()
     if columns:
         mock_df.columns = columns

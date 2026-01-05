@@ -9,6 +9,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.unit
 class TestSimple80Final:
     """Simple tests to hit missing lines."""
+import os
+import sys
+import pytest
 
     def test_postgres_writer_utils_import_coverage(self):
         """Test imports and function definitions."""

@@ -7,6 +7,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.unit
 class TestFinal80Push:
     """Final targeted tests to reach 80% coverage."""
+import os
+import sys
+import pytest
 
     def test_all_module_imports(self):
         """Import all modules to hit import lines."""
