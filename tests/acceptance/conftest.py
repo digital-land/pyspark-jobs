@@ -1,5 +1,8 @@
 """Configuration for acceptance tests."""
 
+import sys
+from unittest.mock import MagicMock
+
 # Mock psycopg2 and related modules before any imports
 sys.modules["psycopg2"] = MagicMock()
 sys.modules["psycopg2.extras"] = MagicMock()

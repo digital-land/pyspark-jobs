@@ -4,7 +4,10 @@ Test utilities for PySpark Jobs test suite.
 This module provides common utilities and helpers for all test types.
 """
 
+import os
+import sys
 import tempfile
+from typing import Optional
 
 
 def get_test_logs_dir() -> str:

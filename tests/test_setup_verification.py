@@ -5,6 +5,11 @@ This test should run without any external dependencies to validate
 the basic testing infrastructure.
 """
 
+import os
+import sys
+
+import pytest
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 

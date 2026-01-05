@@ -2,10 +2,12 @@
 Integration test specific configuration and fixtures.
 """
 
+import os
 import sqlite3
 import tempfile
 from unittest.mock import MagicMock, patch
 
+import pytest
 from pyspark.sql import SparkSession
 
 

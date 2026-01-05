@@ -2,7 +2,10 @@
 Unit test specific configuration and fixtures.
 """
 
+import sys
 from unittest.mock import MagicMock, Mock, patch
+
+import pytest
 
 
 @pytest.fixture(autouse=True)
