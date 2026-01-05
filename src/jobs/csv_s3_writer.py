@@ -990,7 +990,7 @@ Examples:
 
     parser.add_argument("--output", "-o", help="Output S3 path for CSV files")
 
-    parser.add_argument("--import - csv", help="S3 path to existing CSV file to import")
+    parser.add_argument("--import-csv", help="S3 path to existing CSV file to import")
 
     parser.add_argument(
         "--table", "-t", required=True, help="Target table name in Aurora"
@@ -999,11 +999,11 @@ Examples:
     parser.add_argument("--dataset", "-d", required=True, help="Dataset name")
 
     parser.add_argument(
-        "--use - jdbc", action="store_true", help="Use JDBC import instead of S3 import"
+        "--use-jdbc", action="store_true", help="Use JDBC import instead of S3 import"
     )
 
     parser.add_argument(
-        "--no - cleanup", action="store_true", help="Skip cleanup of existing data"
+        "--no-cleanup", action="store_true", help="Skip cleanup of existing data"
     )
 
     parser.add_argument(
@@ -1060,10 +1060,10 @@ Examples:
             finally:
                 spark.stop()
 
-        elif args.import_csv:
+        elif getattr(args, 'import_csv', None):
             # Import existing CSV
             import_result = import_csv_to_aurora(
-                args.import_csv,
+                getattr(args, 'import_csv'),
                 args.table,
                 args.dataset,
                 args.env,
@@ -1076,7 +1076,7 @@ Examples:
 
         else:
             parser.error(
-                "Either --input and --output, or --import - csv must be specified"
+                "Either --input and --output, or --import-csv must be specified"
             )
 
     except Exception as e:
