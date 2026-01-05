@@ -85,8 +85,8 @@ class TestDataQuality:
         ]
         assert len(missing_fields) == 0, f"Missing required fields: {missing_fields}"
 
-    @patch("jobs.utils.df_utils.show_d")
-    @patch("jobs.utils.df_utils.count_d")
+    @patch("jobs.utils.df_utils.show_df")
+    @patch("jobs.utils.df_utils.count_df")
     def test_environment_quality_controls(self, mock_count, mock_show):
         """Test environment - specific quality controls."""
         mock_df = Mock()
