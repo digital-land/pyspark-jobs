@@ -8,8 +8,6 @@ that logging works. For comprehensive testing, use the test suite in tests/.
 Usage:
     python3 test_logging_quick.py
 """
-import os
-import sys
 
 
 # Add src to path (utils -> tests -> project_root -> src)

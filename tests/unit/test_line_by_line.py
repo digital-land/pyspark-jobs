@@ -9,9 +9,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.unit
 class TestLineByLineExecution:
     """Target specific line numbers for coverage."""
-import os
-import sys
-import pytest
 
     def test_postgres_writer_utils_lines_32_35(self):
         """Target lines 32 - 35: logger warning and info."""

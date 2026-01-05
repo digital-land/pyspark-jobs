@@ -24,10 +24,6 @@ with patch.dict(
 
 def create_mock_dataframe(columns=None, count_return=100):
     """Create a mock DataFrame for testing."""
-import os
-import sys
-import pytest
-
     mock_df = Mock()
     if columns:
         mock_df.columns = columns

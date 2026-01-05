@@ -9,10 +9,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.integration
 def test_comprehensive_real_operations():
     """Use real operations to hit remaining missing lines."""
-import os
-import sys
-import pytest
-from datetime import date
 
     # Test 1: Real Spark operations for s3_format_utils
     try:

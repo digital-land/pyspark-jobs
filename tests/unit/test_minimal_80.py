@@ -15,9 +15,6 @@ except ImportError:
 @pytest.mark.unit
 class TestMinimalCoverage:
     """Minimal tests for easy coverage wins."""
-import os
-import sys
-import pytest
 
     def test_postgres_writer_utils_column_defaults(self):
         """Test column handling with defaults."""

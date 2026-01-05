@@ -6,8 +6,6 @@ from pyspark.sql.types import DateType, IntegerType, StringType, StructField, St
 @pytest.fixture
 def sample_fact_data(spark):
     """Sample fact data for testing."""
-import pytest
-
     schema = StructType(
         [
             StructField("fact", StringType(), True),

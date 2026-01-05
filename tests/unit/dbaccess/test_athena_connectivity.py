@@ -54,8 +54,6 @@ except SyntaxError:
 
 class TestAthenaConnectivity:
     """Test suite for Athena - connectivity module."""
-import os
-import sys
 
     def test_logging_config_structure(self):
         """Test that LOGGING_CONFIG is properly structured."""

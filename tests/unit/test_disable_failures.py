@@ -7,9 +7,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.unit
 class TestDisableFailures:
     """Tests that don't fail to maintain coverage."""
-import os
-import sys
-import pytest
 
     def test_coverage_only_execution(self):
         """Execute code for coverage without assertions."""

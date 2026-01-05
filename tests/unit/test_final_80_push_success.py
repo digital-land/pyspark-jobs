@@ -9,9 +9,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.unit
 class TestFinal80Push:
     """Final push to reach 80% coverage."""
-import os
-import sys
-import pytest
 
     def test_s3_csv_format_execution(self):
         """Execute s3_csv_format to hit lines 34 - 74."""

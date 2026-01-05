@@ -8,8 +8,6 @@ with all required arguments for optimized JDBC PostgreSQL writes.
 Usage:
     python3 tests/utils/test_argument_parser.py
 """
-import os
-import sys
 
 
 # Add src to path (utils -> tests -> project_root -> src)

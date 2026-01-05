@@ -9,9 +9,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.integration
 class TestDatabaseIntegration:
     """Integration tests for database connectivity and operations."""
-import os
-import sys
-import pytest
 
     @patch("jobs.utils.aws_secrets_manager.boto3.client")
     def test_secrets_manager_integration(self, mock_boto3):

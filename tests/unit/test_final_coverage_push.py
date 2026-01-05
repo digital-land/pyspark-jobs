@@ -24,10 +24,6 @@ with patch.dict(
 
 def create_mock_df(columns=None, count_return=100):
     """Create a mock DataFrame."""
-import os
-import sys
-import pytest
-
     mock_df = Mock()
     mock_df.columns = columns or ["entity", "name"]
     mock_df.count.return_value = count_return

@@ -2,9 +2,6 @@
 Simple unit tests for basic module functionality.
 Tests module imports and basic functions without complex PySpark integration.
 """
-import os
-import sys
-import pytest
 
 from unittest.mock import Mock, patch
 

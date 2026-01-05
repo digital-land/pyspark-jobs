@@ -28,9 +28,6 @@ with patch.dict(
 
 class TestMainCollectionData:
     """Test suite for main_collection_data module."""
-import os
-import sys
-import pytest
 
     def test_validate_s3_path_valid(self):
         """Test S3 path validation with valid paths."""

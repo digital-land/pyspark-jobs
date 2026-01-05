@@ -26,9 +26,6 @@ with patch.dict(
 @pytest.mark.unit
 class TestCoverageBoostMinimal:
     """Minimal tests to boost coverage without complex mocking."""
-import os
-import sys
-import pytest
 
     def test_parse_possible_json_basic(self):
         """Test parse_possible_json with basic cases."""

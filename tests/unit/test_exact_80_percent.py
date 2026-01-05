@@ -8,10 +8,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.unit
 def test_geometry_utils_missing_lines_18_27():
     """Hit exact missing lines 18 - 27 in geometry_utils.py."""
-import os
-import sys
-import pytest
-
     try:
         with patch.dict(
             "sys.modules", {"pyspark.sql": MagicMock(), "sedona.spark": MagicMock()}

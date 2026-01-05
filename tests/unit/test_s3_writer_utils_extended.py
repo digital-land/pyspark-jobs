@@ -7,7 +7,6 @@ Focus on remaining uncovered code paths:
 - Error handling paths
 - Complex conditional logic
 """
-import pytest
 
 from unittest.mock import MagicMock, Mock, patch
 

@@ -9,9 +9,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.unit
 class TestS3FormatUtilsBoost:
     """Target s3_format_utils missing lines 34 - 152."""
-import os
-import sys
-import pytest
 
     def test_s3_csv_format_comprehensive(self):
         """Test s3_csv_format to hit missing lines 34 - 152."""

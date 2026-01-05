@@ -1,5 +1,3 @@
-from datetime import date
-
 from typing import Any, Dict, List, Set
 
 import geojson

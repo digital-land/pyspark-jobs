@@ -8,8 +8,6 @@ without the complexity of the full test suite.
 Usage:
     python test_logging_standalone.py
 """
-import os
-import sys
 
 import tempfile
 import traceback

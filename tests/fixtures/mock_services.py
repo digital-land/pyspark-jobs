@@ -6,8 +6,6 @@ from unittest.mock import MagicMock, Mock
 @pytest.fixture
 def mock_s3_client():
     """Mock S3 client for testing."""
-import pytest
-
     mock_client = Mock()
     mock_client.get_object.return_value = {
         "Body": Mock(read=Mock(return_value=b'{"test": "data"}'))

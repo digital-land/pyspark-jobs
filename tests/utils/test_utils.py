@@ -3,9 +3,6 @@ Test utilities for PySpark Jobs test suite.
 
 This module provides common utilities and helpers for all test types.
 """
-import os
-import sys
-from typing import Optional
 
 import tempfile
 

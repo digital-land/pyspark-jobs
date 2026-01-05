@@ -7,9 +7,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.unit
 class TestRealPostgresConnectivity:
     """Test with real PostgreSQL connections to hit missing lines."""
-import os
-import sys
-import pytest
 
     def test_postgres_connectivity_real_db(self):
         """Test postgres_connectivity with real database operations."""

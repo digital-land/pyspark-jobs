@@ -9,9 +9,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.acceptance
 class TestDataQuality:
     """Acceptance tests for data quality validation and processing."""
-import os
-import sys
-import pytest
 
     def test_data_transformation_quality(self):
         """Test data transformation maintains quality standards."""

@@ -9,9 +9,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.unit
 class TestDynamicExecution:
     """Use dynamic execution to force coverage."""
-import os
-import sys
-import pytest
 
     def test_dynamic_postgres_writer_utils_execution(self):
         """Dynamically execute postgres_writer_utils code."""

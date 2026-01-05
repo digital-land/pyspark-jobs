@@ -11,7 +11,6 @@ Focus on the 336 missing lines in key functions:
 - write_to_postgres: JDBC writing operations
 - _write_to_postgres_optimized: Optimized writing logic
 """
-import pytest
 
 from unittest.mock import MagicMock, Mock, patch
 

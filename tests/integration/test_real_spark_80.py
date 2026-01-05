@@ -7,10 +7,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.integration
 def test_s3_format_utils_with_real_spark():
     """Use real Spark operations to hit missing lines in s3_format_utils."""
-import os
-import sys
-import pytest
-
     try:
         # Try to create a real Spark session for integration testing
         from pyspark.sql import SparkSession

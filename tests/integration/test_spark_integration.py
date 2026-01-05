@@ -9,9 +9,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.integration
 class TestSparkIntegration:
     """Integration tests for Spark session and DataFrame operations."""
-import os
-import sys
-import pytest
 
     def test_spark_session_creation(self):
         """Test Spark session can be created."""

@@ -8,9 +8,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.unit
 class TestMissingLines:
     """Target specific missing lines for coverage boost."""
-import os
-import sys
-import pytest
 
     def test_postgres_writer_utils_lines_93_256(self):
         """Test postgres_writer_utils lines 93 - 256."""

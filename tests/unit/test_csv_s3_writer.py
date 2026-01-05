@@ -32,9 +32,6 @@ with patch.dict(
 
 class TestCSVS3Writer:
     """Test suite for csv_s3_writer module."""
-import os
-import sys
-import pytest
 
     def test_csv_writer_error_creation(self):
         """Test CSVWriterError exception creation."""

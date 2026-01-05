@@ -1,6 +1,3 @@
-import pytest
-from datetime import date
-
 import pg8000
 
 # Define table schema

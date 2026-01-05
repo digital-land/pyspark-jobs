@@ -7,9 +7,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.unit
 class TestUltraMinimal80:
     """Ultra - minimal tests for exact missing lines."""
-import os
-import sys
-import pytest
 
     def test_import_coverage_only(self):
         """Test just imports to cover import lines."""

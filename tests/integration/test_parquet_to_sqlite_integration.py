@@ -5,8 +5,6 @@ Integration tests for the parquet_to_sqlite.py script.
 This test module verifies that the parquet to SQLite conversion works correctly
 with different input scenarios and output methods.
 """
-import os
-import sys
 
 import tempfile
 

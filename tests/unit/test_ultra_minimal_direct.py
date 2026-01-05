@@ -8,10 +8,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 @pytest.mark.unit
 def test_direct_function_execution():
     """Direct execution of functions to hit missing lines."""
-import os
-import sys
-import pytest
-
     # Test 1: s3_format_utils parse_possible_json
     try:
         with patch.dict(
