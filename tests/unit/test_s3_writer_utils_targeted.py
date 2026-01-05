@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """
 Targeted tests for s3_writer_utils.py to improve coverage from 32.31% to 50%+.
 

@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """Ultra - minimal direct execution to reach 80% coverage."""
 
 from unittest.mock import MagicMock, patch

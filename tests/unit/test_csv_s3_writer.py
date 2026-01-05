@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """Unit tests for csv_s3_writer module."""
 
 from unittest.mock import MagicMock, Mock, patch

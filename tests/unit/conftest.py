@@ -31,9 +31,13 @@ def mock_sedona_dependencies():
 @pytest.fixture(autouse=True)
 def mock_geometry_utils():
     """Mock geometry utilities that depend on Sedona."""
-    with patch("jobs.utils.geometry_utils.calculate_centroid") as mock_centroid:
-        mock_centroid.return_value = "POINT(0 0)"
-        yield mock_centroid
+    try:
+        with patch("jobs.utils.geometry_utils.calculate_centroid") as mock_centroid:
+            mock_centroid.return_value = "POINT(0 0)"
+            yield mock_centroid
+    except (ImportError, AttributeError):
+        # Module doesn't exist, skip mocking
+        yield None
 
 
 @pytest.fixture

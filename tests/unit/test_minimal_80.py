@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """Ultra - minimal tests to push from 76.27% to 80% - targeting only easiest wins."""
 
 from unittest.mock import Mock, patch

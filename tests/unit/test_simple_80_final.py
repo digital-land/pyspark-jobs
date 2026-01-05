@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """Simple final test to reach 80% coverage."""
 
 from unittest.mock import Mock, patch

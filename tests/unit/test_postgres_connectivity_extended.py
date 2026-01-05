@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """
 Extended tests for postgres_connectivity.py to improve coverage.
 Targets uncovered lines: 659 - 777, 780 - 805, 808 - 821, 1141 - 1167, etc.

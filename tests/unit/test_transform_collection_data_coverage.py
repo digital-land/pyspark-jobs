@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """Additional tests for transform_collection_data to improve coverage."""
 
 from unittest.mock import MagicMock, Mock, call, patch

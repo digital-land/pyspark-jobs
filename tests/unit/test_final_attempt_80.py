@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """Final attempt - target actual missing lines with real understanding."""
 
 from unittest.mock import Mock, patch

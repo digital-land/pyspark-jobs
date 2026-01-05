@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """
 Targeted tests for postgres_connectivity.py to improve coverage from 43.24%.
 

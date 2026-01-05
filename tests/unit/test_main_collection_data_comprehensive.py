@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """
 Comprehensive tests for main_collection_data.py module.
 Targets uncovered lines: 32 - 34, 87, 99, 114, 123 - 124, 164 - 166, 170 - 198, 231, 233, 235, 302 - 303, 315 - 347, 431 - 432, 440 - 443

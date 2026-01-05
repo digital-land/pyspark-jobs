@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """Ultra - minimal test to hit exact missing lines for 80% coverage."""
 
 # Add src to path

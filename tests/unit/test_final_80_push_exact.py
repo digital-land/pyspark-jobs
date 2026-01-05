@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """Final push to 80% by targeting exact missing line ranges."""
 
 from unittest.mock import MagicMock, Mock, patch

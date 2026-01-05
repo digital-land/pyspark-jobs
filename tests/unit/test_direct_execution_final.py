@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """Final direct test to execute missing code paths and reach 80% coverage."""
 
 from unittest.mock import MagicMock, Mock, patch

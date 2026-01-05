@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """Final targeted test to reach exactly 80% coverage."""
 
 from unittest.mock import MagicMock, patch

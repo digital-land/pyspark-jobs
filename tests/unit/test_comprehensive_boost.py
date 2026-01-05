@@ -1,5 +1,6 @@
 import os
 import sys
+import pytest
 
 """Comprehensive test to hit remaining missing lines across all modules."""
 

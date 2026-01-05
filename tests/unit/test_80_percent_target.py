@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """Target 80% coverage by focusing on high - coverage modules."""
 
 from unittest.mock import Mock, mock_open, patch

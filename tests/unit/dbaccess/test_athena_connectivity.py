@@ -1,5 +1,6 @@
 import os
 import sys
+import pytest
 
 """Unit tests for Athena - connectivity module."""
 
@@ -27,7 +28,7 @@ try:
         "src",
         "jobs",
         "dbaccess",
-        "Athena - connectivity.py",
+        "athena_connectivity.py",
     )
     spec = importlib.util.spec_from_file_location(
         "athena_connectivity", athena_module_path

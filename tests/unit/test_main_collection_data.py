@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """Unit tests for main_collection_data module."""
 
 from unittest.mock import MagicMock, Mock, patch

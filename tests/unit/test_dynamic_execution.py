@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """Dynamic import and execution approach for coverage."""
 
 from unittest.mock import MagicMock, Mock, patch

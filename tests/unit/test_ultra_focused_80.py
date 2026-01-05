@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """Ultra - focused final push - only 98 lines to 80%!"""
 
 from unittest.mock import MagicMock, Mock, patch

@@ -1,5 +1,6 @@
 import os
 import sys
+import pytest
 
 """Integration tests for Spark operations."""
 

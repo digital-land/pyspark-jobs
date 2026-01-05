@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """
 Additional minimal tests to hit remaining uncovered lines in s3_writer_utils.py.
 Target: lines 94 - 149, 490 - 711 (large sections still uncovered)

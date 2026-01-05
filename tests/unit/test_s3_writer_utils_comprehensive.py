@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """
 Comprehensive tests for s3_writer_utils.py module.
 Targets uncovered lines: 70, 76, 94 - 149, 189, 334, 345 - 355, 386, 410 - 411, 490 - 711, 718 - 721

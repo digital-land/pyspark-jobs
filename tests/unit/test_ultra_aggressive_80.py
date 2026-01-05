@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """Ultra - aggressive final attempt for 80% coverage - target easiest wins."""
 
 from unittest.mock import Mock, mock_open, patch

@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """
 Simplest possible test for postgres_writer_utils.py to improve coverage.
 Just import and attempt to call the main function.

@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """Test postgres_writer_utils with real database connection."""
 
 from unittest.mock import MagicMock, patch

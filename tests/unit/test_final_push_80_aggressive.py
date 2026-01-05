@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """Final aggressive push to exceed 80% coverage."""
 
 from unittest.mock import Mock, patch

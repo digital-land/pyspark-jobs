@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """Precision - targeted tests for exact missing lines based on source analysis."""
 
 from unittest.mock import MagicMock, Mock, patch

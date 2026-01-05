@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """
 Minimal tests for postgres_writer_utils.py uncovered lines 93 - 256.
 Focus on the write_dataframe_to_postgres_jdbc function.

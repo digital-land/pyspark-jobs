@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """Ultra - targeted tests to hit specific missing lines for 80% coverage."""
 
 from unittest.mock import MagicMock, Mock, patch

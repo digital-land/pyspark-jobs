@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """Final push to 80% coverage with targeted execution."""
 
 # Add src to path

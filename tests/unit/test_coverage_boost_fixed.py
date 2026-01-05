@@ -1,5 +1,6 @@
 import os
 import sys
+import pytest
 
 """Minimal fixes for failing tests."""
 

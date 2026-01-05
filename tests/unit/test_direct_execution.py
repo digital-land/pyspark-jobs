@@ -1,3 +1,6 @@
+import os
+import sys
+import pytest
 """Direct execution tests to force missing lines to run."""
 
 from unittest.mock import Mock, patch
