@@ -18,7 +18,7 @@ setup(
         "pg8000>=1.30.0",  # Pure Python PostgreSQL driver (EMR Serverless compatible)
         # NOTE: psycopg2 - binary causes EMR compatibility issues - see docs/DATABASE_CONNECTIVITY.md
         "PyYAML>=6.0",
-        "typing - extensions>=4.0.0",
+        "typing-extensions>=4.0.0",
         "setuptools>=65.0.0",
     ],
     author="M Santana",
