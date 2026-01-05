@@ -512,7 +512,7 @@ class TestMainFunction:
     )
     @patch("jobs.csv_s3_writer.import_csv_to_aurora")
     def test_main_import_csv(self, mock_import):
-        """Test main function with import - csv argument."""
+        """Test main function with import-csv argument."""
         from jobs.csv_s3_writer import main
 
         mock_import.return_value = {
