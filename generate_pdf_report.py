@@ -1,23 +1,30 @@
 #!/usr/bin/env python3
 """Generate PDF coverage report from coverage data."""
+import os
 import subprocess
 import sys
 from datetime import datetime
-import os
+
 
 def generate_pdf_report():
     """Generate PDF coverage report with timestamp."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
+
     # Run coverage with XML output for better parsing
     print("Generating coverage data...")
-    subprocess.run([
-        sys.executable, "-m", "pytest", "tests/unit/", 
-        "--cov=src", 
-        f"--cov-report=xml:coverage_{timestamp}.xml",
-        "--cov-report=term"
-    ], check=True)
-    
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/unit/",
+            "--cov=src",
+            f"--cov-report=xml:coverage_{timestamp}.xml",
+            "--cov-report=term",
+        ],
+        check=True,
+    )
+
     # Create a simple text report that can be converted to PDF
     report_content = f"""
 PYSPARK JOBS - TEST COVERAGE REPORT
@@ -58,42 +65,53 @@ NOTES:
 - Core business logic has good test coverage
 - Database connectivity modules well tested with mocks
 """
-    
+
     # Write text report
     txt_filename = f"coverage_report_{timestamp}.txt"
-    with open(txt_filename, 'w') as f:
+    with open(txt_filename, "w") as f:
         f.write(report_content)
-    
+
     print(f"✅ Coverage report generated: {txt_filename}")
-    
+
     # Try to convert to PDF using available tools
     pdf_filename = f"coverage_report_{timestamp}.pdf"
-    
+
     try:
         # Try using enscript + ps2pdf (common on Unix systems)
-        subprocess.run([
-            "enscript", "-p", f"{txt_filename}.ps", txt_filename
-        ], check=True, capture_output=True)
-        
-        subprocess.run([
-            "ps2pdf", f"{txt_filename}.ps", pdf_filename
-        ], check=True, capture_output=True)
-        
+        subprocess.run(
+            ["enscript", "-p", f"{txt_filename}.ps", txt_filename],
+            check=True,
+            capture_output=True,
+        )
+
+        subprocess.run(
+            ["ps2pdf", f"{txt_filename}.ps", pdf_filename],
+            check=True,
+            capture_output=True,
+        )
+
         # Cleanup temp files
         os.remove(f"{txt_filename}.ps")
         print(f"✅ PDF report generated: {pdf_filename}")
-        
+
     except (subprocess.CalledProcessError, FileNotFoundError):
         try:
             # Try using pandoc if available
-            subprocess.run([
-                "pandoc", txt_filename, "-o", pdf_filename
-            ], check=True, capture_output=True)
+            subprocess.run(
+                ["pandoc", txt_filename, "-o", pdf_filename],
+                check=True,
+                capture_output=True,
+            )
             print(f"✅ PDF report generated: {pdf_filename}")
-            
+
         except (subprocess.CalledProcessError, FileNotFoundError):
-            print(f"⚠️  PDF conversion tools not available. Text report created: {txt_filename}")
-            print("To convert to PDF manually, use: pandoc coverage_report_*.txt -o coverage_report.pdf")
+            print(
+                f"⚠️  PDF conversion tools not available. Text report created: {txt_filename}"
+            )
+            print(
+                "To convert to PDF manually, use: pandoc coverage_report_*.txt -o coverage_report.pdf"
+            )
+
 
 if __name__ == "__main__":
     generate_pdf_report()

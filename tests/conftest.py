@@ -1,120 +1,212 @@
 """
 Shared pytest configuration and fixtures for all test modules.
 """
-import pytest
-import os
-import sys
-from unittest.mock import Mock, MagicMock, patch
-from pyspark.sql import SparkSession
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType, BooleanType, DateType
+
+from unittest.mock import MagicMock, Mock, patch
 
 # Ensure PySpark types are properly imported and available globally
 import pyspark.sql.types as spark_types
+from pyspark.sql import SparkSession
+from pyspark.sql.types import (
+    BooleanType,
+    DateType,
+    IntegerType,
+    StringType,
+    StructField,
+    StructType,
+)
 
 # Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 
 @pytest.fixture(scope="session")
 def spark():
     """
     Create a Spark session for testing.
-    
-    This fixture is session-scoped to avoid creating multiple Spark sessions
+
+    This fixture is session - scoped to avoid creating multiple Spark sessions
     which can cause resource conflicts.
     """
-    spark_session = SparkSession.builder \
-        .appName("PySparkJobsUnitTests") \
-        .master("local[1]") \
-        .config("spark.sql.shuffle.partitions", "1") \
-        .config("spark.sql.adaptive.enabled", "false") \
-        .config("spark.ui.enabled", "false") \
-        .config("spark.driver.host", "localhost") \
+    spark_session = (
+        SparkSession.builder.appName("PySparkJobsUnitTests")
+        .master("local[1]")
+        .config("spark.sql.shuffle.partitions", "1")
+        .config("spark.sql.adaptive.enabled", "false")
+        .config("spark.ui.enabled", "false")
+        .config("spark.driver.host", "localhost")
         .getOrCreate()
-    
+    )
+
     # Set log level to reduce noise in tests
     spark_session.sparkContext.setLogLevel("WARN")
-    
+
     yield spark_session
-    
+
     spark_session.stop()
 
 
 @pytest.fixture
 def sample_fact_data(spark):
     """Create sample fact data for testing."""
-    schema = StructType([
-        StructField("fact", StringType(), True),
-        StructField("entity", StringType(), True),
-        StructField("field", StringType(), True),
-        StructField("value", StringType(), True),
-        StructField("entry_date", StringType(), True),
-        StructField("entry_number", StringType(), True),
-        StructField("priority", IntegerType(), True),
-        StructField("start_date", StringType(), True),
-        StructField("end_date", StringType(), True),
-        StructField("reference_entity", StringType(), True)
-    ])
-    
+    schema = StructType(
+        [
+            StructField("fact", StringType(), True),
+            StructField("entity", StringType(), True),
+            StructField("field", StringType(), True),
+            StructField("value", StringType(), True),
+            StructField("entry_date", StringType(), True),
+            StructField("entry_number", StringType(), True),
+            StructField("priority", IntegerType(), True),
+            StructField("start_date", StringType(), True),
+            StructField("end_date", StringType(), True),
+            StructField("reference_entity", StringType(), True),
+        ]
+    )
+
     data = [
-        ("fact1", "entity1", "field1", "value1", "2023-01-01", "1", 1, "2023-01-01", "", "ref1"),
-        ("fact1", "entity1", "field1", "value2", "2023-01-02", "2", 2, "2023-01-01", "", "ref1"),  # Higher priority
-        ("fact2", "entity2", "field2", "value3", "2023-01-01", "3", 1, "2023-01-01", "", "ref2")
+        (
+            "fact1",
+            "entity1",
+            "field1",
+            "value1",
+            "2023 - 01 - 01",
+            "1",
+            1,
+            "2023 - 01 - 01",
+            "",
+            "ref1",
+        ),
+        (
+            "fact1",
+            "entity1",
+            "field1",
+            "value2",
+            "2023 - 01 - 02",
+            "2",
+            2,
+            "2023 - 01 - 01",
+            "",
+            "ref1",
+        ),  # Higher priority
+        (
+            "fact2",
+            "entity2",
+            "field2",
+            "value3",
+            "2023 - 01 - 01",
+            "3",
+            1,
+            "2023 - 01 - 01",
+            "",
+            "ref2",
+        ),
     ]
-    
+
     return spark.createDataFrame(data, schema)
 
 
 @pytest.fixture
 def sample_entity_data(spark):
     """Create sample entity data for testing."""
-    schema = StructType([
-        StructField("entity", StringType(), True),
-        StructField("field", StringType(), True),
-        StructField("value", StringType(), True),
-        StructField("entry_number", StringType(), True),
-        StructField("entry_date", StringType(), True),
-        StructField("start_date", StringType(), True),
-        StructField("end_date", StringType(), True),
-        StructField("priority", IntegerType(), True)
-    ])
-    
+    schema = StructType(
+        [
+            StructField("entity", StringType(), True),
+            StructField("field", StringType(), True),
+            StructField("value", StringType(), True),
+            StructField("entry_number", StringType(), True),
+            StructField("entry_date", StringType(), True),
+            StructField("start_date", StringType(), True),
+            StructField("end_date", StringType(), True),
+            StructField("priority", IntegerType(), True),
+        ]
+    )
+
     data = [
-        ("entity1", "name", "Entity One", "1", "2023-01-01", "2023-01-01", "", 1),
-        ("entity1", "reference", "REF001", "2", "2023-01-01", "2023-01-01", "", 1),
-        ("entity2", "name", "Entity Two", "3", "2023-01-01", "2023-01-01", "", 1)
+        (
+            "entity1",
+            "name",
+            "Entity One",
+            "1",
+            "2023 - 01 - 01",
+            "2023 - 01 - 01",
+            "",
+            1,
+        ),
+        (
+            "entity1",
+            "reference",
+            "REF001",
+            "2",
+            "2023 - 01 - 01",
+            "2023 - 01 - 01",
+            "",
+            1,
+        ),
+        (
+            "entity2",
+            "name",
+            "Entity Two",
+            "3",
+            "2023 - 01 - 01",
+            "2023 - 01 - 01",
+            "",
+            1,
+        ),
     ]
-    
+
     return spark.createDataFrame(data, schema)
 
 
 @pytest.fixture
 def sample_issue_data(spark):
     """Create sample issue data for testing."""
-    schema = StructType([
-        StructField("entity", StringType(), True),
-        StructField("entry_number", StringType(), True),
-        StructField("field", StringType(), True),
-        StructField("issue_type", StringType(), True),
-        StructField("line_number", StringType(), True),
-        StructField("dataset", StringType(), True),
-        StructField("resource", StringType(), True),
-        StructField("value", StringType(), True),
-        StructField("message", StringType(), True)
-    ])
-    
+    schema = StructType(
+        [
+            StructField("entity", StringType(), True),
+            StructField("entry_number", StringType(), True),
+            StructField("field", StringType(), True),
+            StructField("issue_type", StringType(), True),
+            StructField("line_number", StringType(), True),
+            StructField("dataset", StringType(), True),
+            StructField("resource", StringType(), True),
+            StructField("value", StringType(), True),
+            StructField("message", StringType(), True),
+        ]
+    )
+
     data = [
-        ("entity1", "1", "field1", "missing-value", "1", "test-dataset", "resource1", "", "Missing required field"),
-        ("entity2", "2", "field2", "invalid-format", "2", "test-dataset", "resource1", "invalid", "Invalid format")
+        (
+            "entity1",
+            "1",
+            "field1",
+            "missing - value",
+            "1",
+            "test - dataset",
+            "resource1",
+            "",
+            "Missing required field",
+        ),
+        (
+            "entity2",
+            "2",
+            "field2",
+            "invalid - format",
+            "2",
+            "test - dataset",
+            "resource1",
+            "invalid",
+            "Invalid format",
+        ),
     ]
-    
+
     return spark.createDataFrame(data, schema)
 
 
 @pytest.fixture
 def mock_s3_client():
     """Mock AWS S3 client."""
-    with patch('boto3.client') as mock_boto_client:
+    with patch("boto3.client") as mock_boto_client:
         mock_s3 = MagicMock()
         mock_boto_client.return_value = mock_s3
         yield mock_s3
@@ -123,7 +215,7 @@ def mock_s3_client():
 @pytest.fixture
 def mock_secrets_manager():
     """Mock AWS Secrets Manager client."""
-    with patch('boto3.client') as mock_boto_client:
+    with patch("boto3.client") as mock_boto_client:
         mock_secrets = MagicMock()
         mock_boto_client.return_value = mock_secrets
         yield mock_secrets
@@ -132,7 +224,7 @@ def mock_secrets_manager():
 @pytest.fixture
 def mock_postgres_connection():
     """Mock PostgreSQL connection."""
-    with patch('psycopg2.connect') as mock_connect:
+    with patch("psycopg2.connect") as mock_connect:
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
@@ -148,7 +240,7 @@ def sample_database_config():
         "port": 5432,
         "database": "test_db",
         "user": "test_user",
-        "password": "test_password"
+        "password": "test_password",
     }
 
 
@@ -156,10 +248,10 @@ def sample_database_config():
 def sample_s3_config():
     """Sample S3 configuration for testing."""
     return {
-        "bucket": "test-bucket",
-        "region": "us-east-1",
-        "access_key": "test-access-key",
-        "secret_key": "test-secret-key"
+        "bucket": "test - bucket",
+        "region": "us - east - 1",
+        "access_key": "test - access - key",
+        "secret_key": "test - secret - key",
     }
 
 
@@ -169,14 +261,17 @@ def mock_external_dependencies():
     """Mock external dependencies that might not be available in test environment."""
     # Create a proper pandas mock that behaves like the real pandas for isinstance checks
     pandas_mock = MagicMock()
-    pandas_mock.DataFrame = type('MockDataFrame', (), {})
-    
-    with patch.dict('sys.modules', {
-        'sedona': MagicMock(),
-        'sedona.spark': MagicMock(),
-        'sedona.spark.SedonaContext': MagicMock(),
-        'pandas': pandas_mock,
-    }):
+    pandas_mock.DataFrame = type("MockDataFrame", (), {})
+
+    with patch.dict(
+        "sys.modules",
+        {
+            "sedona": MagicMock(),
+            "sedona.spark": MagicMock(),
+            "sedona.spark.SedonaContext": MagicMock(),
+            "pandas": pandas_mock,
+        },
+    ):
         yield
 
 
@@ -198,15 +293,15 @@ def pytest_collection_modifyitems(config, items):
         # Add unit marker to all tests in unit directory
         if "unit" in str(item.fspath):
             item.add_marker(pytest.mark.unit)
-        
+
         # Add integration marker to integration tests
         if "integration" in str(item.fspath):
             item.add_marker(pytest.mark.integration)
-        
+
         # Add acceptance marker to acceptance tests
         if "acceptance" in str(item.fspath):
             item.add_marker(pytest.mark.acceptance)
-        
+
         # Add spark marker to tests that use spark fixture
         if "spark" in item.fixturenames:
             item.add_marker(pytest.mark.spark)

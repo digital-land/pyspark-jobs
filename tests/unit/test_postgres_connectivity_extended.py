@@ -1,38 +1,35 @@
 """
 Extended tests for postgres_connectivity.py to improve coverage.
-Targets uncovered lines: 659-777, 780-805, 808-821, 1141-1167, etc.
+Targets uncovered lines: 659 - 777, 780 - 805, 808 - 821, 1141 - 1167, etc.
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock, call
-import json
-import time
 from datetime import datetime, timedelta
+from unittest.mock import MagicMock, Mock, call, patch
 
 # Import the module under test
 from jobs.dbaccess.postgres_connectivity import (
-    cleanup_old_staging_tables,
-    create_and_prepare_staging_table,
-    commit_staging_to_production,
-    calculate_centroid_wkt,
+    ENTITY_TABLE_NAME,
     _prepare_geometry_columns,
-    get_performance_recommendations,
     _write_to_postgres_optimized,
+    calculate_centroid_wkt,
+    cleanup_old_staging_tables,
+    commit_staging_to_production,
+    create_and_prepare_staging_table,
+    get_performance_recommendations,
     write_to_postgres,
-    ENTITY_TABLE_NAME
 )
 
 
 class TestCleanupOldStagingTables:
     """Test cleanup_old_staging_tables function."""
-    
+
     def test_cleanup_no_pg8000(self):
         """Test cleanup when pg8000 is not available."""
-        with patch('jobs.dbaccess.postgres_connectivity.pg8000', None):
+        with patch("jobs.dbaccess.postgres_connectivity.pg8000", None):
             # Should return without error
             cleanup_old_staging_tables({})
-    
-    @patch('jobs.dbaccess.postgres_connectivity.pg8000')
+
+    @patch("jobs.dbaccess.postgres_connectivity.pg8000")
     def test_cleanup_no_staging_tables(self, mock_pg8000):
         """Test cleanup when no staging tables exist."""
         mock_conn = Mock()
@@ -40,109 +37,124 @@ class TestCleanupOldStagingTables:
         mock_cur.fetchall.return_value = []
         mock_conn.cursor.return_value = mock_cur
         mock_pg8000.connect.return_value = mock_conn
-        
-        conn_params = {'host': 'test', 'port': 5432}
+
+        conn_params = {"host": "test", "port": 5432}
         cleanup_old_staging_tables(conn_params)
-        
+
         mock_cur.execute.assert_called()
         mock_cur.fetchall.assert_called_once()
-    
-    @patch('jobs.dbaccess.postgres_connectivity.pg8000')
-    @patch('jobs.dbaccess.postgres_connectivity.datetime')
+
+    @patch("jobs.dbaccess.postgres_connectivity.pg8000")
+    @patch("jobs.dbaccess.postgres_connectivity.datetime")
     def test_cleanup_drops_old_tables(self, mock_datetime, mock_pg8000):
         """Test cleanup drops old staging tables."""
         # Mock current time
         mock_now = datetime(2024, 1, 15, 12, 0, 0)
         mock_datetime.now.return_value = mock_now
-        mock_datetime.strptime.return_value = datetime(2024, 1, 14, 10, 0, 0)  # 26 hours ago
-        
+        mock_datetime.strptime.return_value = datetime(
+            2024, 1, 14, 10, 0, 0
+        )  # 26 hours ago
+
         mock_conn = Mock()
         mock_cur = Mock()
-        mock_cur.fetchall.return_value = [('entity_staging_abc12345_20240114_100000',)]
+        mock_cur.fetchall.return_value = [("entity_staging_abc12345_20240114_100000",)]
         mock_conn.cursor.return_value = mock_cur
         mock_pg8000.connect.return_value = mock_conn
-        
-        conn_params = {'host': 'test', 'port': 5432}
+
+        conn_params = {"host": "test", "port": 5432}
         cleanup_old_staging_tables(conn_params, max_age_hours=24)
-        
+
         # Should execute DROP TABLE
-        drop_calls = [call for call in mock_cur.execute.call_args_list 
-                     if 'DROP TABLE' in str(call)]
+        drop_calls = [
+            call
+            for call in mock_cur.execute.call_args_list
+            if "DROP TABLE" in str(call)
+        ]
         assert len(drop_calls) > 0
-    
-    @patch('jobs.dbaccess.postgres_connectivity.pg8000')
+
+    @patch("jobs.dbaccess.postgres_connectivity.pg8000")
     def test_cleanup_connection_retry(self, mock_pg8000):
         """Test cleanup retries on connection failure."""
-        mock_pg8000.connect.side_effect = [Exception("Connection failed"), Exception("Still failing")]
-        
-        conn_params = {'host': 'test', 'port': 5432}
-        
-        with patch('time.sleep'):
+        mock_pg8000.connect.side_effect = [
+            Exception("Connection failed"),
+            Exception("Still failing"),
+        ]
+
+        conn_params = {"host": "test", "port": 5432}
+
+        with patch("time.sleep"):
             cleanup_old_staging_tables(conn_params, max_retries=2)
-        
+
         assert mock_pg8000.connect.call_count == 2
 
 
 class TestCreateAndPrepareStagingTable:
     """Test create_and_prepare_staging_table function."""
-    
+
     def test_create_staging_no_pg8000(self):
         """Test staging table creation when pg8000 is not available."""
-        with patch('jobs.dbaccess.postgres_connectivity.pg8000', None):
+        with patch("jobs.dbaccess.postgres_connectivity.pg8000", None):
             with pytest.raises(ImportError, match="pg8000 required"):
-                create_and_prepare_staging_table({}, "test-dataset")
-    
-    @patch('jobs.dbaccess.postgres_connectivity.pg8000')
-    @patch('jobs.dbaccess.postgres_connectivity.cleanup_old_staging_tables')
+                create_and_prepare_staging_table({}, "test - dataset")
+
+    @patch("jobs.dbaccess.postgres_connectivity.pg8000")
+    @patch("jobs.dbaccess.postgres_connectivity.cleanup_old_staging_tables")
     def test_create_staging_success(self, mock_cleanup, mock_pg8000):
         """Test successful staging table creation."""
         mock_conn = Mock()
         mock_cur = Mock()
         mock_conn.cursor.return_value = mock_cur
         mock_pg8000.connect.return_value = mock_conn
-        
-        conn_params = {'host': 'test', 'port': 5432}
-        result = create_and_prepare_staging_table(conn_params, "test-dataset")
-        
+
+        conn_params = {"host": "test", "port": 5432}
+        result = create_and_prepare_staging_table(conn_params, "test - dataset")
+
         assert result is not None
         assert "staging" in result
         mock_cleanup.assert_called_once()
         mock_cur.execute.assert_called()
         mock_conn.commit.assert_called()
-    
-    @patch('jobs.dbaccess.postgres_connectivity.pg8000')
+
+    @patch("jobs.dbaccess.postgres_connectivity.pg8000")
     def test_create_staging_retry_on_interface_error(self, mock_pg8000):
         """Test staging table creation retries on InterfaceError."""
         # Mock InterfaceError class
-        mock_interface_error = type('InterfaceError', (Exception,), {})
+        mock_interface_error = type("InterfaceError", (Exception,), {})
         mock_pg8000.exceptions.InterfaceError = mock_interface_error
-        
+
         mock_conn = Mock()
         mock_cur = Mock()
         mock_conn.cursor.return_value = mock_cur
-        
+
         # First call raises error, second succeeds
-        mock_pg8000.connect.side_effect = [mock_interface_error("Network error"), mock_conn]
-        
-        conn_params = {'host': 'test', 'port': 5432}
-        
-        with patch('time.sleep'), patch('jobs.dbaccess.postgres_connectivity.cleanup_old_staging_tables'):
-            result = create_and_prepare_staging_table(conn_params, "test-dataset", max_retries=2)
-        
+        mock_pg8000.connect.side_effect = [
+            mock_interface_error("Network error"),
+            mock_conn,
+        ]
+
+        conn_params = {"host": "test", "port": 5432}
+
+        with patch("time.sleep"), patch(
+            "jobs.dbaccess.postgres_connectivity.cleanup_old_staging_tables"
+        ):
+            result = create_and_prepare_staging_table(
+                conn_params, "test - dataset", max_retries=2
+            )
+
         assert mock_pg8000.connect.call_count == 2
         assert result is not None
 
 
 class TestCommitStagingToProduction:
     """Test commit_staging_to_production function."""
-    
+
     def test_commit_no_pg8000(self):
         """Test commit when pg8000 is not available."""
-        with patch('jobs.dbaccess.postgres_connectivity.pg8000', None):
+        with patch("jobs.dbaccess.postgres_connectivity.pg8000", None):
             with pytest.raises(ImportError, match="pg8000 required"):
                 commit_staging_to_production({}, "staging_table", "dataset")
-    
-    @patch('jobs.dbaccess.postgres_connectivity.pg8000')
+
+    @patch("jobs.dbaccess.postgres_connectivity.pg8000")
     def test_commit_empty_staging_table(self, mock_pg8000):
         """Test commit with empty staging table."""
         mock_conn = Mock()
@@ -150,15 +162,17 @@ class TestCommitStagingToProduction:
         mock_cur.fetchone.return_value = (0,)  # Empty staging table
         mock_conn.cursor.return_value = mock_cur
         mock_pg8000.connect.return_value = mock_conn
-        
-        conn_params = {'host': 'test', 'port': 5432}
-        result = commit_staging_to_production(conn_params, "staging_table", "test-dataset")
-        
+
+        conn_params = {"host": "test", "port": 5432}
+        result = commit_staging_to_production(
+            conn_params, "staging_table", "test - dataset"
+        )
+
         assert result["success"] is False
         assert "empty" in result["error"]
         mock_conn.rollback.assert_called_once()
-    
-    @patch('jobs.dbaccess.postgres_connectivity.pg8000')
+
+    @patch("jobs.dbaccess.postgres_connectivity.pg8000")
     def test_commit_row_count_mismatch(self, mock_pg8000):
         """Test commit with row count mismatch."""
         mock_conn = Mock()
@@ -167,15 +181,17 @@ class TestCommitStagingToProduction:
         mock_cur.rowcount = 50  # Only 50 inserted
         mock_conn.cursor.return_value = mock_cur
         mock_pg8000.connect.return_value = mock_conn
-        
-        conn_params = {'host': 'test', 'port': 5432}
-        result = commit_staging_to_production(conn_params, "staging_table", "test-dataset")
-        
+
+        conn_params = {"host": "test", "port": 5432}
+        result = commit_staging_to_production(
+            conn_params, "staging_table", "test - dataset"
+        )
+
         assert result["success"] is False
         assert "mismatch" in result["error"]
         mock_conn.rollback.assert_called_once()
-    
-    @patch('jobs.dbaccess.postgres_connectivity.pg8000')
+
+    @patch("jobs.dbaccess.postgres_connectivity.pg8000")
     def test_commit_success(self, mock_pg8000):
         """Test successful commit operation."""
         mock_conn = Mock()
@@ -184,10 +200,12 @@ class TestCommitStagingToProduction:
         mock_cur.rowcount = 100  # 100 rows processed
         mock_conn.cursor.return_value = mock_cur
         mock_pg8000.connect.return_value = mock_conn
-        
-        conn_params = {'host': 'test', 'port': 5432}
-        result = commit_staging_to_production(conn_params, "staging_table", "test-dataset")
-        
+
+        conn_params = {"host": "test", "port": 5432}
+        result = commit_staging_to_production(
+            conn_params, "staging_table", "test - dataset"
+        )
+
         assert result["success"] is True
         assert result["rows_inserted"] == 100
         mock_conn.commit.assert_called()
@@ -195,14 +213,14 @@ class TestCommitStagingToProduction:
 
 class TestCalculateCentroidWkt:
     """Test calculate_centroid_wkt function."""
-    
+
     def test_calculate_centroid_no_pg8000(self):
         """Test centroid calculation when pg8000 is not available."""
-        with patch('jobs.dbaccess.postgres_connectivity.pg8000', None):
+        with patch("jobs.dbaccess.postgres_connectivity.pg8000", None):
             with pytest.raises(AttributeError):
                 calculate_centroid_wkt({})
-    
-    @patch('jobs.dbaccess.postgres_connectivity.pg8000')
+
+    @patch("jobs.dbaccess.postgres_connectivity.pg8000")
     def test_calculate_centroid_success(self, mock_pg8000):
         """Test successful centroid calculation."""
         mock_conn = Mock()
@@ -210,15 +228,15 @@ class TestCalculateCentroidWkt:
         mock_cur.rowcount = 50
         mock_conn.cursor.return_value = mock_cur
         mock_pg8000.connect.return_value = mock_conn
-        
-        conn_params = {'host': 'test', 'port': 5432}
+
+        conn_params = {"host": "test", "port": 5432}
         result = calculate_centroid_wkt(conn_params)
-        
+
         assert result == 50
         mock_cur.execute.assert_called()
         mock_conn.commit.assert_called_once()
-    
-    @patch('jobs.dbaccess.postgres_connectivity.pg8000')
+
+    @patch("jobs.dbaccess.postgres_connectivity.pg8000")
     def test_calculate_centroid_with_target_table(self, mock_pg8000):
         """Test centroid calculation with specific target table."""
         mock_conn = Mock()
@@ -226,26 +244,27 @@ class TestCalculateCentroidWkt:
         mock_cur.rowcount = 25
         mock_conn.cursor.return_value = mock_cur
         mock_pg8000.connect.return_value = mock_conn
-        
-        conn_params = {'host': 'test', 'port': 5432}
+
+        conn_params = {"host": "test", "port": 5432}
         result = calculate_centroid_wkt(conn_params, target_table="staging_table")
-        
+
         assert result == 25
         mock_cur.execute.assert_called()
         mock_conn.commit.assert_called_once()
 
+
 class TestPrepareGeometryColumns:
     """Test _prepare_geometry_columns function."""
-    
+
     def test_prepare_geometry_columns_basic(self):
         """Test basic geometry column preparation."""
         # Mock DataFrame with simple return
         mock_df = Mock()
         mock_df.columns = ["entity", "geometry", "point", "other_col"]
         mock_df.withColumn.return_value = mock_df
-        
+
         result = _prepare_geometry_columns(mock_df)
-        
+
         # Should return the DataFrame (possibly modified)
         assert result is not None
         # Should call withColumn for entity, geometry, point
@@ -254,36 +273,36 @@ class TestPrepareGeometryColumns:
 
 class TestGetPerformanceRecommendations:
     """Test get_performance_recommendations function."""
-    
+
     def test_small_dataset_recommendations(self):
         """Test recommendations for small dataset."""
         result = get_performance_recommendations(5000)
-        
+
         assert result["method"] == "optimized"
         assert result["batch_size"] == 1000
         assert result["num_partitions"] == 1
         assert "Small dataset" in result["notes"][0]
-    
+
     def test_medium_dataset_recommendations(self):
         """Test recommendations for medium dataset."""
         result = get_performance_recommendations(500000)
-        
+
         assert result["method"] == "optimized"
         assert result["batch_size"] == 3000
         assert result["num_partitions"] == 4
-    
+
     def test_large_dataset_recommendations(self):
         """Test recommendations for large dataset."""
         result = get_performance_recommendations(5000000)
-        
+
         assert result["method"] == "optimized"
         assert result["batch_size"] == 4000
         assert result["num_partitions"] == 8
-    
+
     def test_very_large_dataset_recommendations(self):
         """Test recommendations for very large dataset."""
         result = get_performance_recommendations(20000000, available_memory_gb=16)
-        
+
         assert result["method"] == "optimized"
         assert result["batch_size"] == 5000
         assert result["num_partitions"] >= 6
@@ -292,9 +311,9 @@ class TestGetPerformanceRecommendations:
 
 class TestWriteToPostgresOptimized:
     """Test _write_to_postgres_optimized function."""
-    
-    @patch('jobs.dbaccess.postgres_connectivity.create_table')
-    @patch('jobs.dbaccess.postgres_connectivity._prepare_geometry_columns')
+
+    @patch("jobs.dbaccess.postgres_connectivity.create_table")
+    @patch("jobs.dbaccess.postgres_connectivity._prepare_geometry_columns")
     def test_write_optimized_basic(self, mock_prepare, mock_create):
         """Test basic optimized write functionality."""
         mock_df = Mock()
@@ -302,49 +321,60 @@ class TestWriteToPostgresOptimized:
         mock_df.rdd.getNumPartitions.return_value = 2
         mock_df.write.mode.return_value.option.return_value.jdbc = Mock()
         mock_prepare.return_value = mock_df
-        
-        conn_params = {'host': 'test', 'port': 5432, 'user': 'test', 'password': 'test', 'database': 'test'}
-        
-        _write_to_postgres_optimized(mock_df, "test-dataset", conn_params)
-        
+
+        conn_params = {
+            "host": "test",
+            "port": 5432,
+            "user": "test",
+            "password": "test",
+            "database": "test",
+        }
+
+        _write_to_postgres_optimized(mock_df, "test - dataset", conn_params)
+
         mock_create.assert_called_once()
         mock_prepare.assert_called_once()
 
 
 class TestWriteToPostgres:
     """Test write_to_postgres function."""
-    
-    @patch('jobs.dbaccess.postgres_connectivity._write_to_postgres_optimized')
+
+    @patch("jobs.dbaccess.postgres_connectivity._write_to_postgres_optimized")
     def test_write_to_postgres_default_method(self, mock_optimized):
         """Test write_to_postgres uses optimized method by default."""
         mock_df = Mock()
-        conn_params = {'host': 'test'}
-        
-        write_to_postgres(mock_df, "test-dataset", conn_params)
-        
+        conn_params = {"host": "test"}
+
+        write_to_postgres(mock_df, "test - dataset", conn_params)
+
         mock_optimized.assert_called_once_with(
-            mock_df, "test-dataset", conn_params, None, None, None
+            mock_df, "test - dataset", conn_params, None, None, None
         )
-    
-    @patch('jobs.dbaccess.postgres_connectivity._write_to_postgres_optimized')
+
+    @patch("jobs.dbaccess.postgres_connectivity._write_to_postgres_optimized")
     def test_write_to_postgres_with_parameters(self, mock_optimized):
         """Test write_to_postgres with custom parameters."""
         mock_df = Mock()
-        conn_params = {'host': 'test'}
-        
+        conn_params = {"host": "test"}
+
         write_to_postgres(
-            mock_df, "test-dataset", conn_params, 
-            method="optimized", batch_size=2000, num_partitions=4, target_table="staging"
+            mock_df,
+            "test - dataset",
+            conn_params,
+            method="optimized",
+            batch_size=2000,
+            num_partitions=4,
+            target_table="staging",
         )
-        
+
         mock_optimized.assert_called_once_with(
-            mock_df, "test-dataset", conn_params, 2000, 4, "staging"
+            mock_df, "test - dataset", conn_params, 2000, 4, "staging"
         )
 
 
 class TestModuleConstants:
-    """Test module-level constants and configurations."""
-    
+    """Test module - level constants and configurations."""
+
     def test_entity_table_name_constant(self):
         """Test ENTITY_TABLE_NAME constant is properly set."""
         assert ENTITY_TABLE_NAME == "entity"

@@ -1,7 +1,5 @@
 """Extremely simple direct execution for 80% coverage."""
 
-import pytest
-
 
 class TestSimpleExecution80:
     """Extremely simple direct execution tests."""
@@ -10,29 +8,29 @@ class TestSimpleExecution80:
         """Import all modules and call basic functions."""
         # Import everything to get basic coverage
         try:
-            import jobs.utils.logger_config as logger_config
-            import jobs.utils.path_utils as path_utils
-            import jobs.utils.df_utils as df_utils
-            import jobs.utils.s3_dataset_typology as s3_dataset_typology
-            import jobs.utils.aws_secrets_manager as aws_secrets_manager
-            import jobs.utils.s3_utils as s3_utils
-            import jobs.utils.geometry_utils as geometry_utils
-            import jobs.utils.postgres_writer_utils as postgres_writer_utils
-            import jobs.utils.s3_format_utils as s3_format_utils
-            import jobs.utils.s3_writer_utils as s3_writer_utils
             import jobs.csv_s3_writer as csv_s3_writer
             import jobs.main_collection_data as main_collection_data
             import jobs.transform_collection_data as transform_collection_data
-            
+            import jobs.utils.aws_secrets_manager as aws_secrets_manager
+            import jobs.utils.df_utils as df_utils
+            import jobs.utils.geometry_utils as geometry_utils
+            import jobs.utils.logger_config as logger_config
+            import jobs.utils.path_utils as path_utils
+            import jobs.utils.postgres_writer_utils as postgres_writer_utils
+            import jobs.utils.s3_dataset_typology as s3_dataset_typology
+            import jobs.utils.s3_format_utils as s3_format_utils
+            import jobs.utils.s3_utils as s3_utils
+            import jobs.utils.s3_writer_utils as s3_writer_utils
+
             # Call simple functions
             logger_config.set_spark_log_level("ERROR")
             logger_config.setup_logging()
             logger = logger_config.get_logger(__name__)
-            
+
             # Call s3_dataset_typology functions
-            s3_dataset_typology.get_dataset_typology("transport-access-node")
+            s3_dataset_typology.get_dataset_typology("transport - access - node")
             s3_dataset_typology.get_dataset_typology("unknown")
-            
+
         except Exception:
             pass
 
@@ -44,14 +42,14 @@ class TestSimpleExecution80:
                 f.read()
         except FileNotFoundError:
             pass
-            
+
         # JSON decode errors
-        import json
+
         try:
             json.loads("invalid json")
         except json.JSONDecodeError:
             pass
-            
+
         # Import errors
         try:
             import nonexistent_module
@@ -61,8 +59,8 @@ class TestSimpleExecution80:
     def test_pyspark_imports_with_fallback(self):
         """Test PySpark imports with fallback."""
         try:
-            from pyspark.sql import SparkSession
             from pyspark import SparkContext
+            from pyspark.sql import SparkSession
         except ImportError:
             # This should hit ImportError handling paths
             pass
@@ -71,16 +69,17 @@ class TestSimpleExecution80:
         """Test boto3 operations that might fail."""
         try:
             import boto3
+
             # Try to create clients that might fail
             try:
-                client = boto3.client('s3')
-                client.list_objects_v2(Bucket='nonexistent-bucket')
+                client = boto3.client("s3")
+                client.list_objects_v2(Bucket="nonexistent - bucket")
             except Exception:
                 pass
-                
+
             try:
-                client = boto3.client('secretsmanager')
-                client.get_secret_value(SecretId='nonexistent-secret')
+                client = boto3.client("secretsmanager")
+                client.get_secret_value(SecretId="nonexistent - secret")
             except Exception:
                 pass
         except ImportError:
@@ -90,7 +89,7 @@ class TestSimpleExecution80:
         """Call functions with None parameters to trigger edge cases."""
         try:
             from jobs.utils.s3_format_utils import parse_possible_json
-            
+
             # Test with various edge case inputs
             test_cases = [None, "", "null", "undefined", "{", "}", "[]"]
             for case in test_cases:
@@ -106,27 +105,27 @@ class TestSimpleExecution80:
         try:
             # Import and execute functions directly
             from jobs.utils.logger_config import set_spark_log_level, setup_logging
-            
+
             # These should execute actual code paths
             set_spark_log_level("WARN")
             setup_logging(log_level="INFO")
             setup_logging(log_level="DEBUG", environment="test")
-            
+
         except Exception:
             pass
 
     def test_module_level_execution(self):
-        """Execute module-level code."""
+        """Execute module - level code."""
         try:
-            # Import modules to trigger module-level execution
-            import jobs.utils.logger_config
-            import jobs.utils.s3_dataset_typology
-            import jobs.utils.path_utils
+            # Import modules to trigger module - level execution
             import jobs.utils.df_utils
-            
+            import jobs.utils.logger_config
+            import jobs.utils.path_utils
+            import jobs.utils.s3_dataset_typology
+
             # Access module attributes to trigger more execution
             dir(jobs.utils.logger_config)
             dir(jobs.utils.s3_dataset_typology)
-            
+
         except Exception:
             pass
