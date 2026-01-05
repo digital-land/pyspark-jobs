@@ -287,6 +287,18 @@ class TestValidateS3Path:
         with pytest.raises(ValueError, match="Path too short"):
             validate_s3_path("s3://")
 
+    def test_validate_s3_path_edge_cases(self):
+        """Test additional edge cases for S3 path validation."""
+        from jobs.main_collection_data import validate_s3_path
+
+        # Test empty string
+        with pytest.raises(ValueError, match="non - empty string"):
+            validate_s3_path("")
+
+        # Test whitespace only
+        with pytest.raises(ValueError, match="non - empty string"):
+            validate_s3_path("   ")
+
 
 class TestMainFunction:
     """Test main function - targets lines 302 - 303, 315 - 347, 431 - 432, 440 - 443."""

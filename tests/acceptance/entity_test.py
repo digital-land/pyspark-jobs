@@ -456,18 +456,18 @@ def test_complete_etl_pipeline_integration(spark, temp_csv_files):
         if "-" in column:
             new_col = column.replace("-", "_")
             raw_df = raw_df.withColumnRenamed(column, new_col)
-    
+
     # Debug: Print actual column names to understand the issue
     actual_columns = raw_df.columns
     print(f"Actual columns after renaming: {actual_columns}")
-    
+
     # Use the actual column name that exists
     entry_col = None
     for col_name in actual_columns:
         if "entry" in col_name.lower():
             entry_col = col_name
             break
-    
+
     if entry_col is None:
         raise ValueError(f"No entry column found in: {actual_columns}")
 

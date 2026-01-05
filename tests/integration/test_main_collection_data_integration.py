@@ -1,4 +1,3 @@
-
 """
 Integration tests for main_collection_data module.
 
