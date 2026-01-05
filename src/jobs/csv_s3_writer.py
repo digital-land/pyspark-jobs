@@ -1060,10 +1060,10 @@ Examples:
             finally:
                 spark.stop()
 
-        elif getattr(args, 'import_csv', None):
+        elif getattr(args, "import_csv", None):
             # Import existing CSV
             import_result = import_csv_to_aurora(
-                getattr(args, 'import_csv'),
+                getattr(args, "import_csv"),
                 args.table,
                 args.dataset,
                 args.env,
