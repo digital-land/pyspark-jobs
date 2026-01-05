@@ -1,5 +1,3 @@
-import os
-import sys
 
 """
 Integration tests for main_collection_data module.
@@ -233,7 +231,7 @@ class TestEndToEndIntegration:
         with patch(
             "jobs.main_collection_data.create_spark_session"
         ) as mock_create_spark, patch(
-            "jobs.main_collection_data.cleanup_dataset_data"
+            "jobs.main_collection_data.write_to_s3_format"
         ) as mock_cleanup:
 
             mock_spark = Mock()

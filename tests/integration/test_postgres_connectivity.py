@@ -1,3 +1,4 @@
+import json
 from unittest.mock import MagicMock, patch
 
 from jobs.dbaccess.postgres_connectivity import (
