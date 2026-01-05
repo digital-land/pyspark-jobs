@@ -2,7 +2,11 @@
 Shared pytest configuration and fixtures for all test modules.
 """
 
+import os
+import sys
 from unittest.mock import MagicMock, Mock, patch
+
+import pytest
 
 # Ensure PySpark types are properly imported and available globally
 import pyspark.sql.types as spark_types
