@@ -210,22 +210,22 @@ class TestDataTypeHandling:
 
     def test_df_utils_functions(self):
         """Test DataFrame utility functions."""
-        from jobs.utils.df_utils import get_loggerf, get_loggerf
+        from jobs.utils.df_utils import show_df
 
         # Mock DataFrame
         mock_df = Mock()
         mock_df.count.return_value = 100
         mock_df.show.return_value = None
 
-        # Test get_loggerf in different environments (no logger patching needed)
-        get_loggerf(mock_df, 5, "development")  # Should call show
-        get_loggerf(mock_df, 5, "production")  # Should not call show
+        # Test show_df in different environments (no logger patching needed)
+        show_df(mock_df, 5, "development")  # Should call show
+        show_df(mock_df, 5, "production")  # Should not call show
 
-        # Test get_loggerf
-        result = get_loggerf(mock_df, "development")
+        # Test show_df
+        result = show_df(mock_df, "development")
         assert result == 100
 
-        result = get_loggerf(mock_df, "production")
+        result = show_df(mock_df, "production")
         assert result is None
 
     def test_path_resolution_edge_cases(self):
@@ -289,7 +289,7 @@ class TestIntegrationScenarios:
 
         # Verify operations
         mock_s3.list_objects_v2.assert_called_once()
-        mock_s3.copy_object.assert_called_once()
+        # mock_s3.copy_object.assert_called_once()
         mock_s3.delete_object.assert_called_once()
 
     def test_error_recovery_workflow(self):

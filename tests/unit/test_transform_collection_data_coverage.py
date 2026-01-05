@@ -588,7 +588,9 @@ class TestTransformDataEntityCoverage:
 
     @patch("jobs.transform_collection_data.get_dataset_typology")
     @patch("jobs.transform_collection_data.get_logger")
-    def test_transform_data_entity_final_projection(self, mock_get_loggerf, mock_typology):
+    def test_transform_data_entity_final_projection(
+        self, mock_get_loggerf, mock_typology
+    ):
         """Test final column projection and deduplication."""
         mock_typology.return_value = "test - typology"
 
@@ -987,7 +989,9 @@ class TestTransformDataErrorHandling:
 
     @patch("jobs.transform_collection_data.get_dataset_typology")
     @patch("jobs.transform_collection_data.get_logger")
-    def test_transform_data_entity_final_projection(self, mock_get_loggerf, mock_typology):
+    def test_transform_data_entity_final_projection(
+        self, mock_get_loggerf, mock_typology
+    ):
         """Test final column projection and deduplication."""
         mock_typology.return_value = "test - typology"
 

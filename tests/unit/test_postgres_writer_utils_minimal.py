@@ -67,7 +67,9 @@ class TestPostgresWriterUtilsUncoveredLines:
                 mock_cur.rowcount = 100
                 mock_connect.return_value = mock_conn
 
-                with patch("jobs.utils.postgres_writer_utils.get_logger", return_value=Mock()):
+                with patch(
+                    "jobs.utils.postgres_writer_utils.get_logger", return_value=Mock()
+                ):
                     with patch(
                         "jobs.utils.postgres_writer_utils._ensure_required_columns",
                         return_value=mock_df,

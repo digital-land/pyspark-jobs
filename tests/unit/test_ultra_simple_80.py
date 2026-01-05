@@ -50,7 +50,7 @@ class TestUltraSimple80:
 
     def test_simple_df_utils_calls(self):
         """Simple calls to df_utils functions."""
-        from jobs.utils.df_utils import get_loggerf
+        from jobs.utils.df_utils import show_df
 
         # Mock a simple DataFrame
         class MockDF:
@@ -63,7 +63,7 @@ class TestUltraSimple80:
         mock_df = MockDF()
 
         # This should hit lines in df_utils
-        get_loggerf(mock_df, 10, "test")
+        show_df(mock_df, 10, "test")
 
     def test_simple_s3_dataset_typology_calls(self):
         """Simple calls to s3_dataset_typology functions."""

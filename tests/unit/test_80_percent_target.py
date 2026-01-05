@@ -61,7 +61,7 @@ class TestHighCoverageModules:
                 pass
 
             # Test lines 191 - 193 - main function error paths
-            with patch("jobs.main_collection_data.sys.argv", ["script", "--invalid"]):
+            with patch("sys.argv", ["script", "--invalid"]):
                 try:
                     main()
                 except Exception:

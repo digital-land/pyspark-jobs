@@ -1,8 +1,8 @@
 import os
 import sys
-from pyspark.sql.functions import when, col, lit
 
 import pytest
+from pyspark.sql.functions import col, lit, when
 
 """
 Targeted tests for csv_s3_writer.py missing lines.

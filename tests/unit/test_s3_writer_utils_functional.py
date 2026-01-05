@@ -134,7 +134,7 @@ description: No fields here
         mock_df_with_point.columns = ["entity", "point"]
         mock_df_with_point.withColumn.return_value = mock_df_with_point
 
-        with patch("pyspark.sql.functions.ud"):
+        with patch("pyspark.sql.functions.udf"):
             with patch("pyspark.sql.functions.col"):
                 result = round_point_coordinates(mock_df_with_point)
                 assert result is not None

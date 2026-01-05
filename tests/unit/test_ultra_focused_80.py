@@ -186,12 +186,12 @@ class TestUltraFocused80:
                     mock_df.withColumn.return_value = mock_df
 
                     # Mock all PySpark functions
-                    with patch("jobs.csv_s3_writer.col") as mock_col, patch(
+                    with patch("pyspark.sql.functions.col") as mock_col, patch(
                         "jobs.csv_s3_writer.when"
                     ) as mock_when, patch(
                         "jobs.csv_s3_writer.to_json"
                     ) as mock_to_json, patch(
-                        "jobs.csv_s3_writer.lit"
+                        "pyspark.sql.functions.lit"
                     ) as mock_lit:
 
                         mock_col.return_value.isNull.return_value = Mock()
