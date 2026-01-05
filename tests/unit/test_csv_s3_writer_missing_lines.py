@@ -31,10 +31,10 @@ class TestCsvS3WriterMissingLines:
             with patch("pyspark.sql.functions.col"):
                 with patch("pyspark.sql.functions.to_json"):
                     try:
-            result = prepare_dataframe_for_csv(mock_df)
-        except Exception:
-            # PySpark context issues in test environment
-            result = mock_df
+                        result = prepare_dataframe_for_csv(mock_df)
+                    except Exception:
+                        # PySpark context issues in test environment
+                        result = mock_df
                     assert result is not None
 
     def test_prepare_dataframe_for_csv_string_json_columns(self):
@@ -271,10 +271,10 @@ class TestCsvS3WriterEdgeCases:
         with patch("pyspark.sql.functions.when"):
             with patch("pyspark.sql.functions.col"):
                 try:
-            result = prepare_dataframe_for_csv(mock_df)
-        except Exception:
-            # PySpark context issues in test environment
-            result = mock_df
+                    result = prepare_dataframe_for_csv(mock_df)
+                except Exception:
+                    # PySpark context issues in test environment
+                    result = mock_df
                 assert result is not None
 
     def test_cleanup_temp_csv_files_error_handling(self):
