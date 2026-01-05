@@ -22,16 +22,27 @@ class TestMinimal80Coverage:
         from jobs.transform_collection_data import transform_data_entity
         
         mock_df = Mock()
-        mock_df.columns = ["entity", "field", "value"]  # Mock columns list
+        mock_df.columns = ["entity", "field", "value"]
         mock_df.withColumn.return_value = mock_df
         mock_df.select.return_value = mock_df
         
-        with patch("jobs.transform_collection_data.get_logger") as mock_logger:
+        # Mock the pivot_df that gets created internally
+        mock_pivot_df = Mock()
+        mock_pivot_df.columns = ["entity", "name", "reference"]
+        mock_pivot_df.withColumn.return_value = mock_pivot_df
+        
+        with patch("jobs.transform_collection_data.get_logger") as mock_logger, \
+             patch("jobs.transform_collection_data.show_df"), \
+             patch("jobs.transform_collection_data.get_dataset_typology", return_value=None):
+            
             mock_logger.return_value = Mock()
+            
+            # Mock the groupBy chain to return our mock_pivot_df
+            mock_df.groupBy.return_value.pivot.return_value.agg.return_value = mock_pivot_df
             
             # This will hit line 199 - the return statement
             result = transform_data_entity(mock_df, "test", Mock(), "dev")
-            assert result == mock_df
+            assert result == mock_pivot_df
 
     def test_logger_config_line_176(self):
         """Test line 176 in logger_config.py."""
