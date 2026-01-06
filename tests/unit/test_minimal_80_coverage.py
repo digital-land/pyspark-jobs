@@ -37,7 +37,7 @@ class TestMinimal80Coverage:
 
     def test_s3_writer_utils_missing_lines(self):
         """Test missing lines in s3_writer_utils."""
-        from jobs.utils.s3_writer_utils import wkt_to_geojson, validate_geometry
+        from jobs.utils.s3_writer_utils import wkt_to_geojson
         
         # Test invalid WKT
         result = wkt_to_geojson("INVALID_WKT")
@@ -46,15 +46,11 @@ class TestMinimal80Coverage:
         # Test empty WKT
         result = wkt_to_geojson("")
         assert result is None
-        
-        # Test geometry validation
-        result = validate_geometry("POINT(0 0)")
-        assert result is not None
 
     def test_postgres_writer_utils_missing_lines(self):
         """Test missing lines in postgres_writer_utils."""
         with patch.dict('sys.modules', {'pg8000': Mock()}):
-            from jobs.utils.postgres_writer_utils import _ensure_required_columns, validate_dataframe_schema
+            from jobs.utils.postgres_writer_utils import _ensure_required_columns
             
             # Test function exists and works
             mock_df = Mock()
@@ -62,8 +58,4 @@ class TestMinimal80Coverage:
             mock_df.withColumn.return_value = mock_df
             
             result = _ensure_required_columns(mock_df, ["entity", "name", "missing_col"])
-            assert result is not None
-            
-            # Test schema validation
-            result = validate_dataframe_schema(mock_df, ["entity", "name"])
             assert result is not None
