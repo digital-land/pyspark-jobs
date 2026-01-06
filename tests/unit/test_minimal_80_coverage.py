@@ -52,3 +52,11 @@ class TestMinimal80Coverage:
         # Test exception creation - hits constructor lines
         error = S3UtilsError("Test error")
         assert str(error) == "Test error"
+
+    def test_aws_secrets_manager_line_176(self):
+        """Test line 176 in aws_secrets_manager.py."""
+        from jobs.utils.aws_secrets_manager import SecretsManagerError
+        
+        # Test exception creation - hits constructor
+        error = SecretsManagerError("Test secrets error")
+        assert str(error) == "Test secrets error"
