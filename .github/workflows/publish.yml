@@ -71,7 +71,7 @@ jobs:
         environment: ${{ fromJSON(needs.detect-environments.outputs.environments) }}
     environment: ${{ matrix.environment }}
     env:
-      AWS_S3_BUCKET: ${{ secrets.PYSPARK_JOBS_S3_BUCKET }}
+      AWS_S3_BUCKET: ${{ secrets.DEPLOY_PYSPARK_JOBS_CODEPACKAGE_BUCKET }}
       ENVIRONMENT: ${{ matrix.environment }}
     steps:
       - uses: actions/checkout@v4
