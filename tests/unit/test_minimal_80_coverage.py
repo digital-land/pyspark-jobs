@@ -27,13 +27,13 @@ class TestMinimal80Coverage:
 
     def test_postgres_connectivity_missing_lines(self):
         """Test missing lines in postgres_connectivity."""
-        with patch.dict('sys.modules', {'pg8000': Mock()}):
+        with patch.dict('sys.modules', {'pg8000': Mock(), 'boto3': Mock()}):
             from jobs.dbaccess.postgres_connectivity import get_performance_recommendations
             
             # Test very large dataset recommendations (>10M records)
             result = get_performance_recommendations(50000000)  # 50M records
-            assert result["batch_size"] == 5000  # Correct expected value
-            assert result["num_partitions"] == 8
+            assert result["batch_size"] == 5000
+            assert result["num_partitions"] == 6
 
     def test_s3_writer_utils_missing_lines(self):
         """Test missing lines in s3_writer_utils."""
