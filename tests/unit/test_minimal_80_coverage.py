@@ -37,7 +37,7 @@ class TestMinimal80Coverage:
 
     def test_s3_writer_utils_missing_lines(self):
         """Test missing lines in s3_writer_utils."""
-        from jobs.utils.s3_writer_utils import wkt_to_geojson
+        from jobs.utils.s3_writer_utils import wkt_to_geojson, round_point_coordinates, fetch_dataset_schema_fields
         
         # Test invalid WKT
         result = wkt_to_geojson("INVALID_WKT")
@@ -46,6 +46,19 @@ class TestMinimal80Coverage:
         # Test empty WKT
         result = wkt_to_geojson("")
         assert result is None
+        
+        # Test round_point_coordinates with mock df
+        mock_df = Mock()
+        mock_df.columns = ["point"]
+        mock_df.withColumn.return_value = mock_df
+        result = round_point_coordinates(mock_df)
+        assert result is not None
+        
+        # Test fetch_dataset_schema_fields with exception
+        with patch('requests.get') as mock_get:
+            mock_get.side_effect = Exception("Network error")
+            result = fetch_dataset_schema_fields("test-dataset")
+            assert result == []
 
     def test_postgres_writer_utils_missing_lines(self):
         """Test missing lines in postgres_writer_utils."""
@@ -58,4 +71,10 @@ class TestMinimal80Coverage:
             mock_df.withColumn.return_value = mock_df
             
             result = _ensure_required_columns(mock_df, ["entity", "name", "missing_col"])
+            assert result is not None
+            
+            # Test with defaults and logger
+            mock_logger = Mock()
+            result = _ensure_required_columns(mock_df, ["entity", "name", "json"], 
+                                            defaults={"json": "{}"}, logger=mock_logger)
             assert result is not None
