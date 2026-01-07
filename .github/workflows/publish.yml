@@ -96,7 +96,17 @@ jobs:
 
       - name: Publish to S3
         run: |
+          echo "🚀 Publishing PySpark jobs to $ENVIRONMENT environment..."
           aws s3 cp build_output/whl_pkg/ s3://$AWS_S3_BUCKET/pkg/whl_pkg/ --recursive
           aws s3 cp build_output/dependencies/dependencies.zip s3://$AWS_S3_BUCKET/pkg/dependencies/
           aws s3 cp build_output/entry_script/run_main.py s3://$AWS_S3_BUCKET/pkg/entry_script/
           aws s3 cp build_output/jars/ s3://$AWS_S3_BUCKET/pkg/jars/ --recursive
+          echo "✅ Publish completed to S3 bucket: $AWS_S3_BUCKET"
+
+      - name: Verify Publishment
+        run: |
+          echo "🔍 Verifying published artifacts..."
+          aws s3 ls s3://$AWS_S3_BUCKET/pkg/whl_pkg/ --recursive
+          aws s3 ls s3://$AWS_S3_BUCKET/pkg/dependencies/
+          aws s3 ls s3://$AWS_S3_BUCKET/pkg/entry_script/
+          echo "✅ All artifacts successfully published to S3 bucket: $AWS_S3_BUCKET"
