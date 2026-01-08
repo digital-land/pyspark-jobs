@@ -717,6 +717,12 @@ def write_to_s3_format(df, output_path, dataset_name, table_name, spark, env):
         for column in temp_df.columns:
             if "_" in column:
                 temp_df = temp_df.withColumnRenamed(column, column.replace("_", "-"))
+        
+         #count after normalise column names
+        count = count_df(temp_df, env)
+        if count is not None:
+            logger.info(f"write_to_s3_format: Input DataFrame After normalising column names for {table_name} table contains {count} records")
+
 
         # count after normalise column names
         count = count_df(temp_df, env)
