@@ -205,7 +205,7 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
                 },
             )
             logger.info(
-                f"write_dataframe_to_postgres_jdbc: JDBC write successful on attempt {attempt+1}"
+                f"write_dataframe_to_postgres_jdbc: JDBC write successful on attempt {attempt + 1}"
             )
             break
         except Exception as e:
@@ -266,7 +266,7 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
             cur.execute(f"DROP TABLE {staging_table};")
             cur.execute("COMMIT;")
             logger.info(
-                f"Atomic commit successful on attempt {attempt+1} - Deleted {deleted:,}, Inserted {inserted:,} rows"
+                f"Atomic commit successful on attempt {attempt + 1} - Deleted {deleted:,}, Inserted {inserted:,} rows"
             )
             break
         except Exception as e:

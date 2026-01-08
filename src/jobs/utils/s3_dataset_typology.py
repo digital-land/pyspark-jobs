@@ -7,7 +7,7 @@ DATASET_SPEC_URL = "https://raw.githubusercontent.com/digital-land/specification
 def load_datasets():
     """Download and parse dataset.csv into a list of dictionaries."""
     with urllib.request.urlopen(DATASET_SPEC_URL) as response:
-        lines = [l.decode("utf-8") for l in response.readlines()]
+        lines = [line.decode("utf-8") for line in response.readlines()]
         reader = csv.DictReader(lines)
         return [row for row in reader]
 

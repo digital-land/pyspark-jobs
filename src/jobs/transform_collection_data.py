@@ -178,7 +178,7 @@ def transform_data_entity(df, data_set, spark, env):
 
         # 3) Normalise column names (kebab-case -> snake_case)
         logger.info(
-            f"transform_data_entity: Normalising column names from kebab-case to snake_case"
+            "transform_data_entity: Normalising column names from kebab-case to snake_case"
         )
         for column in pivot_df.columns:
             if "-" in column:
@@ -194,7 +194,7 @@ def transform_data_entity(df, data_set, spark, env):
 
         # 5) Organisation join to fetch organisation_entity
         logger.info(
-            f"transform_data_entity: Joining organisation to get organisation_entity"
+            "transform_data_entity: Joining organisation to get organisation_entity"
         )
         organisation_df = spark.read.option("header", "true").csv(
             f"s3://{env}-collection-data/organisation/dataset/organisation.csv"

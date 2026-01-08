@@ -216,7 +216,7 @@ def transform_data(df, schema_name, data_set, spark):
             f"transform_data: DataFrame columns after renaming hyphens: {df.columns}"
         )
         df.printSchema()
-        logger.info(f"transform_data: DataFrame schema after renaming hyphens")
+        logger.info("transform_data: DataFrame schema after renaming hyphens")
         show_df(df, 5, env)
 
         # Find fields that are present in both DataFrame and json
@@ -271,7 +271,7 @@ env = None
 @log_execution_time
 def main(args):
     global env, df_entity
-    logger.info(f"Main: Initialize logging and invoking initialize_logging method")
+    logger.info("Main: Initialize logging and invoking initialize_logging method")
 
     initialize_logging(args)  # Initialize logging with args
 
@@ -358,7 +358,7 @@ def main(args):
 
                     # Show schema and sample data
                     df.printSchema()
-                    logger.info(f"Main: Schema information for the loaded dataframe")
+                    logger.info("Main: Schema information for the loaded dataframe")
                     show_df(df, 5, env)
 
                     if table_name == "entity":
@@ -407,7 +407,7 @@ def main(args):
 
                     # Show schema and sample data
                     df.printSchema()
-                    logger.info(f"Main: Schema information for the loaded dataframe")
+                    logger.info("Main: Schema information for the loaded dataframe")
                     show_df(df, 5, env)
                     processed_df = transform_data(df, table_name, data_set, spark)
 
@@ -435,7 +435,7 @@ def main(args):
                 )
                 table_name = "entity"
                 logger.info(
-                    f"Main: before writing to postgres, df_entity dataframe is below"
+                    "Main: before writing to postgres, df_entity dataframe is below"
                 )
                 show_df(df_entity, 5, env)
                 write_dataframe_to_postgres_jdbc(df_entity, table_name, data_set, env)

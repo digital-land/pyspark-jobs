@@ -94,7 +94,7 @@ def transform_data_entity_format(df, data_set, spark, env=None):
 
         # 3) Normalise column names (kebab-case -> snake_case)
         logger.info(
-            f"transform_data_entity: Normalising column names from kebab-case to snake_case"
+            "transform_data_entity: Normalising column names from kebab-case to snake_case"
         )
         for column in pivot_df.columns:
             if "-" in column:
@@ -110,7 +110,7 @@ def transform_data_entity_format(df, data_set, spark, env=None):
 
         # 5) Organisation join to fetch organisation_entity
         logger.info(
-            f"transform_data_entity: Joining organisation to get organisation_entity"
+            "transform_data_entity: Joining organisation to get organisation_entity"
         )
         organisation_df = spark.read.option("header", "true").csv(
             f"s3://{env}-collection-data/organisation/dataset/organisation.csv"
@@ -258,7 +258,7 @@ def normalise_dataframe_schema(df, schema_name, data_set, spark, env=None):
         )
         df.printSchema()
         logger.info(
-            f"normalise_dataframe_schema: DataFrame schema after renaming hyphens"
+            "normalise_dataframe_schema: DataFrame schema after renaming hyphens"
         )
         show_df(df, 5, env)
 
@@ -336,7 +336,7 @@ def write_to_s3(df, output_path, dataset_name, table_name, env=None):
             "processed_timestamp",
             lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()),
         )
-        logger.info(f"write_to_s3: DataFrame after adding processed_timestamp column")
+        logger.info("write_to_s3: DataFrame after adding processed_timestamp column")
         show_df(df, 5, env)
 
         if table_name == "entity":
@@ -464,7 +464,7 @@ def round_point_coordinates(df):
                 lon = round(float(coords[0]), 6)
                 lat = round(float(coords[1]), 6)
                 return f"POINT ({lon} {lat})"
-        except:
+        except Exception:
             pass
         return point_str
 
@@ -523,7 +523,7 @@ def ensure_schema_fields(df, dataset_name):
     try:
         schema_fields = fetch_dataset_schema_fields(dataset_name)
         if not schema_fields:
-            logger.info(f"No schema fields fetched, returning DataFrame as-is")
+            logger.info("No schema fields fetched, returning DataFrame as-is")
             return df
 
         current_columns = set(df.columns)
@@ -546,7 +546,7 @@ def ensure_schema_fields(df, dataset_name):
                 f"Column order preserved with {len(missing_fields)} empty columns added at end"
             )
         else:
-            logger.info(f"All schema fields already present in DataFrame")
+            logger.info("All schema fields already present in DataFrame")
 
         return df
     except Exception as e:
@@ -609,12 +609,12 @@ def write_to_s3_format(df, output_path, dataset_name, table_name, spark, env):
         logger.info(f"Reading bake data from {path_bake}")
         df_bake = read_csv_from_s3(spark, path_bake)
 
-        logger.info(f"Selecting entity and json columns from bake dataframe")
+        logger.info("Selecting entity and json columns from bake dataframe")
         show_df(df_bake, 5, env)
         df_bake = df_bake.select("entity", "json")
         show_df(df_bake, 5, env)
 
-        logger.info(f"Performing left join on entity column")
+        logger.info("Performing left join on entity column")
         df = df.join(df_bake, df["entity"] == df_bake["entity"], how="left").select(
             df["*"], df_bake["json"]
         )
@@ -624,7 +624,7 @@ def write_to_s3_format(df, output_path, dataset_name, table_name, spark, env):
             logger.info(
                 f"write_to_s3_format: Input DataFrame After leftjoin for {table_name} table contains {count} records"
             )
-        logger.info(f"Join completed, showing result dataframe")
+        logger.info("Join completed, showing result dataframe")
         show_df(df, 5, env)
 
         temp_output_path = f"s3://{env}-collection-data/dataset/temp/{dataset_name}/"
@@ -674,7 +674,7 @@ def write_to_s3_format(df, output_path, dataset_name, table_name, spark, env):
 
         # Calculate optimal partitions based on data size
         logger.info(
-            f"write_to_s3_format: Calculating optimal partitions based on data size"
+            "write_to_s3_format: Calculating optimal partitions based on data size"
         )
         row_count = df.count()
         optimal_partitions = max(
@@ -712,7 +712,7 @@ def write_to_s3_format(df, output_path, dataset_name, table_name, spark, env):
 
         # Normalise column names (kebab-case -> snake_case)
         logger.info(
-            f"write_to_s3_format: Normalising column names from kebab_case to snake-case"
+            "write_to_s3_format: Normalising column names from kebab_case to snake-case"
         )
         for column in temp_df.columns:
             if "_" in column:

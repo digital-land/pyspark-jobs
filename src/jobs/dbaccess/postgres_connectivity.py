@@ -15,14 +15,19 @@
 #   - Table creation logic
 # ================================================================================
 
+import json
+import os
+import time
+from datetime import datetime
+from pathlib import Path
+
 ENTITY_TABLE_NAME = "entity"
 
 # -------------------- Postgres table creation --------------------
 
-##writing to postgres db
-import json
-
-from jobs.utils.logger_config import get_logger
+# writing to postgres db
+from jobs.utils.aws_secrets_manager import get_secret_emr_compatible  # noqa: E402
+from jobs.utils.logger_config import get_logger  # noqa: E402
 
 logger = get_logger(__name__)
 # Optional import for direct database connections (table creation)
@@ -32,13 +37,6 @@ try:
 except ImportError:
     pg8000 = None
     DatabaseError = Exception
-
-import os
-import time
-from datetime import datetime
-from pathlib import Path
-
-from jobs.utils.aws_secrets_manager import get_secret_emr_compatible
 
 # Define your table schema
 # https://github.com/digital-land/digital-land.info/blob/main/application/db/models.py - refered from here
@@ -364,7 +362,7 @@ def create_and_prepare_staging_table(conn_params, dataset_value, max_retries=3):
             cur.execute(create_staging_query)
             conn.commit()
             logger.info(
-                f"create_and_prepare_staging_table: Created regular table (not TEMP) for cross-session JDBC compatibility"
+                "create_and_prepare_staging_table: Created regular table (not TEMP) for cross-session JDBC compatibility"
             )
 
             logger.info(
@@ -383,18 +381,18 @@ def create_and_prepare_staging_table(conn_params, dataset_value, max_retries=3):
 
             # Add a function to cast staging table columns after data load
             logger.info(
-                f"create_and_prepare_staging_table: Staging table ready for data load and casting"
+                "create_and_prepare_staging_table: Staging table ready for data load and casting"
             )
 
             # Create index on dataset column if it doesn't exist (critical for fast DELETE)
             logger.info(
-                f"create_and_prepare_staging_table: Ensuring index on dataset column for fast deletion"
+                "create_and_prepare_staging_table: Ensuring index on dataset column for fast deletion"
             )
             create_index_query = f"CREATE INDEX IF NOT EXISTS idx_{dbtable_name}_dataset ON {dbtable_name}(dataset);"
             cur.execute(create_index_query)
             conn.commit()
             logger.info(
-                f"create_and_prepare_staging_table: Index on dataset column ensured"
+                "create_and_prepare_staging_table: Index on dataset column ensured"
             )
 
             logger.info(
@@ -525,7 +523,7 @@ def commit_staging_to_production(
 
             if staging_count == 0:
                 logger.warning(
-                    f"commit_staging_to_production: Staging table is empty, aborting commit"
+                    "commit_staging_to_production: Staging table is empty, aborting commit"
                 )
                 conn.rollback()
                 return {
@@ -553,7 +551,7 @@ def commit_staging_to_production(
 
             # Step 3: Insert data from staging to entity table
             logger.info(
-                f"commit_staging_to_production: Inserting data from staging to entity table"
+                "commit_staging_to_production: Inserting data from staging to entity table"
             )
             start_insert = time.time()
 
@@ -577,7 +575,7 @@ def commit_staging_to_production(
             """
 
             logger.info(
-                f"commit_staging_to_production: Executing INSERT with explicit columns and casts"
+                "commit_staging_to_production: Executing INSERT with explicit columns and casts"
             )
             logger.debug(
                 f"commit_staging_to_production: Query: {insert_query[:500]}..."
@@ -890,7 +888,7 @@ def create_table(conn_params, dataset_value, max_retries=5):
 
                         # Quick verification using EXISTS instead of COUNT for better performance on large tables
                         logger.info(
-                            f"create_table: Verifying deletion completed successfully..."
+                            "create_table: Verifying deletion completed successfully..."
                         )
                         verify_query = f"SELECT EXISTS(SELECT 1 FROM {dbtable_name} WHERE dataset = %s LIMIT 1);"
                         cur.execute(verify_query, (dataset_value,))
@@ -943,7 +941,7 @@ def create_table(conn_params, dataset_value, max_retries=5):
 
                         # Verify deletion completed successfully
                         logger.info(
-                            f"create_table: Verifying deletion completed successfully..."
+                            "create_table: Verifying deletion completed successfully..."
                         )
                         cur.execute(count_query, (dataset_value,))
                         result = cur.fetchone()
@@ -1231,7 +1229,7 @@ def calculate_centroid_wkt(conn_params, target_table=None, max_retries=3):
 # -------------------- PostgreSQL Writer --------------------
 
 
-##writing to postgres db
+# writing to postgres db
 def write_to_postgres(
     df,
     dataset,

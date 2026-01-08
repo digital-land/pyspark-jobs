@@ -173,6 +173,6 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
             conn.commit()
             cur.close()
             conn.close()
-        except:
+        except Exception:
             pass
         raise

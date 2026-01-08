@@ -35,17 +35,16 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import boto3
-
-# Add the jobs package to the Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import coalesce, col, date_format, lit, to_json, when
 from pyspark.sql.types import DateType, StringType
 
-from jobs.utils.aws_secrets_manager import get_secret_emr_compatible
-from jobs.utils.logger_config import get_logger, log_execution_time
-from jobs.utils.s3_utils import cleanup_dataset_data, validate_s3_path
+# Add the jobs package to the Python path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from jobs.utils.aws_secrets_manager import get_secret_emr_compatible  # noqa: E402
+from jobs.utils.logger_config import get_logger, log_execution_time  # noqa: E402
+from jobs.utils.s3_utils import cleanup_dataset_data, validate_s3_path  # noqa: E402
 
 logger = get_logger(__name__)
 
@@ -209,8 +208,8 @@ def prepare_dataframe_for_csv(df):
             processed_df = processed_df.withColumn(
                 col_name,
                 when(col(col_name).isNull(), None)
-                .when(col(col_name) == True, "true")
-                .when(col(col_name) == False, "false")
+                .when(col(col_name) is True, "true")
+                .when(col(col_name) is False, "false")
                 .otherwise(col(col_name).cast(StringType())),
             )
 
@@ -865,7 +864,7 @@ def _import_via_aurora_s3(
             )
 
         # Construct S3 import SQL
-        import_sql = f"""
+        import_sql = """
         SELECT aws_s3.table_import_from_s3(
             %s,  -- table_name
             %s,  -- column_list (empty for all columns)
@@ -988,10 +987,10 @@ def main():
 Examples:
   # Write DataFrame to CSV and import to Aurora
   python csv_s3_writer.py --input s3://bucket/parquet/ --output s3://bucket/csv/ --table entity --dataset my-dataset
-  
+
   # Import existing CSV to Aurora using S3 import
   python csv_s3_writer.py --import-csv s3://bucket/csv/entity.csv --table entity --dataset my-dataset
-  
+
   # Import using JDBC fallback
   python csv_s3_writer.py --import-csv s3://bucket/csv/entity.csv --table entity --dataset my-dataset --use-jdbc
         """,
@@ -1066,7 +1065,7 @@ Examples:
                     use_s3_import=not args.use_jdbc,
                 )
 
-                print(f"\n✅ Conversion and import completed successfully!")
+                print("\n✅ Conversion and import completed successfully!")
                 print(f"📁 CSV path: {csv_path}")
                 print(f"📊 Rows imported: {import_result['rows_imported']}")
                 print(f"⚡ Method used: {import_result['import_method_used']}")
@@ -1084,7 +1083,7 @@ Examples:
                 use_s3_import=not args.use_jdbc,
             )
 
-            print(f"\n✅ Import completed successfully!")
+            print("\n✅ Import completed successfully!")
             print(f"📊 Rows imported: {import_result['rows_imported']}")
             print(f"⚡ Method used: {import_result['import_method_used']}")
 
