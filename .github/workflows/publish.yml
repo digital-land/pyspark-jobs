@@ -3,7 +3,7 @@ run-name: Publish - ${{ github.head_ref || github.ref_name }} to ${{ inputs.envi
 
 on:
   push:
-    branches-ignore: [main]
+    branches: [main]
   workflow_dispatch:
     inputs:
       environment:
