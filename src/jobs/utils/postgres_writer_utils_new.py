@@ -1,6 +1,6 @@
+
 from pyspark.sql.functions import col, lit, to_json
 from pyspark.sql.types import LongType
-
 
 def _ensure_required_columns(df, required_cols, defaults=None, logger=None):
     """
@@ -17,17 +17,13 @@ def _ensure_required_columns(df, required_cols, defaults=None, logger=None):
     existing = set(df.columns)
 
     missing = [c for c in required_cols if c not in existing]
-    extra = [c for c in df.columns if c not in set(required_cols)]
+    extra   = [c for c in df.columns if c not in set(required_cols)]
 
     if logger:
         if missing:
-            logger.warning(
-                f"PG writer: Missing columns will be set to NULL/defaults: {missing}"
-            )
+            logger.warning(f"PG writer: Missing columns will be set to NULL/defaults: {missing}")
         if extra:
-            logger.info(
-                f"PG writer: Extra columns present (ignored by select): {extra}"
-            )
+            logger.info(f"PG writer: Extra columns present (ignored by select): {extra}")
 
     for c in missing:
         default_val = defaults.get(c, None)
@@ -35,21 +31,18 @@ def _ensure_required_columns(df, required_cols, defaults=None, logger=None):
 
     return df
 
-
 def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
     logger.info("write_dataframe_to_postgres_jdbc: Show df:")
     show_df(df, 5, env)
 
-    import hashlib
-
-    import pg8000
     from pyspark.sql.types import LongType
+    import pg8000
+    import hashlib
+    from datetime import datetime
 
     conn_params = get_aws_secret(env)
     row_count = df.count()
-    logger.info(
-        f"write_dataframe_to_postgres_jdbc: Writing {row_count:,} rows for {data_set}"
-    )
+    logger.info(f"write_dataframe_to_postgres_jdbc: Writing {row_count:,} rows for {data_set}")
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     dataset_hash = hashlib.md5(data_set.encode()).hexdigest()[:8]
@@ -59,16 +52,14 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
         # --- Create staging table (unchanged) ---
         conn = pg8000.connect(**conn_params)
         cur = conn.cursor()
-        cur.execute(
-            """
+        cur.execute(f"""
         CREATE TABLE {staging_table} (
             entity BIGINT, name TEXT, entry_date DATE, start_date DATE, end_date DATE,
             dataset TEXT, json JSONB, organisation_entity BIGINT, prefix TEXT,
             reference TEXT, typology TEXT, geojson JSONB,
             geometry GEOMETRY(MULTIPOLYGON, 4326), point GEOMETRY(POINT, 4326), quality TEXT
         );
-        """
-        )
+        """)
         conn.commit()
         cur.close()
         conn.close()
@@ -76,21 +67,9 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
 
         # --- Required columns as per staging schema ---
         required_cols = [
-            "entity",
-            "name",
-            "entry_date",
-            "start_date",
-            "end_date",
-            "dataset",
-            "json",
-            "organisation_entity",
-            "prefix",
-            "reference",
-            "typology",
-            "geojson",
-            "geometry",
-            "point",
-            "quality",
+            "entity", "name", "entry_date", "start_date", "end_date", "dataset",
+            "json", "organisation_entity", "prefix", "reference", "typology",
+            "geojson", "geometry", "point", "quality"
         ]
 
         # Optional defaults (you can keep it empty to insert pure NULLs)
@@ -101,17 +80,13 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
         }
 
         # --- Ensure columns exist; add missing as NULL/defaults ---
-        df = _ensure_required_columns(
-            df, required_cols, defaults=defaults, logger=logger
-        )
+        df = _ensure_required_columns(df, required_cols, defaults=defaults, logger=logger)
 
         # --- SAFE select + type normalisation ---
         df_typed = (
             df.select(*required_cols)
-            .withColumn("entity", col("entity").cast(LongType()))
-            .withColumn(
-                "organisation_entity", col("organisation_entity").cast(LongType())
-            )
+              .withColumn("entity", col("entity").cast(LongType()))
+              .withColumn("organisation_entity", col("organisation_entity").cast(LongType()))
         )
 
         # If your upstream provides complex (struct/map) types for json/geojson,
@@ -123,8 +98,7 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
             df_typed = df_typed.withColumn("geojson", to_json(col("geojson")))
 
         # NOTE: For 'geometry'/'point':
-        # - If they are WKT strings, you may prefer inserting to text columns and
-        #   casting on server side via ST_GeomFromText.
+        # - If they are WKT strings, you may prefer inserting to text columns and casting on server side via ST_GeomFromText.
         # - If they are already suitable for PostGIS via the JDBC driver, leave as is.
         # If they are missing (NULL), PostGIS will accept NULL in the geometry columns.
 
@@ -156,9 +130,7 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
         cur.execute(f"INSERT INTO entity SELECT * FROM {staging_table};")
         inserted = cur.rowcount
         conn.commit()
-        logger.info(
-            f"write_dataframe_to_postgres_jdbc: Deleted {deleted:,}, inserted {inserted:,} rows"
-        )
+        logger.info(f"write_dataframe_to_postgres_jdbc: Deleted {deleted:,}, inserted {inserted:,} rows")
         cur.execute(f"DROP TABLE {staging_table};")
         conn.commit()
         cur.close()
@@ -173,6 +145,6 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
             conn.commit()
             cur.close()
             conn.close()
-        except Exception:
+        except:
             pass
         raise

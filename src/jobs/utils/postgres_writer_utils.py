@@ -1,23 +1,15 @@
-import time
-from datetime import datetime
-
-from pyspark.sql.functions import col, lit, to_json
-
-from jobs.csv_s3_writer import (
-    cleanup_temp_csv_files,
-    import_csv_to_aurora,
-    write_dataframe_to_csv_s3,
-)
+from jobs.utils.logger_config import get_logger, log_execution_time
 from jobs.dbaccess.postgres_connectivity import (
-    ENTITY_TABLE_NAME,
-    calculate_centroid_wkt,
-    commit_staging_to_production,
-    create_and_prepare_staging_table,
     get_aws_secret,
     write_to_postgres,
+    create_and_prepare_staging_table,
+    commit_staging_to_production,
+    calculate_centroid_wkt,
+    ENTITY_TABLE_NAME
 )
+from jobs.csv_s3_writer import write_dataframe_to_csv_s3, import_csv_to_aurora, cleanup_temp_csv_files
 from jobs.utils.df_utils import show_df
-from jobs.utils.logger_config import get_logger, log_execution_time
+from pyspark.sql.functions import col, lit, to_json
 
 logger = get_logger(__name__)
 
@@ -42,31 +34,16 @@ def _ensure_required_columns(df, required_cols, defaults=None, logger=None):
 
     if logger:
         if missing:
-            logger.warning(
-                f"PG writer: Missing columns will be set to NULL/defaults: {missing}"
-            )
+            logger.warning(f"PG writer: Missing columns will be set to NULL/defaults: {missing}")
         if extra:
-            logger.info(
-                f"PG writer: Extra columns present (ignored by select): {extra}"
-            )
+            logger.info(f"PG writer: Extra columns present (ignored by select): {extra}")
 
     # Add missing columns with appropriate types
     for c in missing:
         default_val = defaults.get(c, None)
         if c in ["entity", "organisation_entity"]:
             df = df.withColumn(c, lit(default_val).cast("bigint"))
-        elif c in [
-            "json",
-            "geojson",
-            "geometry",
-            "point",
-            "quality",
-            "name",
-            "prefix",
-            "reference",
-            "typology",
-            "dataset",
-        ]:
+        elif c in ["json", "geojson", "geometry", "point", "quality", "name", "prefix", "reference", "typology", "dataset"]:
             df = df.withColumn(c, lit(default_val).cast("string"))
         elif c in ["entry_date", "start_date", "end_date"]:
             df = df.withColumn(c, lit(default_val).cast("date"))
@@ -79,9 +56,7 @@ def _ensure_required_columns(df, required_cols, defaults=None, logger=None):
     if "entity" in existing:
         df = df.withColumn("entity", col("entity").cast(LongType()))
     if "organisation_entity" in existing:
-        df = df.withColumn(
-            "organisation_entity", col("organisation_entity").cast(LongType())
-        )
+        df = df.withColumn("organisation_entity", col("organisation_entity").cast(LongType()))
 
     for c in ["entry_date", "start_date", "end_date"]:
         if c in existing:
@@ -92,7 +67,7 @@ def _ensure_required_columns(df, required_cols, defaults=None, logger=None):
         if c in existing:
             df = df.withColumn(c, to_json(col(c)))
 
-    # Ensure text - like fields are strings
+    # Ensure text-like fields are strings
     for c in ["name", "dataset", "prefix", "reference", "typology", "quality"]:
         if c in existing:
             df = df.withColumn(c, col(c).cast("string"))
@@ -105,8 +80,9 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
     Write DataFrame to PostgreSQL using staging table and atomic transaction with retry logic.
     JDBC write and transaction block are retried on transient failures.
     """
+    import time
     import hashlib
-
+    from datetime import datetime
     import pg8000
     from pyspark.sql.types import LongType
 
@@ -115,9 +91,7 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
 
     conn_params = get_aws_secret(env)
     row_count = df.count()
-    logger.info(
-        f"write_dataframe_to_postgres_jdbc: Writing {row_count:,} rows for {data_set}"
-    )
+    logger.info(f"write_dataframe_to_postgres_jdbc: Writing {row_count:,} rows for {data_set}")
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     dataset_hash = hashlib.md5(data_set.encode()).hexdigest()[:8]
@@ -128,8 +102,7 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
         conn_params["timeout"] = 1800  # 30 minutes
         conn = pg8000.connect(**conn_params)
         cur = conn.cursor()
-        cur.execute(
-            """
+        cur.execute(f"""
         CREATE TABLE {staging_table} (
             entity BIGINT,
             name TEXT,
@@ -147,8 +120,7 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
             point GEOMETRY(POINT, 4326),
             quality TEXT
         );
-        """
-        )
+        """)
         conn.commit()
         cur.close()
         conn.close()
@@ -159,29 +131,15 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
 
     # Step 2: Prepare DataFrame (enforce required cols and normalise)
     required_cols = [
-        "entity",
-        "name",
-        "entry_date",
-        "start_date",
-        "end_date",
-        "dataset",
-        "json",
-        "organisation_entity",
-        "prefix",
-        "reference",
-        "typology",
-        "geojson",
-        "geometry",
-        "point",
-        "quality",
+        "entity", "name", "entry_date", "start_date", "end_date", "dataset",
+        "json", "organisation_entity", "prefix", "reference", "typology",
+        "geojson", "geometry", "point", "quality"
     ]
 
     df_typed = _ensure_required_columns(df, required_cols, defaults=None, logger=logger)
-    df_typed = (
-        df_typed.select(*required_cols)
-        .withColumn("entity", col("entity").cast(LongType()))
+    df_typed = df_typed.select(*required_cols) \
+        .withColumn("entity", col("entity").cast(LongType())) \
         .withColumn("organisation_entity", col("organisation_entity").cast(LongType()))
-    )
 
     # Step 3: JDBC write with retry
     url = f"jdbc:postgresql://{conn_params['host']}:{conn_params['port']}/{conn_params['database']}"
@@ -205,9 +163,7 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
                     "numPartitions": str(num_partitions),
                 },
             )
-            logger.info(
-                f"write_dataframe_to_postgres_jdbc: JDBC write successful on attempt {attempt + 1}"
-            )
+            logger.info(f"write_dataframe_to_postgres_jdbc: JDBC write successful on attempt {attempt+1}")
             break
         except Exception as e:
             attempt += 1
@@ -235,8 +191,7 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
             deleted = cur.rowcount
 
             # Insert using explicit column mapping to avoid positional mismatches
-            cur.execute(
-                """
+            cur.execute(f"""
             INSERT INTO entity (
                 entity, name, entry_date, start_date, end_date,
                 dataset, json, organisation_entity, prefix, reference,
@@ -259,16 +214,13 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
                 point,
                 quality::text
             FROM {staging_table};
-            """
-            )
+            """)
             inserted = cur.rowcount
 
             # Drop staging and commit
             cur.execute(f"DROP TABLE {staging_table};")
             cur.execute("COMMIT;")
-            logger.info(
-                f"Atomic commit successful on attempt {attempt + 1} - Deleted {deleted:,}, Inserted {inserted:,} rows"
-            )
+            logger.info(f"Atomic commit successful on attempt {attempt+1} - Deleted {deleted:,}, Inserted {inserted:,} rows")
             break
         except Exception as e:
             try:
@@ -293,9 +245,7 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
 
     # Step 5: Safety cleanup - drop staging if it still exists
     try:
-        logger.info(
-            "write_dataframe_to_postgres_jdbc: Finally drop staging table if it still exists"
-        )
+        logger.info("write_dataframe_to_postgres_jdbc: Finally drop staging table if it still exists")
         conn = pg8000.connect(**conn_params)
         cur = conn.cursor()
         cur.execute(f"DROP TABLE IF EXISTS {staging_table};")
