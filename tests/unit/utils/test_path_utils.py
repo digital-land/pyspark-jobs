@@ -80,9 +80,7 @@ class TestPathUtils:
 
         result = resolve_repo_path("tests/unit/test_module.py")
 
-        expected = (
-            "/Users/developer/github_repo/pyspark-jobs/tests/unit/test_module.py"
-        )
+        expected = "/Users/developer/github_repo/pyspark-jobs/tests/unit/test_module.py"
         assert result == expected
 
     @patch("os.path.expanduser")
@@ -238,9 +236,7 @@ class TestPathUtils:
 
             # Test repo path
             repo_result = resolve_repo_path("src/test.py")
-            assert (
-                repo_result == "/home/testuser/github_repo/pyspark-jobs/src/test.py"
-            )
+            assert repo_result == "/home/testuser/github_repo/pyspark-jobs/src/test.py"
 
             # Verify they use the same home directory
             assert desktop_result.startswith("/home/testuser/Desktop")

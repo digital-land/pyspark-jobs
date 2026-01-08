@@ -50,9 +50,7 @@ class TestAWSSecretsManager:
         result = get_secret("test/secret")
 
         assert result == "test_secret_value"
-        mock_boto3.assert_called_once_with(
-            "secretsmanager", region_name="eu-west-2"
-        )
+        mock_boto3.assert_called_once_with("secretsmanager", region_name="eu-west-2")
         mock_client.get_secret_value.assert_called_once_with(SecretId="test/secret")
 
     @patch("boto3.client")
@@ -348,9 +346,7 @@ class TestAWSSecretsManagerIntegration:
         assert result["database"] == "application_db"
 
         # Verify AWS client was called correctly
-        mock_boto3.assert_called_once_with(
-            "secretsmanager", region_name="eu-west-2"
-        )
+        mock_boto3.assert_called_once_with("secretsmanager", region_name="eu-west-2")
         mock_client.get_secret_value.assert_called_once_with(
             SecretId="prod/app/database"
         )
