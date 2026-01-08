@@ -83,7 +83,7 @@ class TestUtilityFunctions:
     def test_resolve_repo_path(self):
         """Test repo path resolution."""
         result = resolve_repo_path("src/jobs/main.py")
-        assert "pyspark - jobs" in result
+        assert "pyspark-jobs" in result
         assert "src/jobs/main.py" in result
         assert os.path.expanduser("~") in result
 
@@ -120,7 +120,7 @@ class TestConfigurationHandling:
         # Test specific values
         assert CSV_CONFIG["include_header"] is True
         assert CSV_CONFIG["sep"] == ","
-        assert CSV_CONFIG["date_format"] == "yyyy - MM - dd"
+        assert CSV_CONFIG["date_format"] == "yyyy-MM-dd"
         assert CSV_CONFIG["coalesce_to_single_file"] is True
 
     def test_logger_configuration(self):

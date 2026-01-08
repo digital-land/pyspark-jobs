@@ -392,7 +392,7 @@ class TestCSVS3WriterIntegration:
 
         assert CSV_CONFIG["include_header"] is True
         assert CSV_CONFIG["sep"] == ","
-        assert CSV_CONFIG["date_format"] == "yyyy - MM - dd"
+        assert CSV_CONFIG["date_format"] == "yyyy-MM-dd"
         assert CSV_CONFIG["coalesce_to_single_file"] is True
 
     @pytest.mark.skip(

@@ -263,14 +263,14 @@ class TestValidateS3Path:
         """Test validate_s3_path with None."""
         from jobs.main_collection_data import validate_s3_path
 
-        with pytest.raises(ValueError, match="S3 path must be a non - empty string"):
+        with pytest.raises(ValueError, match="S3 path must be a non-empty string"):
             validate_s3_path(None)
 
     def test_validate_s3_path_not_string(self):
         """Test validate_s3_path with non - string."""
         from jobs.main_collection_data import validate_s3_path
 
-        with pytest.raises(ValueError, match="S3 path must be a non - empty string"):
+        with pytest.raises(ValueError, match="S3 path must be a non-empty string"):
             validate_s3_path(123)
 
     def test_validate_s3_path_invalid_format(self):
@@ -292,7 +292,7 @@ class TestValidateS3Path:
         from jobs.main_collection_data import validate_s3_path
 
         # Test empty string
-        with pytest.raises(ValueError, match="non - empty string"):
+        with pytest.raises(ValueError, match="non-empty string"):
             validate_s3_path("")
 
         # Test whitespace only

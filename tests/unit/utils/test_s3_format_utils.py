@@ -359,7 +359,7 @@ class TestS3FormatUtilsIntegration:
 
         # Verify the complete workflow
         mock_s3.list_objects_v2.assert_called_once_with(
-            Bucket="development - pd - batch - emr - studio - ws - bucket",
+            Bucket="development-pd-batch-emr-studio-ws-bucket",
             Prefix="csv/dataset.csv/",
         )
         # mock_s3.copy_object.assert_called_once()

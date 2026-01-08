@@ -69,7 +69,7 @@ class TestPathUtils:
 
         result = resolve_repo_path("src/main.py")
 
-        expected = "/home/testuser/github_repo/pyspark - jobs/src/main.py"
+        expected = "/home/testuser/github_repo/pyspark-jobs/src/main.py"
         assert result == expected
         mock_expanduser.assert_called_once_with("~")
 
@@ -81,7 +81,7 @@ class TestPathUtils:
         result = resolve_repo_path("tests/unit/test_module.py")
 
         expected = (
-            "/Users/developer/github_repo/pyspark - jobs/tests/unit/test_module.py"
+            "/Users/developer/github_repo/pyspark-jobs/tests/unit/test_module.py"
         )
         assert result == expected
 
@@ -92,7 +92,7 @@ class TestPathUtils:
 
         result = resolve_repo_path("config/settings.json")
 
-        expected = "/home/testuser/github_repo/pyspark - jobs/config/settings.json"
+        expected = "/home/testuser/github_repo/pyspark-jobs/config/settings.json"
         assert result == expected
 
     @patch("os.path.expanduser")
@@ -102,7 +102,7 @@ class TestPathUtils:
 
         result = resolve_repo_path("")
 
-        expected = "/home/testuser/github_repo/pyspark - jobs/"
+        expected = "/home/testuser/github_repo/pyspark-jobs/"
         assert result == expected
 
     @patch("jobs.utils.path_utils.resolve_repo_path")
@@ -239,7 +239,7 @@ class TestPathUtils:
             # Test repo path
             repo_result = resolve_repo_path("src/test.py")
             assert (
-                repo_result == "/home/testuser/github_repo/pyspark - jobs/src/test.py"
+                repo_result == "/home/testuser/github_repo/pyspark-jobs/src/test.py"
             )
 
             # Verify they use the same home directory
@@ -269,7 +269,7 @@ class TestPathUtilsIntegration:
     def test_complete_json_loading_workflow(self):
         """Test complete JSON loading workflow with real file operations."""
         test_data = {
-            "application": {"name": "pyspark - jobs", "version": "1.0.0"},
+            "application": {"name": "pyspark-jobs", "version": "1.0.0"},
             "database": {"host": "localhost", "port": 5432},
             "features": ["logging", "monitoring", "testing"],
         }
@@ -287,7 +287,7 @@ class TestPathUtilsIntegration:
                 result = load_json_from_repo("config/test_config.json")
 
                 assert result == test_data
-                assert result["application"]["name"] == "pyspark - jobs"
+                assert result["application"]["name"] == "pyspark-jobs"
                 assert len(result["features"]) == 3
 
     def test_error_handling_workflow(self):
@@ -329,8 +329,8 @@ class TestPathUtilsIntegration:
             # All should use the same home directory
             assert desktop1.startswith("/consistent/home/Desktop")
             assert desktop2.startswith("/consistent/home/Desktop")
-            assert repo1.startswith("/consistent/home/github_repo/pyspark - jobs")
-            assert repo2.startswith("/consistent/home/github_repo/pyspark - jobs")
+            assert repo1.startswith("/consistent/home/github_repo/pyspark-jobs")
+            assert repo2.startswith("/consistent/home/github_repo/pyspark-jobs")
 
             # Different files should have different paths
             assert desktop1 != desktop2
