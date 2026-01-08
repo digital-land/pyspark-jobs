@@ -1,8 +1,9 @@
 import os
+
 import boto3
 from botocore.exceptions import ClientError
 
- 
+
 def get_secret():
     """
     Retrieves a secret from AWS Secrets Manager using environment variables
