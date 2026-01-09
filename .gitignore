@@ -305,6 +305,7 @@ output/
 results/
 *.pickle
 *.pkl
+*.gml
 
 # AWS and EMR
 *.zip
