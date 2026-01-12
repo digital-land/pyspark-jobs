@@ -41,6 +41,23 @@ python get_gml_volume.py
 - `gml_volume_report.csv` - CSV format for analysis
 - `gml_volume_report.parquet` - Parquet format for efficient storage
 
+### 3. `parquet_to_csv.py`
+Converts all Parquet files to CSV format using Polars.
+
+**Features:**
+- Batch converts all parquet files in `parquet_flattened_polars/` directory
+- Outputs CSV files to `csv_output/` directory
+- Simple and efficient conversion using Polars I/O methods
+
+**Usage:**
+```bash
+python parquet_to_csv.py
+```
+
+**Output:**
+- CSV files in `csv_output/` directory
+- One CSV file per parquet file with matching filename
+
 ## Installation
 
 ```bash
