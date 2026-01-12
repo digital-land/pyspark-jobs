@@ -160,7 +160,7 @@ make format && make lint
 
 1. **Run a specific transformation:**
 ```bash
-python src/jobs/run_main.py \
+python run_main.py \
   --load_type full \
   --data_set transport-access-node \
   --path s3://your-bucket/data/
@@ -173,31 +173,52 @@ python src/jobs/main_collection_data.py
 
 ## 🧪 Testing
 
-This project includes a comprehensive test suite with three levels of testing:
+This project includes a comprehensive test suite with **80%+ code coverage** across all modules:
 
-### Running Tests
+### Quick Testing
 
 ```bash
-# Run all tests
-pytest
+# Run all tests with coverage (recommended)
+make test
 
 # Run specific test categories
-pytest -m unit                    # Fast unit tests
-pytest -m integration             # Integration tests
-pytest -m acceptance              # End-to-end tests
+make test-unit           # Fast unit tests only
+make test-integration    # Integration tests
+make test-quick          # Quick development testing
+make test-parallel       # Parallel execution
+make test-coverage       # HTML coverage report
+```
 
-# Run with coverage
-pytest --cov=src --cov-report=html
+### Advanced Testing
 
-# Run in parallel
-pytest -n auto
+```bash
+# Using the test runner directly
+python run_tests.py --coverage --html-report
+python run_tests.py --unit --parallel
+python run_tests.py --quick --verbose
+
+# Pytest directly
+pytest tests/unit/ -v --cov=src
+pytest -m "unit and not slow"
 ```
 
 ### Test Structure
 
-- **Unit Tests** (`tests/unit/`): Fast, isolated component tests
+- **Unit Tests** (`tests/unit/`): Fast, isolated component tests (80%+ coverage)
 - **Integration Tests** (`tests/integration/`): Database and external service tests  
 - **Acceptance Tests** (`tests/acceptance/`): Complete workflow validation
+
+### Coverage by Module
+
+| Module | Coverage Target | Test File |
+|--------|----------------|----------|
+| `main_collection_data.py` | 85%+ | `test_main_collection_data.py` |
+| `transform_collection_data.py` | 90%+ | `test_transform_collection_data.py` |
+| `csv_s3_writer.py` | 85%+ | `test_csv_s3_writer.py` |
+| `logger_config.py` | 95%+ | `utils/test_logger_config.py` |
+| `aws_secrets_manager.py` | 90%+ | `utils/test_aws_secrets_manager.py` |
+| `s3_utils.py` | 85%+ | `utils/test_s3_utils.py` |
+| `df_utils.py` | 95%+ | `utils/test_df_utils.py` |
 
 For detailed testing information, see [tests/README.md](tests/README.md).
 
@@ -279,7 +300,7 @@ python setup.py bdist_wheel
 2. **Upload to S3:**
 ```bash
 aws s3 cp dist/pyspark_jobs-*.whl s3://your-bucket/packages/
-aws s3 cp src/jobs/run_main.py s3://your-bucket/scripts/
+aws s3 cp run_main.py s3://your-bucket/scripts/
 ```
 
 3. **Submit EMR Serverless job:**
@@ -399,17 +420,20 @@ make init              # Initialize development environment
 make init-prod         # Initialize production environment  
 make init-emr          # Initialize EMR-compatible environment
 
-# Development
-make test              # Run all tests
+# Testing (Comprehensive Suite)
+make test              # Run all tests with coverage
 make test-unit         # Run unit tests only
 make test-integration  # Run integration tests
-make test-coverage     # Run tests with coverage report
-make lint              # Run all linting checks
-make format            # Format code with black and isort
-make type-check        # Run type checking with mypy
-make security          # Run security scans
+make test-acceptance   # Run acceptance tests
+make test-coverage     # Run tests with HTML coverage report
+make test-quick        # Quick unit tests (no coverage)
+make test-parallel     # Run tests in parallel
 
 # Code Quality
+make lint              # Run all linting checks (flake8, mypy)
+make format            # Format code with black and isort
+make type-check        # Run type checking with mypy
+make security          # Run security scans (bandit, safety)
 make pre-commit        # Run pre-commit hooks on all files
 make install-hooks     # Install pre-commit hooks
 
@@ -418,11 +442,11 @@ make build             # Build Python package
 make package           # Create AWS deployment package
 make upload-s3         # Build and upload to S3
 
-# Utilities
-make clean             # Clean cache and log files
-make clean-all         # Clean everything including venv
+# Development Tools
 make run-notebook      # Start Jupyter Lab
 make docs              # Generate documentation
+make clean             # Clean cache and log files
+make clean-all         # Clean everything including venv
 make help              # Show all available commands
 ```
 

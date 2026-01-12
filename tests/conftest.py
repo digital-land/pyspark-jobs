@@ -1,213 +1,308 @@
 """
-Shared pytest configuration and fixtures for the entire test suite.
+Shared pytest configuration and fixtures for all test modules.
 """
-import pytest
+
 import os
 import sys
-from pyspark.sql import SparkSession
+from unittest.mock import MagicMock, Mock, patch
 
-# Add src directory to Python path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+import pytest
 
-# Import fixtures from fixtures module
-from tests.fixtures.sample_data import *
-from tests.fixtures.mock_services import *
+# Add src to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 
 @pytest.fixture(scope="session")
 def spark():
     """
-    Create a shared Spark session for all tests.
-    
-    This fixture creates a single Spark session that is shared across
-    all test modules to improve performance and reduce resource usage.
+    Create a Spark session for testing.
+
+    This fixture is session - scoped to avoid creating multiple Spark sessions
+    which can cause resource conflicts.
     """
-    spark_session = SparkSession.builder \
-        .appName("PySparkTestSuite") \
-        .master("local[2]") \
-        .config("spark.sql.shuffle.partitions", "2") \
-        .config("spark.sql.adaptive.enabled", "false") \
-        .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") \
+    # Import PySpark only when needed to avoid circular import issues
+    from pyspark.sql import SparkSession
+
+    spark_session = (
+        SparkSession.builder.appName("PySparkJobsUnitTests")
+        .master("local[1]")
+        .config("spark.sql.shuffle.partitions", "1")
+        .config("spark.sql.adaptive.enabled", "false")
+        .config("spark.ui.enabled", "false")
+        .config("spark.driver.host", "localhost")
         .getOrCreate()
-    
-    # Set log level to reduce noise during testing
+    )
+
+    # Set log level to reduce noise in tests
     spark_session.sparkContext.setLogLevel("WARN")
-    
+
     yield spark_session
-    
-    # Cleanup
+
     spark_session.stop()
 
 
 @pytest.fixture
-def spark_local():
-    """
-    Create a local Spark session for tests that need isolation.
-    
-    Use this fixture when tests need their own Spark session
-    (e.g., for testing configuration changes).
-    """
-    spark_session = SparkSession.builder \
-        .appName("PySparkIsolatedTest") \
-        .master("local[1]") \
-        .config("spark.sql.shuffle.partitions", "1") \
-        .getOrCreate()
-    
-    spark_session.sparkContext.setLogLevel("WARN")
-    
-    yield spark_session
-    
-    spark_session.stop()
+def sample_fact_data(spark):
+    """Create sample fact data for testing."""
+    from pyspark.sql.types import IntegerType, StringType, StructField, StructType
 
-
-def pytest_configure(config):
-    """Configure pytest with custom markers."""
-    config.addinivalue_line(
-        "markers", "unit: mark test as a unit test"
-    )
-    config.addinivalue_line(
-        "markers", "integration: mark test as an integration test"
-    )
-    config.addinivalue_line(
-        "markers", "acceptance: mark test as an acceptance test"
-    )
-    config.addinivalue_line(
-        "markers", "slow: mark test as slow running"
+    schema = StructType(
+        [
+            StructField("fact", StringType(), True),
+            StructField("entity", StringType(), True),
+            StructField("field", StringType(), True),
+            StructField("value", StringType(), True),
+            StructField("entry_date", StringType(), True),
+            StructField("entry_number", StringType(), True),
+            StructField("priority", IntegerType(), True),
+            StructField("start_date", StringType(), True),
+            StructField("end_date", StringType(), True),
+            StructField("reference_entity", StringType(), True),
+        ]
     )
 
+    data = [
+        (
+            "fact1",
+            "entity1",
+            "field1",
+            "value1",
+            "2023 - 01 - 01",
+            "1",
+            1,
+            "2023 - 01 - 01",
+            "",
+            "ref1",
+        ),
+        (
+            "fact1",
+            "entity1",
+            "field1",
+            "value2",
+            "2023 - 01 - 02",
+            "2",
+            2,
+            "2023 - 01 - 01",
+            "",
+            "ref1",
+        ),  # Higher priority
+        (
+            "fact2",
+            "entity2",
+            "field2",
+            "value3",
+            "2023 - 01 - 01",
+            "3",
+            1,
+            "2023 - 01 - 01",
+            "",
+            "ref2",
+        ),
+    ]
 
-def pytest_collection_modifyitems(config, items):
-    """Automatically mark tests based on their location."""
-    for item in items:
-        # Get the test file path
-        test_file = str(item.fspath)
-        
-        # Add markers based on directory structure
-        if "unit" in test_file:
-            item.add_marker(pytest.mark.unit)
-        elif "integration" in test_file:
-            item.add_marker(pytest.mark.integration)
-        elif "acceptance" in test_file:
-            item.add_marker(pytest.mark.acceptance)
+    return spark.createDataFrame(data, schema)
 
 
-# Pytest configuration options
-pytest_plugins = []
+@pytest.fixture
+def sample_entity_data(spark):
+    """Create sample entity data for testing."""
+    from pyspark.sql.types import IntegerType, StringType, StructField, StructType
+
+    schema = StructType(
+        [
+            StructField("entity", StringType(), True),
+            StructField("field", StringType(), True),
+            StructField("value", StringType(), True),
+            StructField("entry_number", StringType(), True),
+            StructField("entry_date", StringType(), True),
+            StructField("start_date", StringType(), True),
+            StructField("end_date", StringType(), True),
+            StructField("priority", IntegerType(), True),
+        ]
+    )
+
+    data = [
+        (
+            "entity1",
+            "name",
+            "Entity One",
+            "1",
+            "2023 - 01 - 01",
+            "2023 - 01 - 01",
+            "",
+            1,
+        ),
+        (
+            "entity1",
+            "reference",
+            "REF001",
+            "2",
+            "2023 - 01 - 01",
+            "2023 - 01 - 01",
+            "",
+            1,
+        ),
+        (
+            "entity2",
+            "name",
+            "Entity Two",
+            "3",
+            "2023 - 01 - 01",
+            "2023 - 01 - 01",
+            "",
+            1,
+        ),
+    ]
+
+    return spark.createDataFrame(data, schema)
 
 
-class TestConfig:
-    """Test configuration constants."""
-    
-    # Database settings for integration tests
-    TEST_DB_HOST = "localhost"
-    TEST_DB_PORT = 5432
-    TEST_DB_NAME = "test_pyspark_jobs"
-    TEST_DB_USER = "test_user"
-    TEST_DB_PASSWORD = "test_password"
-    
-    # S3 settings for integration tests (use localstack or minio)
-    TEST_S3_ENDPOINT = "http://localhost:4566"
-    TEST_S3_BUCKET = "test-bucket"
-    TEST_S3_ACCESS_KEY = "test"
-    TEST_S3_SECRET_KEY = "test"
-    
-    # Test data paths
-    TEST_DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
-    
-    # Spark configuration for tests
-    SPARK_CONF = {
-        "spark.sql.shuffle.partitions": "2",
-        "spark.sql.adaptive.enabled": "false",
-        "spark.serializer": "org.apache.spark.serializer.KryoSerializer"
+@pytest.fixture
+def sample_issue_data(spark):
+    """Create sample issue data for testing."""
+    from pyspark.sql.types import StringType, StructField, StructType
+
+    schema = StructType(
+        [
+            StructField("entity", StringType(), True),
+            StructField("entry_number", StringType(), True),
+            StructField("field", StringType(), True),
+            StructField("issue_type", StringType(), True),
+            StructField("line_number", StringType(), True),
+            StructField("dataset", StringType(), True),
+            StructField("resource", StringType(), True),
+            StructField("value", StringType(), True),
+            StructField("message", StringType(), True),
+        ]
+    )
+
+    data = [
+        (
+            "entity1",
+            "1",
+            "field1",
+            "missing - value",
+            "1",
+            "test - dataset",
+            "resource1",
+            "",
+            "Missing required field",
+        ),
+        (
+            "entity2",
+            "2",
+            "field2",
+            "invalid - format",
+            "2",
+            "test - dataset",
+            "resource1",
+            "invalid",
+            "Invalid format",
+        ),
+    ]
+
+    return spark.createDataFrame(data, schema)
+
+
+@pytest.fixture
+def mock_s3_client():
+    """Mock AWS S3 client."""
+    with patch("boto3.client") as mock_boto_client:
+        mock_s3 = MagicMock()
+        mock_boto_client.return_value = mock_s3
+        yield mock_s3
+
+
+@pytest.fixture
+def mock_secrets_manager():
+    """Mock AWS Secrets Manager client."""
+    with patch("boto3.client") as mock_boto_client:
+        mock_secrets = MagicMock()
+        mock_boto_client.return_value = mock_secrets
+        yield mock_secrets
+
+
+@pytest.fixture
+def mock_postgres_connection():
+    """Mock PostgreSQL connection."""
+    with patch("psycopg2.connect") as mock_connect:
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+        yield mock_conn, mock_cursor
+
+
+@pytest.fixture
+def sample_database_config():
+    """Sample database configuration for testing."""
+    return {
+        "host": "localhost",
+        "port": 5432,
+        "database": "test_db",
+        "user": "test_user",
+        "password": "test_password",
     }
 
 
 @pytest.fixture
-def test_config():
-    """Provide test configuration constants."""
-    return TestConfig
+def sample_s3_config():
+    """Sample S3 configuration for testing."""
+    return {
+        "bucket": "test - bucket",
+        "region": "us - east - 1",
+        "access_key": "test - access - key",
+        "secret_key": "test - secret - key",
+    }
 
 
+# Mock external dependencies that cause import issues
 @pytest.fixture(autouse=True)
-def setup_test_environment(monkeypatch):
-    """
-    Automatically set up test environment variables.
-    
-    This fixture runs for every test and ensures consistent
-    environment configuration.
-    """
-    # Set test environment variables
-    monkeypatch.setenv("PYSPARK_PYTHON", sys.executable)
-    monkeypatch.setenv("PYSPARK_DRIVER_PYTHON", sys.executable)
-    monkeypatch.setenv("SPARK_LOCAL_IP", "127.0.0.1")
-    
-    # Mock AWS environment variables for testing
-    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "test_access_key")
-    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test_secret_key")
-    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
-    
-    # Set test database environment variables
-    monkeypatch.setenv("TEST_MODE", "true")
-    monkeypatch.setenv("DATABASE_URL", "postgresql://test_user:test_password@localhost:5432/test_pyspark_jobs")
+def mock_external_dependencies():
+    """Mock external dependencies that might not be available in test environment."""
+    # Create a proper pandas mock that behaves like the real pandas for isinstance checks
+    pandas_mock = MagicMock()
+    pandas_mock.DataFrame = type("MockDataFrame", (), {})
+
+    with patch.dict(
+        "sys.modules",
+        {
+            "sedona": MagicMock(),
+            "sedona.spark": MagicMock(),
+            "sedona.spark.SedonaContext": MagicMock(),
+            "pandas": pandas_mock,
+        },
+    ):
+        yield
 
 
-@pytest.fixture
-def sample_csv_schema():
-    """Provide a standard CSV schema for testing."""
-    from pyspark.sql.types import StructType, StructField, StringType, IntegerType
-    
-    return StructType([
-        StructField("id", IntegerType(), False),
-        StructField("name", StringType(), True),
-        StructField("value", StringType(), True),
-        StructField("date", StringType(), True)
-    ])
+# Test markers configuration
+def pytest_configure(config):
+    """Configure pytest markers."""
+    config.addinivalue_line("markers", "unit: Unit tests - fast, isolated tests")
+    config.addinivalue_line("markers", "integration: Integration tests")
+    config.addinivalue_line("markers", "acceptance: Acceptance tests")
+    config.addinivalue_line("markers", "slow: Slow running tests")
+    config.addinivalue_line("markers", "database: Tests requiring database")
+    config.addinivalue_line("markers", "spark: Tests requiring Spark session")
 
 
-@pytest.fixture
-def sample_entity_schema():
-    """Provide entity schema for testing."""
-    from pyspark.sql.types import StructType, StructField, StringType
-    
-    return StructType([
-        StructField("entity", StringType(), True),
-        StructField("field", StringType(), True),
-        StructField("value", StringType(), True),
-        StructField("entry_number", StringType(), True),
-        StructField("entry_date", StringType(), True),
-        StructField("start_date", StringType(), True),
-        StructField("end_date", StringType(), True)
-    ])
+# Collection hooks
+def pytest_collection_modifyitems(config, items):
+    """Modify test collection to add markers automatically."""
+    for item in items:
+        # Add unit marker to all tests in unit directory
+        if "unit" in str(item.fspath):
+            item.add_marker(pytest.mark.unit)
 
+        # Add integration marker to integration tests
+        if "integration" in str(item.fspath):
+            item.add_marker(pytest.mark.integration)
 
-# Helper functions for tests
-def assert_dataframe_equal(df1, df2, check_dtype=True):
-    """
-    Assert that two DataFrames are equal.
-    
-    Args:
-        df1: First DataFrame
-        df2: Second DataFrame
-        check_dtype: Whether to check data types
-    """
-    # Check row counts
-    assert df1.count() == df2.count(), "DataFrames have different row counts"
-    
-    # Check schemas
-    if check_dtype:
-        assert df1.schema == df2.schema, "DataFrames have different schemas"
-    else:
-        assert len(df1.columns) == len(df2.columns), "DataFrames have different column counts"
-        assert df1.columns == df2.columns, "DataFrames have different column names"
-    
-    # Check data - convert to sorted lists for comparison
-    df1_data = sorted([row.asDict() for row in df1.collect()])
-    df2_data = sorted([row.asDict() for row in df2.collect()])
-    
-    assert df1_data == df2_data, "DataFrames have different data"
+        # Add acceptance marker to acceptance tests
+        if "acceptance" in str(item.fspath):
+            item.add_marker(pytest.mark.acceptance)
 
-
-@pytest.fixture
-def assert_df_equal():
-    """Provide the DataFrame equality assertion function."""
-    return assert_dataframe_equal
+        # Add spark marker to tests that use spark fixture
+        if "spark" in item.fixturenames:
+            item.add_marker(pytest.mark.spark)

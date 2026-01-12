@@ -41,37 +41,80 @@ tests/
 
 ### Prerequisites
 
-1. Install test dependencies:
+1. **Initialize the development environment** (first time setup):
 ```bash
-pip install -r requirements-test.txt
+# From project root directory
+make init
 ```
 
-2. Ensure PySpark is available:
+This will:
+- Create a virtual environment (`pyspark-jobs-venv`)
+- Install all dependencies from `requirements-local.txt`
+- Set up pre-commit hooks
+- Install the package in development mode
+
+2. **Activate the virtual environment**:
 ```bash
-pip install pyspark>=3.3.0
+source pyspark-jobs-venv/bin/activate
 ```
 
-### Running All Tests
+### Running Tests with Make Commands (Recommended)
+
+The Makefile provides convenient commands that automatically activate the virtual environment:
+
+```bash
+# Run all tests with coverage
+make test
+
+# Run unit tests only (fast)
+make test-unit
+
+# Run integration tests
+make test-integration
+
+# Run acceptance tests
+make test-acceptance
+
+# Run tests with HTML coverage report
+make test-coverage
+
+# Quick run (unit tests only, no coverage)
+make test-quick
+
+# Run tests in parallel
+make test-parallel
+```
+
+### Running Tests Directly with pytest
+
+If you prefer to use pytest directly (ensure virtual environment is activated):
+
 ```bash
 # Run all tests
-pytest
+python tests/run_tests.py
 
 # Run with coverage
-pytest --cov=src --cov-report=html
+python tests/run_tests.py --coverage
 
 # Run in parallel
-pytest -n auto
+python tests/run_tests.py --parallel
 ```
 
 ### Running by Category
 ```bash
-# Unit tests only (fast)
+# Using Make commands
+make test-unit           # Unit tests only
+make test-integration    # Integration tests only
+make test-acceptance     # Acceptance tests only
+
+# Using run_tests.py
+python tests/run_tests.py --unit
+python tests/run_tests.py --integration
+python tests/run_tests.py --acceptance
+
+# Using pytest directly
 pytest tests/unit/ -m unit
-
-# Integration tests only
 pytest tests/integration/ -m integration
-
-# Acceptance tests only
 pytest tests/acceptance/ -m acceptance
 ```
 
@@ -89,23 +132,19 @@ pytest -k "fact" tests/
 
 ### Useful Test Options
 ```bash
-# Verbose output
-pytest -v
+# Using run_tests.py
+python tests/run_tests.py --verbose          # Verbose output
+python tests/run_tests.py --fail-fast        # Stop on first failure
+python tests/run_tests.py --html-report      # Generate HTML coverage report
+python tests/run_tests.py --quick            # Quick run (unit tests, no coverage)
 
-# Stop on first failure
-pytest -x
-
-# Show local variables on failure
-pytest -l
-
-# Run only failed tests from last run
-pytest --lf
-
-# Show test durations
-pytest --durations=10
-
-# Run tests in specific order
-pytest --maxfail=1 tests/unit/ tests/integration/ tests/acceptance/
+# Using pytest directly (with venv activated)
+pytest -v                    # Verbose output
+pytest -x                    # Stop on first failure
+pytest -l                    # Show local variables on failure
+pytest --lf                  # Run only failed tests from last run
+pytest --durations=10        # Show test durations
+pytest -n auto               # Run in parallel
 ```
 
 ## Test Configuration
@@ -213,7 +252,32 @@ def test_end_to_end_pipeline(acceptance_spark, end_to_end_test_data):
 
 ### Common Issues
 
-1. **Spark Session Conflicts**
+1. **ModuleNotFoundError (boto3, botocore, pyspark)**
+   ```bash
+   # Solution: Ensure virtual environment is activated and dependencies are installed
+   source pyspark-jobs-venv/bin/activate
+   pip install -r requirements-local.txt
+   
+   # Or reinitialize the environment
+   make init
+   ```
+
+2. **Virtual environment not found error**
+   ```bash
+   # Solution: Initialize the development environment
+   make init
+   
+   # This creates pyspark-jobs-venv and installs all dependencies
+   ```
+
+3. **Tests not found or wrong directory**
+   ```bash
+   # Solution: Always run tests from project root directory
+   cd /path/to/pyspark-jobs
+   make test-unit
+   ```
+
+4. **Spark Session Conflicts**
    ```python
    # Solution: Use proper session scoping in fixtures
    @pytest.fixture(scope="module")
@@ -223,11 +287,12 @@ def test_end_to_end_pipeline(acceptance_spark, end_to_end_test_data):
        session.stop()  # Always stop sessions
    ```
 
-2. **Import Errors**
+5. **Import Errors**
    ```bash
-   # Solution: Ensure src is in Python path
+   # Solution: Ensure package is installed in development mode
+   pip install -e .
+   # Or run from project root with proper PYTHONPATH
    export PYTHONPATH="${PYTHONPATH}:./src"
-   # Or run from project root
    ```
 
 3. **Slow Tests**

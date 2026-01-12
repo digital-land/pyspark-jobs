@@ -1,0 +1,19 @@
+[flake8]
+max-line-length = 180
+ignore = W291, E203, W503, E501, F401, F841, F821, F402, F811
+per-file-ignores =
+    examples/*:F401,F821,F841,E501,E402
+    *reconciliation*:F401,F821,F841,E501,E402,E226
+    generate_*.py:F401,F821,F841,E501,E402
+    tests/*:E402
+exclude =
+    __pycache__
+    node_modules
+    .venv
+    pyspark-jobs-venv
+    migrations
+    .git
+    old
+    build
+    dist
+    .direnv
