@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Convert Parquet files to CSV using Polars."""
 
-import polars as pl
 from pathlib import Path
 
+import polars as pl
+
 # Paths
-parquet_dir = Path("/Users/399182/MHCLG-githib/pyspark-jobs/src/analytics/data_volume_300/Polars/parquet_flattened_polars")
+parquet_dir = Path(
+    "/Users/399182/MHCLG-githib/pyspark-jobs/src/analytics/data_volume_300/Polars/parquet_flattened_polars"
+)
 csv_dir = parquet_dir.parent / "csv_output"
 csv_dir.mkdir(exist_ok=True)
 
