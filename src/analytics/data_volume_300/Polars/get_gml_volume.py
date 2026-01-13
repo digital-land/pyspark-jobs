@@ -121,7 +121,7 @@ if __name__ == "__main__":
     # Save text report
     output_file = Path(__file__).parent / "gml_volume_report.txt"
     with open(output_file, "w") as f:
-        f.write(f"GML Files Data Volume Report\n")
+        f.write("GML Files Data Volume Report\n")
         f.write(f"Source: {url}\n")
         f.write(f"{'='*60}\n\n")
 
@@ -135,7 +135,7 @@ if __name__ == "__main__":
                 f.write(f"  Files: {row['gml_files']}\n")
 
         f.write(f"\n{'='*60}\n")
-        f.write(f"SUMMARY\n")
+        f.write("SUMMARY\n")
         f.write(f"{'='*60}\n")
         f.write(f"Total .zip files: {len(data)}\n")
         f.write(f"Total .gml files: {total_gml_count}\n")
@@ -143,7 +143,7 @@ if __name__ == "__main__":
             f"Total data volume: {total_gml_size:,} bytes ({format_size(total_gml_size)})\n"
         )
 
-    print(f"\nReports saved to:")
+    print("\nReports saved to:")
     print(f"  Text: {output_file}")
     print(f"  CSV: {output_csv}")
     print(f"  Parquet: {output_parquet}")

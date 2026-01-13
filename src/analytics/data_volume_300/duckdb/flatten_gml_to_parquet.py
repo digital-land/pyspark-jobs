@@ -76,7 +76,7 @@ def convert_to_parquet(extracted_dir, parquet_dir, max_workers=None):
             elif count:
                 print(f"  ✓ {count} records, {size:,} bytes")
             else:
-                print(f"  ⚠ No records found")
+                print("  ⚠ No records found")
 
 
 if __name__ == "__main__":
@@ -98,7 +98,7 @@ if __name__ == "__main__":
     print(f"Files: {len(parquet_files)}")
     print(f"Size: {total_size:,} bytes ({total_size/1024/1024:.2f} MB)")
     print(f"Time: {elapsed:.2f}s")
-    print(f"\nDuckDB queries:")
+    print("\nDuckDB queries:")
     print(f"  SELECT * FROM '{parquet_dir}/*.parquet' LIMIT 100;")
     print(
         f"  SELECT council_name, COUNT(*) FROM '{parquet_dir}/*.parquet' GROUP BY council_name;"

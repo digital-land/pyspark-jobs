@@ -79,7 +79,7 @@ def convert_to_parquet(extracted_dir, parquet_dir, max_workers=None):
             elif count:
                 print(f"  ✓ {count} records, {size:,} bytes")
             else:
-                print(f"  ⚠ No records found")
+                print("  ⚠ No records found")
 
 
 if __name__ == "__main__":
@@ -100,9 +100,7 @@ if __name__ == "__main__":
     print(f"Files: {len(parquet_files)}")
     print(f"Size: {total_size:,} bytes ({total_size/1024/1024:.2f} MB)")
     print(f"Time: {elapsed:.2f}s")
-    print(f"\nPolars queries:")
+    print("\nPolars queries:")
     print(f"  df = pl.scan_parquet('{parquet_dir}/*.parquet')")
-    print(
-        f"  df.select(['council_name', pl.count()]).group_by('council_name').agg(pl.count())"
-    )
+    print("  df.select(['council_name', pl.count()]).group_by('council_name').agg(pl.count())")
     print(f"{'='*60}")

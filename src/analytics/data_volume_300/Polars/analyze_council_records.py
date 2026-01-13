@@ -36,7 +36,7 @@ def analyze_parquet_data(parquet_dir):
     avg_records = result["record_count"].mean()
 
     print(f"\n{'=' * 60}")
-    print(f"SUMMARY")
+    print("SUMMARY")
     print(f"{'=' * 60}")
     print(f"Total Councils: {total_councils}")
     print(f"Total Records: {total_records:,}")
@@ -55,7 +55,7 @@ def analyze_parquet_data(parquet_dir):
     result.write_csv(output_csv)
     result.write_parquet(output_parquet)
 
-    print(f"\nResults saved to:")
+    print("\nResults saved to:")
     print(f"  CSV: {output_csv}")
     print(f"  Parquet: {output_parquet}")
 

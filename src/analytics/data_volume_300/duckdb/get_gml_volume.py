@@ -109,7 +109,7 @@ if __name__ == "__main__":
     # Save report
     output_file = base_dir / "gml_volume_report.txt"
     with open(output_file, "w") as f:
-        f.write(f"GML Files Data Volume Report\n")
+        f.write("GML Files Data Volume Report\n")
         f.write(f"Source: {url}\n")
         f.write(f"{'='*60}\n\n")
 
@@ -123,7 +123,7 @@ if __name__ == "__main__":
                 f.write(f"  Files: {', '.join(detail['gml_files'])}\n")
 
         f.write(f"\n{'='*60}\n")
-        f.write(f"SUMMARY\n")
+        f.write("SUMMARY\n")
         f.write(f"{'='*60}\n")
         f.write(f"Total .zip files: {len(details)}\n")
         f.write(f"Total .gml files: {total_gml_count}\n")
