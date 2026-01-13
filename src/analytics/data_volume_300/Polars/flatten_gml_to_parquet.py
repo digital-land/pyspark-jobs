@@ -102,5 +102,7 @@ if __name__ == "__main__":
     print(f"Time: {elapsed:.2f}s")
     print("\nPolars queries:")
     print(f"  df = pl.scan_parquet('{parquet_dir}/*.parquet')")
-    print("  df.select(['council_name', pl.count()]).group_by('council_name').agg(pl.count())")
+    print(
+        "  df.select(['council_name', pl.count()]).group_by('council_name').agg(pl.count())"
+    )
     print(f"{'='*60}")

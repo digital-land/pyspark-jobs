@@ -101,8 +101,6 @@ def test_file_logging():
         from jobs.utils.logger_config import get_logger, setup_logging
         from utils.test_utils import get_test_log_file
 
-        from utils.test_utils import get_test_log_file
-
         log_file = get_test_log_file("test_integration_logging_file")
 
         # Clear any existing handlers
