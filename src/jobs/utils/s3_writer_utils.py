@@ -57,11 +57,26 @@ df_entity = None
 
 @log_execution_time
 def transform_data_entity_format(df, data_set, spark, env=None):
+    """
+    Transform Entity-Attribute-Value (EAV) format data into entity records.
+    
+    EAV Model:
+    - entity: The main object or record (e.g., a property or organisation)
+    - field: The attribute name (e.g., entry-date, geometry, organisation)
+    - value: The actual data for that attribute
+    - priority: Numeric ranking determining which record to keep (higher = higher priority)
+    
+    Business Rule:
+    Each entity can have multiple field-value pairs, but only one pair per field.
+    When duplicates exist for the same entity-field combination, keep the record
+    with the highest priority number.
+    """
     try:
         logger.info("transform_data_entity:Transforming data for Entity table")
         show_df(df, 20, env)
-        # 1) Select the top record per (entity, field) using priority, entry_date, entry_number
-        # Fallback if 'priority' is missing: use entry_date, entry_number
+        
+        # 1) EAV Deduplication: Select top record per (entity, field) by priority
+        # Priority-based deduplication ensures only one value per entity-field combination
         if "priority" in df.columns:
             ordering_cols = [desc("priority"), desc("entry_date"), desc("entry_number")]
         else:
@@ -76,6 +91,22 @@ def transform_data_entity_format(df, data_set, spark, env=None):
 
         # 2) Pivot to get one row per entity
         pivot_df = df_ranked.groupBy("entity").pivot("field").agg(first("value"))
+        
+        # 3) Add quality column based on highest priority per entity
+        if "priority" in df.columns:
+            w_entity = Window.partitionBy("entity")
+            max_priority_df = df.withColumn("max_priority", expr("max(priority) over (partition by entity)")) \
+                .select("entity", "max_priority").dropDuplicates(["entity"])
+            
+            pivot_df = pivot_df.join(max_priority_df, "entity", "left") \
+                .withColumn("quality", 
+                    when(col("max_priority") == 1, lit("same"))
+                    .when(col("max_priority") == 2, lit("authoritative"))
+                    .otherwise(lit(""))
+                ).drop("max_priority")
+        else:
+            pivot_df = pivot_df.withColumn("quality", lit(""))
+        
         show_df(pivot_df, 5, env)
 
         logger.info(
@@ -92,7 +123,7 @@ def transform_data_entity_format(df, data_set, spark, env=None):
         pivot_df = pivot_df.withColumn("typology", lit(typology_value))
         show_df(pivot_df, 5, env)
 
-        # 3) Normalise column names (kebab-case -> snake_case)
+        # 4) Normalise column names (kebab-case -> snake_case)
         logger.info(
             "transform_data_entity: Normalising column names from kebab-case to snake_case"
         )
@@ -100,7 +131,7 @@ def transform_data_entity_format(df, data_set, spark, env=None):
             if "-" in column:
                 pivot_df = pivot_df.withColumnRenamed(column, column.replace("-", "_"))
 
-        # 4) Set dataset and drop legacy geojson if present
+        # 5) Set dataset and drop legacy geojson if present
         logger.info(
             f"transform_data_entity: Setting dataset column to {data_set} and dropping geojson column if exists"
         )
@@ -108,7 +139,7 @@ def transform_data_entity_format(df, data_set, spark, env=None):
         if "geojson" in pivot_df.columns:
             pivot_df = pivot_df.drop("geojson")
 
-        # 5) Organisation join to fetch organisation_entity
+        # 6) Organisation join to fetch organisation_entity
         logger.info(
             "transform_data_entity: Joining organisation to get organisation_entity"
         )
@@ -127,10 +158,10 @@ def transform_data_entity_format(df, data_set, spark, env=None):
             .drop("organisation")
         )
 
-        # 6) Join typology from dataset specification
+        # 7) Join typology from dataset specification
         # (Step removed: typology already retrieved earlier)
 
-        # 7) Build json from any non-standard columns
+        # 8) Build json from any non-standard columns
         standard_columns = {
             "dataset",
             "end_date",
@@ -142,6 +173,7 @@ def transform_data_entity_format(df, data_set, spark, env=None):
             "organisation_entity",
             "point",
             "prefix",
+            "quality",
             "reference",
             "start_date",
             "typology",
@@ -165,7 +197,7 @@ def transform_data_entity_format(df, data_set, spark, env=None):
         else:
             pivot_df = pivot_df.withColumn("json", lit("{}"))
 
-        # 8) Normalise date columns
+        # 9) Normalise date columns
         for date_col in ["end_date", "entry_date", "start_date"]:
             if date_col in pivot_df.columns:
                 pivot_df = pivot_df.withColumn(
@@ -175,7 +207,7 @@ def transform_data_entity_format(df, data_set, spark, env=None):
                     .otherwise(to_date(col(date_col), "yyyy-MM-dd")),
                 )
 
-        # 9) Normalise geometry columns
+        # 10) Normalise geometry columns
         for geom_col in ["geometry", "point"]:
             if geom_col in pivot_df.columns:
                 pivot_df = pivot_df.withColumn(
@@ -188,7 +220,7 @@ def transform_data_entity_format(df, data_set, spark, env=None):
                     .otherwise(None),
                 )
 
-        # 10) Final projection and safety dedupe
+        # 11) Final projection and safety dedupe
         out = pivot_df.select(
             "dataset",
             "end_date",
@@ -200,6 +232,7 @@ def transform_data_entity_format(df, data_set, spark, env=None):
             "organisation_entity",
             "point",
             "prefix",
+            "quality",
             "reference",
             "start_date",
             "typology",
@@ -927,3 +960,4 @@ def write_to_s3_format(df, output_path, dataset_name, table_name, spark, env):
                 temp_df.unpersist()
             except Exception:
                 pass
+
