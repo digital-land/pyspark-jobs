@@ -41,7 +41,7 @@ class TestPrecisionTargeted:
             )
 
             with patch("jobs.transform_collection_data.Window", mock_window):
-                from jobs.transform_collection_data import transform_data_fact
+                from jobs.transform.fact_transformer import FactTransformer
 
                 mock_df = Mock()
                 mock_df.withColumn.return_value = mock_df
@@ -51,7 +51,7 @@ class TestPrecisionTargeted:
 
                 # This should hit line 105 in the logging statement
                 try:
-                    transform_data_fact(mock_df)
+                    FactTransformer.transform(mock_df)
                 except Exception:
                     pass
 

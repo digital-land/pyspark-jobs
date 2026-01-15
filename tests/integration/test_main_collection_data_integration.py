@@ -187,12 +187,15 @@ class TestTransformationIntegration:
         """Test fact data transformation integration."""
         # Test that transformation functions exist
         try:
-            from jobs.transform_collection_data import transform_data_fact
+            from jobs.transform.fact_transformer import FactTransformer
 
             assert callable(transform_data_fact)
         except ImportError:
             # Function doesn't exist, test basic imports
-            from jobs import transform_collection_data
+            from jobs.transform.fact_transformer import FactTransformer
+from jobs.transform.entity_transformer import EntityTransformer
+from jobs.transform.fact_resource_transformer import FactResourceTransformer
+from jobs.transform.issue_transformer import IssueTransformer
 
             assert transform_collection_data is not None
 

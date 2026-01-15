@@ -44,7 +44,7 @@ class TestDirectExecution:
             ) as mock_row_number:
 
                 # Import and call the function
-                from jobs.transform_collection_data import transform_data_fact
+                from jobs.transform.fact_transformer import FactTransformer
 
                 # Create mock DataFrame
                 mock_df = Mock()
@@ -59,7 +59,7 @@ class TestDirectExecution:
 
                 # This should execute line 105
                 try:
-                    transform_data_fact(mock_df)
+                    FactTransformer.transform(mock_df)
                 except Exception:
                     pass  # Expected due to mocking
 

@@ -16,7 +16,10 @@ class TestSimpleExecution80:
         try:
             import jobs.csv_s3_writer as csv_s3_writer
             import jobs.main_collection_data as main_collection_data
-            import jobs.transform_collection_data as transform_collection_data
+            from jobs.transform.fact_transformer import FactTransformer
+from jobs.transform.entity_transformer import EntityTransformer
+from jobs.transform.fact_resource_transformer import FactResourceTransformer
+from jobs.transform.issue_transformer import IssueTransformer
             import jobs.utils.aws_secrets_manager as aws_secrets_manager
             import jobs.utils.df_utils as df_utils
             import jobs.utils.geometry_utils as geometry_utils

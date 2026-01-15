@@ -20,12 +20,10 @@ with patch.dict(
         "pandas": MagicMock(),
     },
 ):
-    from jobs.transform_collection_data import (
-        transform_data_entity,
-        transform_data_fact,
-        transform_data_fact_res,
-        transform_data_issue,
-    )
+    from jobs.transform.entity_transformer import EntityTransformer
+from jobs.transform.fact_transformer import FactTransformer
+from jobs.transform.fact_resource_transformer import FactResourceTransformer
+from jobs.transform.issue_transformer import IssueTransformer
 
 
 class TestTransformCollectionData:
@@ -34,7 +32,7 @@ class TestTransformCollectionData:
     @pytest.mark.skip(reason="PySpark type checking issues in test environment")
     def test_transform_data_fact_success(self, spark, sample_fact_data):
         """Test successful fact data transformation."""
-        result = transform_data_fact(sample_fact_data)
+        result = FactTransformer.transform(sample_fact_data)
 
         assert result is not None
         assert result.count() > 0
@@ -70,7 +68,7 @@ class TestTransformCollectionData:
         mock_df.withColumn.side_effect = Exception("Missing column: priority")
 
         with pytest.raises(Exception):
-            transform_data_fact(mock_df)
+            FactTransformer.transform(mock_df)
 
     @pytest.mark.skip(reason="Function calls actual PySpark operations")
     def test_transform_data_fact_res_success(self):
@@ -84,14 +82,14 @@ class TestTransformCollectionData:
         mock_df.count.return_value = 0
         mock_df.select.return_value = mock_df
 
-        result = transform_data_fact_res(mock_df)
+        result = FactResourceTransformer.transform(mock_df)
 
         assert result is not None
 
     @pytest.mark.skip(reason="PySpark type checking issues in test environment")
     def test_transform_data_issue_success(self, spark, sample_issue_data):
         """Test successful issue data transformation."""
-        result = transform_data_issue(sample_issue_data)
+        result = IssueTransformer.transform(sample_issue_data)
 
         assert result is not None
         assert result.count() == 2
@@ -143,7 +141,7 @@ class TestTransformCollectionData:
         with patch.object(spark.read, "csv") as mock_csv:
             mock_csv.return_value = org_df
 
-            result = transform_data_entity(
+            result = EntityTransformer().transform(
                 sample_entity_data, "test - dataset", spark, "development"
             )
 
@@ -225,7 +223,7 @@ class TestTransformCollectionData:
         with patch.object(spark.read, "csv") as mock_csv:
             mock_csv.return_value = org_df
 
-            result = transform_data_entity(df, "test - dataset", spark, "development")
+            result = EntityTransformer().transform(df, "test - dataset", spark, "development")
 
         # Should keep the higher priority value
         collected = result.collect()
@@ -285,7 +283,7 @@ class TestTransformCollectionData:
         with patch.object(spark.read, "csv") as mock_csv:
             mock_csv.return_value = org_df
 
-            result = transform_data_entity(df, "test - dataset", spark, "development")
+            result = EntityTransformer().transform(df, "test - dataset", spark, "development")
 
         assert result is not None
         assert result.count() == 1
@@ -336,7 +334,7 @@ class TestTransformCollectionData:
         with patch.object(spark.read, "csv") as mock_csv:
             mock_csv.return_value = org_df
 
-            result = transform_data_entity(df, "test - dataset", spark, "development")
+            result = EntityTransformer().transform(df, "test - dataset", spark, "development")
 
         # Check that kebab - case fields are converted to snake_case in pivoted columns
         collected = result.collect()
@@ -401,7 +399,7 @@ class TestTransformCollectionData:
         with patch.object(spark.read, "csv") as mock_csv:
             mock_csv.return_value = org_df
 
-            result = transform_data_entity(df, "test - dataset", spark, "development")
+            result = EntityTransformer().transform(df, "test - dataset", spark, "development")
 
         # Verify JSON column is created
         assert "json" in result.columns
@@ -420,7 +418,7 @@ class TestTransformCollectionData:
         invalid_df.withColumn.side_effect = Exception("Test error")
 
         with pytest.raises(Exception):
-            transform_data_fact(invalid_df)
+            FactTransformer.transform(invalid_df)
 
     def test_transform_data_fact_res_exception_handling(self):
         """Test exception handling in transform_data_fact_res."""
@@ -428,7 +426,7 @@ class TestTransformCollectionData:
         invalid_df.select.side_effect = Exception("Test error")
 
         with pytest.raises(Exception):
-            transform_data_fact_res(invalid_df)
+            FactResourceTransformer.transform(invalid_df)
 
     def test_transform_data_issue_exception_handling(self):
         """Test exception handling in transform_data_issue."""
@@ -436,7 +434,7 @@ class TestTransformCollectionData:
         invalid_df.withColumn.side_effect = Exception("Test error")
 
         with pytest.raises(Exception):
-            transform_data_issue(invalid_df)
+            IssueTransformer.transform(invalid_df)
 
     @patch("jobs.transform_collection_data.get_dataset_typology")
     def test_transform_data_entity_exception_handling(self, mock_typology):
@@ -450,7 +448,7 @@ class TestTransformCollectionData:
         mock_spark = Mock()
 
         with pytest.raises(Exception):
-            transform_data_entity(
+            EntityTransformer().transform(
                 invalid_df, "test - dataset", mock_spark, "development"
             )
 
@@ -529,7 +527,7 @@ class TestTransformCollectionDataIntegration:
         with patch.object(spark.read, "csv") as mock_csv:
             mock_csv.return_value = org_df
 
-            result = transform_data_entity(df, "test - dataset", spark, "development")
+            result = EntityTransformer().transform(df, "test - dataset", spark, "development")
 
         # Verify complete transformation
         assert result is not None

@@ -24,7 +24,7 @@ class TestStepByStep80:
     def test_step_2_transform_collection_data_line_105(self):
         """Step 2: Target transform_collection_data.py line 105 - second highest impact (98.97% -> 100%)."""
         with patch.dict("sys.modules", {"pyspark.sql": Mock()}):
-            from jobs.transform_collection_data import transform_data_fact
+            from jobs.transform.fact_transformer import FactTransformer
 
             # Create mock DataFrame that will trigger line 105
             mock_df = Mock()
@@ -34,7 +34,7 @@ class TestStepByStep80:
 
             try:
                 # This should hit line 105 (the missing line)
-                transform_data_fact(mock_df)
+                FactTransformer.transform(mock_df)
             except Exception:
                 pass  # Expected due to PySpark mocking
 

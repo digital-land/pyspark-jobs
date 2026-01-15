@@ -8,12 +8,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 import pytest
 
-from jobs.transform_collection_data import (
-    transform_data_entity,
-    transform_data_fact,
-    transform_data_fact_res,
-    transform_data_issue,
-)
+from jobs.transform.entity_transformer import EntityTransformer
+from jobs.transform.fact_transformer import FactTransformer
+from jobs.transform.fact_resource_transformer import FactResourceTransformer
+from jobs.transform.issue_transformer import IssueTransformer
 
 
 @pytest.mark.skip(
@@ -32,7 +30,7 @@ class TestTransformCollectionDataExtended:
         invalid_df = spark.createDataFrame([], "invalid_schema string")
 
         with pytest.raises(Exception):
-            transform_data_fact(invalid_df)
+            FactTransformer.transform(invalid_df)
 
     def test_transform_data_fact_res_basic(self, spark):
         """Test fact resource transformation."""
@@ -56,7 +54,7 @@ class TestTransformCollectionDataExtended:
         ]
 
         df = spark.createDataFrame(data, schema)
-        result = transform_data_fact_res(df)
+        result = FactResourceTransformer.transform(df)
 
         assert result is not None
         assert result.count() == 2
@@ -68,11 +66,11 @@ class TestTransformCollectionDataExtended:
         invalid_df = spark.createDataFrame([], "invalid_schema string")
 
         with pytest.raises(Exception):
-            transform_data_fact_res(invalid_df)
+            FactResourceTransformer.transform(invalid_df)
 
     def test_transform_data_issue_basic(self, spark, sample_issue_data):
         """Test issue transformation."""
-        result = transform_data_issue(sample_issue_data)
+        result = IssueTransformer.transform(sample_issue_data)
 
         assert result is not None
         assert result.count() == 2
@@ -88,7 +86,7 @@ class TestTransformCollectionDataExtended:
         invalid_df = spark.createDataFrame([], "invalid_schema string")
 
         with pytest.raises(Exception):
-            transform_data_issue(invalid_df)
+            IssueTransformer.transform(invalid_df)
 
     @patch("jobs.transform_collection_data.get_dataset_typology")
     @patch("jobs.utils.s3_dataset_typology.get_dataset_typology")
@@ -107,7 +105,7 @@ class TestTransformCollectionDataExtended:
         with patch.object(spark.read, "option") as mock_option:
             mock_option.return_value.csv.return_value = mock_org_df
 
-            result = transform_data_entity(
+            result = EntityTransformer().transform(
                 sample_entity_data, "test - dataset", spark, "test"
             )
 
@@ -146,7 +144,7 @@ class TestTransformCollectionDataExtended:
                 )
                 mock_option.return_value.csv.return_value = mock_org_df
 
-                result = transform_data_entity(df, "test - dataset", spark, "test")
+                result = EntityTransformer().transform(df, "test - dataset", spark, "test")
 
                 assert result is not None
                 assert "entity" in result.columns
@@ -156,4 +154,4 @@ class TestTransformCollectionDataExtended:
         invalid_df = spark.createDataFrame([], "invalid_schema string")
 
         with pytest.raises(Exception):
-            transform_data_entity(invalid_df, "test - dataset", spark, "test")
+            EntityTransformer().transform(invalid_df, "test - dataset", spark, "test")

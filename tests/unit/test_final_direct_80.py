@@ -38,7 +38,7 @@ class TestFinalDirect80:
             "jobs.transform_collection_data.row_number", mock_row_number
         ), patch("jobs.transform_collection_data.logger") as mock_logger:
 
-            from jobs.transform_collection_data import transform_data_fact
+            from jobs.transform.fact_transformer import FactTransformer
 
             # Create a minimal mock DataFrame
             mock_df = MagicMock()
@@ -50,7 +50,7 @@ class TestFinalDirect80:
 
             # This should execute line 105 (the logging statement)
             try:
-                transform_data_fact(mock_df)
+                FactTransformer.transform(mock_df)
             except Exception:
                 pass
 

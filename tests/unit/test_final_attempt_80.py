@@ -83,7 +83,7 @@ class TestFinalAttempt80:
                 mock_window_spec
             )
 
-            from jobs.transform_collection_data import transform_data_fact
+            from jobs.transform.fact_transformer import FactTransformer
 
             # Create mock DataFrame
             mock_df = Mock()
@@ -93,7 +93,7 @@ class TestFinalAttempt80:
             mock_df.select.return_value = mock_df
 
             try:
-                transform_data_fact(mock_df)
+                FactTransformer.transform(mock_df)
             except Exception:
                 pass
 

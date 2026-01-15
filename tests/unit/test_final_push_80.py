@@ -144,7 +144,10 @@ class TestFinalPush80:
             "sys.modules", {"pyspark.sql": Mock(), "pyspark.sql.functions": Mock()}
         ):
             try:
-                import jobs.transform_collection_data as tcd
+                from jobs.transform.fact_transformer import FactTransformer
+from jobs.transform.entity_transformer import EntityTransformer
+from jobs.transform.fact_resource_transformer import FactResourceTransformer
+from jobs.transform.issue_transformer import IssueTransformer
 
                 # Create comprehensive mock DataFrame
                 mock_df = Mock()

@@ -169,7 +169,10 @@ class TestSurgicalPrecision:
         with patch.dict("sys.modules", {"pyspark.sql": Mock()}):
             try:
                 # Import the module to see what functions exist
-                import jobs.transform_collection_data as tcd
+                from jobs.transform.fact_transformer import FactTransformer
+from jobs.transform.entity_transformer import EntityTransformer
+from jobs.transform.fact_resource_transformer import FactResourceTransformer
+from jobs.transform.issue_transformer import IssueTransformer
 
                 # Look for functions that might contain line 105
                 functions = [

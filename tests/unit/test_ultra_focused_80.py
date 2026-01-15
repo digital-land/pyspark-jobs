@@ -298,7 +298,7 @@ class TestUltraFocused80:
 
         # Test transform_collection_data.py line 105 (logging)
         try:
-            from jobs.transform_collection_data import transform_data_fact
+            from jobs.transform.fact_transformer import FactTransformer
 
             with patch("jobs.transform_collection_data.logger") as mock_logger:
                 mock_df = Mock()
@@ -307,7 +307,7 @@ class TestUltraFocused80:
                 mock_df.drop.return_value = mock_df
                 mock_df.select.return_value = mock_df
                 try:
-                    transform_data_fact(mock_df)
+                    FactTransformer.transform(mock_df)
                 except Exception:
                     pass
         except ImportError:

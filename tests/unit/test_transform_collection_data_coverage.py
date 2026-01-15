@@ -20,12 +20,10 @@ with patch.dict(
         "pandas": MagicMock(),
     },
 ):
-    from jobs.transform_collection_data import (
-        transform_data_entity,
-        transform_data_fact,
-        transform_data_fact_res,
-        transform_data_issue,
-    )
+    from jobs.transform.entity_transformer import EntityTransformer
+from jobs.transform.fact_transformer import FactTransformer
+from jobs.transform.fact_resource_transformer import FactResourceTransformer
+from jobs.transform.issue_transformer import IssueTransformer
 
 
 def create_mock_dataframe(columns=None):
@@ -58,7 +56,7 @@ class TestTransformDataFactCoverage:
         mock_selected_df.select.return_value = mock_final_df
         mock_final_df.select.return_value = mock_final_df
 
-        result = transform_data_fact(mock_df)
+        result = FactTransformer.transform(mock_df)
 
         # Verify the transformation chain
         mock_df.withColumn.assert_called_once()
@@ -83,7 +81,7 @@ class TestTransformDataFactCoverage:
         mock_selected_df.select.return_value = mock_final_df
         mock_final_df.select.return_value = mock_final_df
 
-        transform_data_fact(mock_df)
+        FactTransformer.transform(mock_df)
 
         # Verify correct columns are selected in first call
         expected_first_select = [
@@ -132,7 +130,7 @@ class TestTransformDataFactResCoverage:
         mock_df.select.return_value = mock_selected_df
         mock_selected_df.select.return_value = mock_final_df
 
-        result = transform_data_fact_res(mock_df)
+        result = FactResourceTransformer.transform(mock_df)
 
         # Verify column selections
         expected_first_select = [
@@ -183,7 +181,7 @@ class TestTransformDataIssueCoverage:
         mock_df2.withColumn.return_value = mock_df3
         mock_df3.select.return_value = mock_final_df
 
-        result = transform_data_issue(mock_df)
+        result = IssueTransformer.transform(mock_df)
 
         # Verify all three date columns are added
         assert mock_df.withColumn.call_count == 1
@@ -223,7 +221,7 @@ class TestTransformDataIssueCoverage:
             mock_df.withColumn.return_value = mock_df
             mock_df.select.return_value = mock_df
 
-            transform_data_issue(mock_df)
+            IssueTransformer.transform(mock_df)
 
             # Verify lit("").cast("string") is called for each date column
             assert mock_lit_func.call_count == 3
@@ -276,7 +274,7 @@ class TestTransformDataEntityCoverage:
         mock_org_df = create_mock_dataframe(["organisation", "entity"])
         mock_spark.read.option.return_value.csv.return_value = mock_org_df
 
-        result = transform_data_entity(
+        result = EntityTransformer().transform(
             mock_df_with_priority, "test - dataset", mock_spark, "development"
         )
 
@@ -322,7 +320,7 @@ class TestTransformDataEntityCoverage:
         mock_org_df = create_mock_dataframe(["organisation", "entity"])
         mock_spark.read.option.return_value.csv.return_value = mock_org_df
 
-        result = transform_data_entity(
+        result = EntityTransformer().transform(
             mock_df_no_priority, "test - dataset", mock_spark, "development"
         )
 
@@ -368,7 +366,7 @@ class TestTransformDataEntityCoverage:
         mock_org_df = create_mock_dataframe(["organisation", "entity"])
         mock_spark.read.option.return_value.csv.return_value = mock_org_df
 
-        transform_data_entity(mock_df, "test - dataset", mock_spark, "development")
+        EntityTransformer().transform(mock_df, "test - dataset", mock_spark, "development")
 
         # Verify withColumnRenamed is called for kebab - case columns
         rename_calls = mock_pivot_df.withColumnRenamed.call_args_list
@@ -419,7 +417,7 @@ class TestTransformDataEntityCoverage:
         mock_org_df = create_mock_dataframe(["organisation", "entity"])
         mock_spark.read.option.return_value.csv.return_value = mock_org_df
 
-        transform_data_entity(mock_df, "test - dataset", mock_spark, "development")
+        EntityTransformer().transform(mock_df, "test - dataset", mock_spark, "development")
 
         # Verify missing columns are added with default values
         withColumn_calls = mock_pivot_df.withColumn.call_args_list
@@ -481,7 +479,7 @@ class TestTransformDataEntityCoverage:
 
         with patch("jobs.transform_collection_data.to_json") as mock_to_json:
             with patch("jobs.transform_collection_data.struct") as mock_struct:
-                transform_data_entity(
+                EntityTransformer().transform(
                     mock_df, "test - dataset", mock_spark, "development"
                 )
 
@@ -529,7 +527,7 @@ class TestTransformDataEntityCoverage:
         mock_org_df = create_mock_dataframe(["organisation", "entity"])
         mock_spark.read.option.return_value.csv.return_value = mock_org_df
 
-        transform_data_entity(mock_df, "test - dataset", mock_spark, "development")
+        EntityTransformer().transform(mock_df, "test - dataset", mock_spark, "development")
 
         # Verify date normalization is applied
         withColumn_calls = mock_pivot_df.withColumn.call_args_list
@@ -575,7 +573,7 @@ class TestTransformDataEntityCoverage:
         mock_org_df = create_mock_dataframe(["organisation", "entity"])
         mock_spark.read.option.return_value.csv.return_value = mock_org_df
 
-        transform_data_entity(mock_df, "test - dataset", mock_spark, "development")
+        EntityTransformer().transform(mock_df, "test - dataset", mock_spark, "development")
 
         # Verify geometry normalization is applied
         withColumn_calls = mock_pivot_df.withColumn.call_args_list
@@ -623,7 +621,7 @@ class TestTransformDataEntityCoverage:
         mock_org_df = create_mock_dataframe(["organisation", "entity"])
         mock_spark.read.option.return_value.csv.return_value = mock_org_df
 
-        result = transform_data_entity(
+        result = EntityTransformer().transform(
             mock_df, "test - dataset", mock_spark, "development"
         )
 
@@ -689,7 +687,7 @@ class TestTransformDataErrorHandling:
         mock_spark = Mock()
 
         with pytest.raises(Exception, match="Test error"):
-            transform_data_entity(
+            EntityTransformer().transform(
                 error_mock, "test - dataset", mock_spark, "development"
             )
 
@@ -723,7 +721,7 @@ class TestTransformDataErrorHandling:
         mock_org_df = Mock()
         mock_spark.read.option.return_value.csv.return_value = mock_org_df
 
-        result = transform_data_entity(
+        result = EntityTransformer().transform(
             mock_df_no_priority, "test - dataset", mock_spark, "development"
         )
 
@@ -769,7 +767,7 @@ class TestTransformDataErrorHandling:
         mock_org_df = Mock()
         mock_spark.read.option.return_value.csv.return_value = mock_org_df
 
-        transform_data_entity(mock_df, "test - dataset", mock_spark, "development")
+        EntityTransformer().transform(mock_df, "test - dataset", mock_spark, "development")
 
         # Verify withColumnRenamed is called for kebab - case columns
         rename_calls = mock_pivot_df.withColumnRenamed.call_args_list
@@ -820,7 +818,7 @@ class TestTransformDataErrorHandling:
         mock_org_df = Mock()
         mock_spark.read.option.return_value.csv.return_value = mock_org_df
 
-        transform_data_entity(mock_df, "test - dataset", mock_spark, "development")
+        EntityTransformer().transform(mock_df, "test - dataset", mock_spark, "development")
 
         # Verify missing columns are added with default values
         withColumn_calls = mock_pivot_df.withColumn.call_args_list
@@ -882,7 +880,7 @@ class TestTransformDataErrorHandling:
 
         with patch("jobs.transform_collection_data.to_json") as mock_to_json:
             with patch("jobs.transform_collection_data.struct") as mock_struct:
-                transform_data_entity(
+                EntityTransformer().transform(
                     mock_df, "test - dataset", mock_spark, "development"
                 )
 
@@ -930,7 +928,7 @@ class TestTransformDataErrorHandling:
         mock_org_df = Mock()
         mock_spark.read.option.return_value.csv.return_value = mock_org_df
 
-        transform_data_entity(mock_df, "test - dataset", mock_spark, "development")
+        EntityTransformer().transform(mock_df, "test - dataset", mock_spark, "development")
 
         # Verify date normalization is applied
         withColumn_calls = mock_pivot_df.withColumn.call_args_list
@@ -976,7 +974,7 @@ class TestTransformDataErrorHandling:
         mock_org_df = Mock()
         mock_spark.read.option.return_value.csv.return_value = mock_org_df
 
-        transform_data_entity(mock_df, "test - dataset", mock_spark, "development")
+        EntityTransformer().transform(mock_df, "test - dataset", mock_spark, "development")
 
         # Verify geometry normalization is applied
         withColumn_calls = mock_pivot_df.withColumn.call_args_list
@@ -1024,7 +1022,7 @@ class TestTransformDataErrorHandling:
         mock_org_df = Mock()
         mock_spark.read.option.return_value.csv.return_value = mock_org_df
 
-        result = transform_data_entity(
+        result = EntityTransformer().transform(
             mock_df, "test - dataset", mock_spark, "development"
         )
 
@@ -1090,6 +1088,6 @@ class TestTransformDataErrorHandling:
         mock_spark = Mock()
 
         with pytest.raises(Exception, match="Test error"):
-            transform_data_entity(
+            EntityTransformer().transform(
                 error_mock, "test - dataset", mock_spark, "development"
             )
