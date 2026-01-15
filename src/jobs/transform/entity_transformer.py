@@ -22,13 +22,13 @@ logger = get_logger(__name__)
 class EntityTransformer:
     """
     Transform Entity-Attribute-Value (EAV) format data into entity records.
-    
+
     EAV Model:
     - entity: The main object or record (e.g., a property or organisation)
     - field: The attribute name (e.g., entry-date, geometry, organisation)
     - value: The actual data for that attribute
     - priority: Numeric ranking determining which record to keep (higher = higher priority)
-    
+
     Business Rule:
     Each entity can have multiple field-value pairs, but only one pair per field.
     When duplicates exist for the same entity-field combination, keep the record
@@ -60,34 +60,34 @@ class EntityTransformer:
 
         # Step 1: Deduplicate EAV records - keep highest priority per (entity, field)
         df_ranked = self._deduplicate_eav(df)
-        
+
         # Step 2: Pivot from EAV format to wide format (one row per entity)
         pivot_df = self._pivot_to_entity(df_ranked, env)
-        
+
         # Step 3: Add quality column based on max priority (1=same, 2=authoritative)
         pivot_df = self._add_quality_column(df, pivot_df)
-        
+
         # Step 4: Add typology from dataset specification
         pivot_df = self._add_typology(pivot_df, data_set, env)
-        
+
         # Step 5: Normalise column names (kebab-case to snake_case)
         pivot_df = self._normalise_column_names(pivot_df)
-        
+
         # Step 6: Set dataset column and cleanup
         pivot_df = self._set_dataset(pivot_df, data_set)
-        
+
         # Step 7: Join organisation data to get organisation_entity
         pivot_df = self._join_organisation(pivot_df, spark, env)
-        
+
         # Step 8: Build JSON column from non-standard columns
         pivot_df = self._build_json_column(pivot_df)
-        
+
         # Step 9: Normalise date columns to proper date type
         pivot_df = self._normalise_dates(pivot_df)
-        
+
         # Step 10: Normalise geometry columns (validate WKT format)
         pivot_df = self._normalise_geometry(pivot_df)
-        
+
         # Step 11: Final projection and deduplication
         pivot_df = self._final_projection(pivot_df)
 
@@ -98,7 +98,7 @@ class EntityTransformer:
     def _deduplicate_eav(self, df):
         """
         EAV Deduplication: Select top record per (entity, field) by priority.
-        
+
         For each unique (entity, field) combination, keep only the record with:
         1. Highest priority (if column exists)
         2. Most recent entry_date (tiebreaker)
@@ -112,19 +112,23 @@ class EntityTransformer:
 
         # Create window partitioned by (entity, field) and ordered by priority/dates
         w = Window.partitionBy("entity", "field").orderBy(*ordering_cols)
-        
+
         # Assign row numbers and keep only rank 1 (highest priority)
-        return df.withColumn("row_num", row_number().over(w)).filter(col("row_num") == 1).drop("row_num")
+        return (
+            df.withColumn("row_num", row_number().over(w))
+            .filter(col("row_num") == 1)
+            .drop("row_num")
+        )
 
     def _pivot_to_entity(self, df, env):
         """
         Pivot from EAV format to wide format.
-        
+
         Transforms from:
           entity | field    | value
           1001   | name     | "Property A"
           1001   | geometry | "POINT(...)"
-        
+
         To:
           entity | name         | geometry
           1001   | "Property A" | "POINT(...)"
@@ -136,7 +140,7 @@ class EntityTransformer:
     def _add_quality_column(self, df_original, pivot_df):
         """
         Add quality column based on highest priority per entity.
-        
+
         Business Rule:
         - priority = 1 → quality = "same"
         - priority = 2 → quality = "authoritative"
@@ -146,22 +150,30 @@ class EntityTransformer:
             return pivot_df.withColumn("quality", lit(""))
 
         # Calculate max priority per entity from original EAV data
-        max_priority_df = df_original.withColumn(
-            "max_priority", expr("max(priority) over (partition by entity)")
-        ).select("entity", "max_priority").dropDuplicates(["entity"])
+        max_priority_df = (
+            df_original.withColumn(
+                "max_priority", expr("max(priority) over (partition by entity)")
+            )
+            .select("entity", "max_priority")
+            .dropDuplicates(["entity"])
+        )
 
         # Join max priority and map to quality values
-        return pivot_df.join(max_priority_df, "entity", "left").withColumn(
-            "quality",
-            when(col("max_priority") == 1, lit("same"))
-            .when(col("max_priority") == 2, lit("authoritative"))
-            .otherwise(lit(""))
-        ).drop("max_priority")
+        return (
+            pivot_df.join(max_priority_df, "entity", "left")
+            .withColumn(
+                "quality",
+                when(col("max_priority") == 1, lit("same"))
+                .when(col("max_priority") == 2, lit("authoritative"))
+                .otherwise(lit("")),
+            )
+            .drop("max_priority")
+        )
 
     def _add_typology(self, df, data_set, env):
         """
         Add typology column from dataset specification.
-        
+
         Fetches the typology value from the dataset specification
         and adds it as a constant column to all rows.
         """
@@ -174,7 +186,7 @@ class EntityTransformer:
     def _normalise_column_names(self, df):
         """
         Normalise column names from kebab-case to snake_case.
-        
+
         Example: "entry-date" → "entry_date"
         """
         for column in df.columns:
@@ -185,7 +197,7 @@ class EntityTransformer:
     def _set_dataset(self, df, data_set):
         """
         Set dataset column and drop legacy geojson.
-        
+
         Adds dataset name as a column and removes geojson if present
         (geojson is handled separately in output formatting).
         """
@@ -197,7 +209,7 @@ class EntityTransformer:
     def _join_organisation(self, df, spark, env):
         """
         Join organisation to fetch organisation_entity.
-        
+
         Replaces organisation code with organisation_entity ID
         by joining with the organisation reference dataset.
         """
@@ -205,10 +217,12 @@ class EntityTransformer:
         organisation_df = spark.read.option("header", "true").csv(
             f"s3://{env}-collection-data/organisation/dataset/organisation.csv"
         )
-        
+
         # Left join to get organisation_entity, then drop original organisation column
         return (
-            df.join(organisation_df, df.organisation == organisation_df.organisation, "left")
+            df.join(
+                organisation_df, df.organisation == organisation_df.organisation, "left"
+            )
             .select(df["*"], organisation_df["entity"].alias("organisation_entity"))
             .drop("organisation")
         )
@@ -216,7 +230,7 @@ class EntityTransformer:
     def _build_json_column(self, df):
         """
         Build json from any non-standard columns.
-        
+
         Ensures all standard columns exist (with defaults if missing),
         then packages any extra columns into a JSON column.
         """
@@ -243,7 +257,7 @@ class EntityTransformer:
     def _normalise_dates(self, df):
         """
         Normalise date columns to proper date type.
-        
+
         Converts string dates to date type, handling empty strings and nulls.
         Expected format: yyyy-MM-dd
         """
@@ -260,7 +274,7 @@ class EntityTransformer:
     def _normalise_geometry(self, df):
         """
         Normalise geometry columns to valid WKT format.
-        
+
         Validates that geometry values are proper WKT strings
         (POINT, POLYGON, or MULTIPOLYGON). Invalid values set to null.
         """
@@ -280,7 +294,7 @@ class EntityTransformer:
     def _final_projection(self, df):
         """
         Final projection and safety deduplication.
-        
+
         Selects only the standard entity columns in the correct order
         and ensures no duplicate entities in the output.
         """

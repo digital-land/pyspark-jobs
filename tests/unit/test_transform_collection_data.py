@@ -21,8 +21,9 @@ with patch.dict(
     },
 ):
     from jobs.transform.entity_transformer import EntityTransformer
-from jobs.transform.fact_transformer import FactTransformer
+
 from jobs.transform.fact_resource_transformer import FactResourceTransformer
+from jobs.transform.fact_transformer import FactTransformer
 from jobs.transform.issue_transformer import IssueTransformer
 
 
@@ -223,7 +224,9 @@ class TestTransformCollectionData:
         with patch.object(spark.read, "csv") as mock_csv:
             mock_csv.return_value = org_df
 
-            result = EntityTransformer().transform(df, "test - dataset", spark, "development")
+            result = EntityTransformer().transform(
+                df, "test - dataset", spark, "development"
+            )
 
         # Should keep the higher priority value
         collected = result.collect()
@@ -283,7 +286,9 @@ class TestTransformCollectionData:
         with patch.object(spark.read, "csv") as mock_csv:
             mock_csv.return_value = org_df
 
-            result = EntityTransformer().transform(df, "test - dataset", spark, "development")
+            result = EntityTransformer().transform(
+                df, "test - dataset", spark, "development"
+            )
 
         assert result is not None
         assert result.count() == 1
@@ -334,7 +339,9 @@ class TestTransformCollectionData:
         with patch.object(spark.read, "csv") as mock_csv:
             mock_csv.return_value = org_df
 
-            result = EntityTransformer().transform(df, "test - dataset", spark, "development")
+            result = EntityTransformer().transform(
+                df, "test - dataset", spark, "development"
+            )
 
         # Check that kebab - case fields are converted to snake_case in pivoted columns
         collected = result.collect()
@@ -399,7 +406,9 @@ class TestTransformCollectionData:
         with patch.object(spark.read, "csv") as mock_csv:
             mock_csv.return_value = org_df
 
-            result = EntityTransformer().transform(df, "test - dataset", spark, "development")
+            result = EntityTransformer().transform(
+                df, "test - dataset", spark, "development"
+            )
 
         # Verify JSON column is created
         assert "json" in result.columns
@@ -527,7 +536,9 @@ class TestTransformCollectionDataIntegration:
         with patch.object(spark.read, "csv") as mock_csv:
             mock_csv.return_value = org_df
 
-            result = EntityTransformer().transform(df, "test - dataset", spark, "development")
+            result = EntityTransformer().transform(
+                df, "test - dataset", spark, "development"
+            )
 
         # Verify complete transformation
         assert result is not None

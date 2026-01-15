@@ -1,4 +1,5 @@
 """S3 Writer utilities for data transformation and writing."""
+
 import json
 import re
 from datetime import date as date_type
@@ -113,7 +114,9 @@ def write_to_s3(df, output_path, dataset_name, table_name, env=None):
             "dataset", "year", "month", "day"
         ).mode("append").option("maxRecordsPerFile", 1000000).option(
             "compression", "snappy"
-        ).parquet(output_path)
+        ).parquet(
+            output_path
+        )
 
         logger.info(f"write_to_s3: Successfully wrote {row_count} rows")
 
@@ -246,7 +249,9 @@ def write_to_s3_format(df, output_path, dataset_name, table_name, spark, env):
         show_df(df, 5, env)
 
         cleanup_summary = cleanup_dataset_data(output_path, dataset_name)
-        logger.info(f"write_to_s3_format: Cleaned up {cleanup_summary['objects_deleted']} objects")
+        logger.info(
+            f"write_to_s3_format: Cleaned up {cleanup_summary['objects_deleted']} objects"
+        )
 
         df = df.withColumn("dataset", lit(dataset_name))
         row_count = df.count()
@@ -266,7 +271,9 @@ def write_to_s3_format(df, output_path, dataset_name, table_name, spark, env):
             temp_output_path
         )
 
-        s3_rename_and_move(env, dataset_name, "csv", bucket_name=f"{env}-collection-data")
+        s3_rename_and_move(
+            env, dataset_name, "csv", bucket_name=f"{env}-collection-data"
+        )
 
         # Write JSON
         json_buffer = '{"entities":['
@@ -302,8 +309,12 @@ def write_to_s3_format(df, output_path, dataset_name, table_name, spark, env):
         target_key_geojson = f"dataset/{dataset_name}.geojson"
 
         try:
-            s3_client.head_object(Bucket=f"{env}-collection-data", Key=target_key_geojson)
-            s3_client.delete_object(Bucket=f"{env}-collection-data", Key=target_key_geojson)
+            s3_client.head_object(
+                Bucket=f"{env}-collection-data", Key=target_key_geojson
+            )
+            s3_client.delete_object(
+                Bucket=f"{env}-collection-data", Key=target_key_geojson
+            )
         except s3_client.exceptions.ClientError:
             pass
 
@@ -316,7 +327,9 @@ def write_to_s3_format(df, output_path, dataset_name, table_name, spark, env):
         try:
             from datetime import date, datetime
 
-            header = '{"type":"FeatureCollection","name":"' + dataset_name + '","features":['
+            header = (
+                '{"type":"FeatureCollection","name":"' + dataset_name + '","features":['
+            )
             buffer = header
 
             batch_size = 10000
@@ -376,7 +389,9 @@ def write_to_s3_format(df, output_path, dataset_name, table_name, spark, env):
                 UploadId=mpu["UploadId"],
                 MultipartUpload={"Parts": parts},
             )
-            logger.info(f"write_to_s3_format: GeoJSON file written to {target_key_geojson}")
+            logger.info(
+                f"write_to_s3_format: GeoJSON file written to {target_key_geojson}"
+            )
         except Exception as e:
             logger.error(f"Error during GeoJSON multipart upload: {e}")
             s3_client.abort_multipart_upload(

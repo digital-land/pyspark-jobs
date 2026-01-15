@@ -9,8 +9,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 import pytest
 
 from jobs.transform.entity_transformer import EntityTransformer
-from jobs.transform.fact_transformer import FactTransformer
 from jobs.transform.fact_resource_transformer import FactResourceTransformer
+from jobs.transform.fact_transformer import FactTransformer
 from jobs.transform.issue_transformer import IssueTransformer
 
 
@@ -144,7 +144,9 @@ class TestTransformCollectionDataExtended:
                 )
                 mock_option.return_value.csv.return_value = mock_org_df
 
-                result = EntityTransformer().transform(df, "test - dataset", spark, "test")
+                result = EntityTransformer().transform(
+                    df, "test - dataset", spark, "test"
+                )
 
                 assert result is not None
                 assert "entity" in result.columns

@@ -17,19 +17,20 @@ class TestSimpleExecution80:
             import jobs.csv_s3_writer as csv_s3_writer
             import jobs.main_collection_data as main_collection_data
             from jobs.transform.fact_transformer import FactTransformer
+
+import jobs.utils.aws_secrets_manager as aws_secrets_manager
+import jobs.utils.df_utils as df_utils
+import jobs.utils.geometry_utils as geometry_utils
+import jobs.utils.logger_config as logger_config
+import jobs.utils.path_utils as path_utils
+import jobs.utils.postgres_writer_utils as postgres_writer_utils
+import jobs.utils.s3_dataset_typology as s3_dataset_typology
+import jobs.utils.s3_format_utils as s3_format_utils
+import jobs.utils.s3_utils as s3_utils
+import jobs.utils.s3_writer_utils as s3_writer_utils
 from jobs.transform.entity_transformer import EntityTransformer
 from jobs.transform.fact_resource_transformer import FactResourceTransformer
 from jobs.transform.issue_transformer import IssueTransformer
-            import jobs.utils.aws_secrets_manager as aws_secrets_manager
-            import jobs.utils.df_utils as df_utils
-            import jobs.utils.geometry_utils as geometry_utils
-            import jobs.utils.logger_config as logger_config
-            import jobs.utils.path_utils as path_utils
-            import jobs.utils.postgres_writer_utils as postgres_writer_utils
-            import jobs.utils.s3_dataset_typology as s3_dataset_typology
-            import jobs.utils.s3_format_utils as s3_format_utils
-            import jobs.utils.s3_utils as s3_utils
-            import jobs.utils.s3_writer_utils as s3_writer_utils
 
             # Call simple functions
             logger_config.set_spark_log_level("ERROR")
