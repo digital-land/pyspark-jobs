@@ -132,11 +132,11 @@ class TestUltraTargeted:
         with patch.dict("sys.modules", {"pyspark.sql": Mock()}):
             # Try to import and call any function that might hit line 105
             try:
-                from jobs.transform.fact_transformer import FactTransformer
                 from jobs.transform.entity_transformer import EntityTransformer
                 from jobs.transform.fact_resource_transformer import (
                     FactResourceTransformer,
                 )
+                from jobs.transform.fact_transformer import FactTransformer
                 from jobs.transform.issue_transformer import IssueTransformer
 
                 # Get all functions from the module
