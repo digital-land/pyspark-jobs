@@ -84,7 +84,11 @@ test-integration: ## Run integration tests
 test-acceptance: ## Run acceptance tests
 	@echo "$(BLUE)Running acceptance tests...$(NC)"
 	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && pytest tests/acceptance/ -v; \
+		if [ -d tests/acceptance/ ]; then \
+			. $(VENV_ACTIVATE) && pytest tests/acceptance/ -v; \
+		else \
+			echo "$(YELLOW)No acceptance tests found. Acceptance tests require full infrastructure.$(NC)"; \
+		fi; \
 	else \
 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
 		exit 1; \
