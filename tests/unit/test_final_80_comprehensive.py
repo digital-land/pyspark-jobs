@@ -212,9 +212,11 @@ class TestFinal80Coverage:
         ):
             try:
                 from jobs.transform.fact_transformer import FactTransformer
-from jobs.transform.entity_transformer import EntityTransformer
-from jobs.transform.fact_resource_transformer import FactResourceTransformer
-from jobs.transform.issue_transformer import IssueTransformer
+                from jobs.transform.entity_transformer import EntityTransformer
+                from jobs.transform.fact_resource_transformer import (
+                    FactResourceTransformer,
+                )
+                from jobs.transform.issue_transformer import IssueTransformer
 
                 # Create comprehensive mock DataFrame
                 mock_df = Mock()
