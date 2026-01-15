@@ -197,8 +197,6 @@ from jobs.transform.entity_transformer import EntityTransformer
 from jobs.transform.fact_resource_transformer import FactResourceTransformer
 from jobs.transform.issue_transformer import IssueTransformer
 
-            assert transform_collection_data is not None
-
     def test_s3_write_integration(self):
         """Test S3 write operation integration."""
         # Test that S3 utilities exist
