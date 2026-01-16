@@ -108,6 +108,14 @@ jobs:
           aws-secret-access-key: ${{ secrets.DEPLOY_AWS_SECRET_ACCESS_KEY }}
           aws-region: eu-west-2
 
+      - name: List ECR Repositories
+        run: |
+          echo "📋 Listing ECR repositories..."
+          aws ecr describe-repositories --region eu-west-2 || echo "No private ECR repositories found or no access"
+          echo ""
+          echo "📋 Listing Public ECR repositories..."
+          aws ecr-public describe-repositories --region us-east-1 || echo "No public ECR repositories found or no access"
+
       - name: Publish to S3
         run: |
           echo "🚀 Publishing PySpark jobs to $ENVIRONMENT environment..."
