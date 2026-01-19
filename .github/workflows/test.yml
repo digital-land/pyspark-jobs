@@ -55,48 +55,12 @@ jobs:
           psql -h localhost -c "CREATE DATABASE digital_land_test WITH TEMPLATE postgres" -U postgres || echo "Database already exists, continuing..."
           echo "✅ Database 'digital_land_test' ready"
 
-      - name: Unit Tests
-        run: |
-          make test-unit
-          echo "## Unit Tests" >> $GITHUB_STEP_SUMMARY
-          # cat unit-tests.md >> $GITHUB_STEP_SUMMARY
-
-      - name: Integration Tests
-        run: |
-          make test-integration
-          echo "## Integration Tests" >> $GITHUB_STEP_SUMMARY
-          # cat integration-tests.md >> $GITHUB_STEP_SUMMARY
-
-      - name: Acceptance Tests
-        run: |
-          make test-acceptance
-          echo "## Acceptance Tests" >> $GITHUB_STEP_SUMMARY
-          # cat acceptance-tests.md >> $GITHUB_STEP_SUMMARY
-      
-      - name: Test Coverage
-        run: |
-          make test-coverage
-          echo "## Test Coverage" >> $GITHUB_STEP_SUMMARY
-          # cat test-coverage.md >> $GITHUB_STEP_SUMMARY
+      - name: Run All Tests with Coverage
+        run: make test-coverage
       
       - name: Upload Coverage Report
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: htmlcov/
-          retention-days: 30
-
-      - name: Generate Coverage Summary
-        run: |
-          if [ -f .coverage ]; then
-            coverage json -o coverage-summary.json
-          else
-            echo '{"totals": {"percent_covered": 0}}' > coverage-summary.json
-          fi
-
-      - name: Upload Coverage Summary
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-summary
-          path: coverage-summary.json
           retention-days: 30  

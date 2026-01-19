@@ -33,7 +33,10 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    # needs: [test]
+    needs: [test]
+    outputs:
+      sha_short: ${{ steps.vars.outputs.sha_short }}
+      version: ${{ steps.vars.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -41,7 +44,7 @@ jobs:
         with:
           python-version: '3.9'
 
-      - name: Get Short SHA
+      - name: Get SHA and version
         id: vars
         run: |
           echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
@@ -70,16 +73,6 @@ jobs:
           path: sbom.json
           retention-days: 30
 
-      - name: Upload SHA
-        run: echo "${{ steps.vars.outputs.sha_short }}" > sha_short.txt
-
-      - name: Upload SHA artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: sha-short
-          path: sha_short.txt
-          retention-days: 1
-
   publish:
     runs-on: ubuntu-latest
     needs: [build, detect-environments]
@@ -99,18 +92,6 @@ jobs:
         with:
           name: pyspark-build-artifacts
           path: build_output/
-
-      - name: Download SHA
-        uses: actions/download-artifact@v4
-        with:
-          name: sha-short
-          path: .
-
-      - name: Set SHA and version variables
-        id: sha
-        run: |
-          echo "sha_short=$(cat sha_short.txt)" >> $GITHUB_OUTPUT
-          echo "version=v$(date +%Y.%m.%d)-$(cat sha_short.txt)" >> $GITHUB_OUTPUT
 
       - name: Install AWS CLI
         run: |
@@ -133,36 +114,13 @@ jobs:
           aws s3 cp build_output/jars/ s3://$AWS_S3_BUCKET/pkg/jars/ --recursive
           echo "✅ Publish completed to S3 bucket: $AWS_S3_BUCKET"
 
-      - name: Verify S3 Publishment
-        run: |
-          echo "🔍 Verifying published artifacts..."
-          aws s3 ls s3://$AWS_S3_BUCKET/pkg/whl_pkg/ --recursive
-          aws s3 ls s3://$AWS_S3_BUCKET/pkg/dependencies/
-          aws s3 ls s3://$AWS_S3_BUCKET/pkg/entry_script/
-          echo "✅ All artifacts successfully published to S3 bucket: $AWS_S3_BUCKET"
-
       - uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Pull latest Docker image
-        run: docker pull $DOCKER_REPO:main || echo "No current latest image"
-
-      - name: Build Docker image
-        run: docker build --build-arg DEPLOY_TIME="$(date +%Y-%m-%dT%H:%M:%S)" -t $DOCKER_REPO:${{ steps.sha.outputs.sha_short }} .
-
-      - name: Tag Docker images
+      - name: Build and push Docker images
         run: |
-          docker tag $DOCKER_REPO:${{ steps.sha.outputs.sha_short }} $DOCKER_REPO:main
-          docker tag $DOCKER_REPO:${{ steps.sha.outputs.sha_short }} $DOCKER_REPO:${{ steps.sha.outputs.version }}
-
-      - name: Push Docker images
-        run: |
-          docker push $DOCKER_REPO:${{ steps.sha.outputs.sha_short }}
+          docker build --build-arg DEPLOY_TIME="$(date +%Y-%m-%dT%H:%M:%S)" -t $DOCKER_REPO:${{ needs.build.outputs.sha_short }} .
+          docker tag $DOCKER_REPO:${{ needs.build.outputs.sha_short }} $DOCKER_REPO:main
+          docker tag $DOCKER_REPO:${{ needs.build.outputs.sha_short }} $DOCKER_REPO:${{ needs.build.outputs.version }}
+          docker push $DOCKER_REPO:${{ needs.build.outputs.sha_short }}
           docker push $DOCKER_REPO:main
-          docker push $DOCKER_REPO:${{ steps.sha.outputs.version }}
-
-      - name: Verify Docker Publishment
-        run: |
-          echo "✅ Docker images pushed:"
-          echo "  - $DOCKER_REPO:${{ steps.sha.outputs.sha_short }} (SHA)"
-          echo "  - $DOCKER_REPO:main (latest)"
-          echo "  - $DOCKER_REPO:${{ steps.sha.outputs.version }} (version)"
+          docker push $DOCKER_REPO:${{ needs.build.outputs.version }}
