@@ -1,9 +1,11 @@
 from pyspark.sql.functions import (
     col,
     desc,
-    expr,
     first,
     lit,
+)
+from pyspark.sql.functions import max as spark_max
+from pyspark.sql.functions import (
     row_number,
     struct,
     to_date,
@@ -76,7 +78,7 @@ class EntityTransformer:
         logger.info(
             "_add_quality_column: Step 3: Add quality column based on max priority (1=same, 2=authoritative)"
         )
-        pivot_df = self._add_quality_column(df, pivot_df)
+        pivot_df = self._add_quality_column(pivot_df)
         show_df(pivot_df, 5, env)
 
         # Step 4: Add typology from dataset specification
@@ -160,53 +162,50 @@ class EntityTransformer:
 
     def _pivot_to_entity(self, df, env):
         """
-        Pivot from EAV format to wide format.
+        Pivot from EAV format to wide format, preserving max priority.
 
         Transforms from:
-          entity | field    | value
-          1001   | name     | "Property A"
-          1001   | geometry | "POINT(...)"
+          entity | field    | value    | priority
+          1001   | name     | "Prop A" | 2
+          1001   | geometry | "POINT" | 1
 
         To:
-          entity | name         | geometry
-          1001   | "Property A" | "POINT(...)"
+          entity | name     | geometry | priority
+          1001   | "Prop A" | "POINT" | 2
         """
-        pivot_df = df.groupBy("entity").pivot("field").agg(first("value"))
+        agg_dict = {"value": first("value")}
+        if "priority" in df.columns:
+            agg_dict["priority"] = spark_max("priority")
+
+        pivot_df = df.groupBy("entity").pivot("field").agg(agg_dict["value"])
+
+        if "priority" in df.columns:
+            priority_df = df.groupBy("entity").agg(
+                spark_max("priority").alias("priority")
+            )
+            pivot_df = pivot_df.join(priority_df, "entity", "left")
+
         show_df(pivot_df, 5, env)
         return pivot_df
 
-    def _add_quality_column(self, df_original, pivot_df):
+    def _add_quality_column(self, pivot_df):
         """
-        Add quality column based on highest priority per entity.
+        Add quality column based on priority, then drop priority.
 
         Business Rule:
         - priority = 1 → quality = "same"
         - priority = 2 → quality = "authoritative"
         - other values → quality = "" (blank)
         """
-        if "priority" not in df_original.columns:
+        if "priority" not in pivot_df.columns:
             return pivot_df.withColumn("quality", lit(""))
 
-        # Calculate max priority per entity from original EAV data
-        max_priority_df = (
-            df_original.withColumn(
-                "max_priority", expr("max(priority) over (partition by entity)")
-            )
-            .select("entity", "max_priority")
-            .dropDuplicates(["entity"])
-        )
-
-        # Join max priority and map to quality values
-        return (
-            pivot_df.join(max_priority_df, "entity", "left")
-            .withColumn(
-                "quality",
-                when(col("max_priority") == 1, lit("same"))
-                .when(col("max_priority") == 2, lit("authoritative"))
-                .otherwise(lit("")),
-            )
-            .drop("max_priority")
-        )
+        return pivot_df.withColumn(
+            "quality",
+            when(col("priority") == 1, lit("same"))
+            .when(col("priority") == 2, lit("authoritative"))
+            .otherwise(lit("")),
+        ).drop("priority")
 
     def _add_typology(self, df, data_set, env):
         """
