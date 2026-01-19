@@ -125,9 +125,7 @@ jobs:
           aws s3 ls s3://$AWS_S3_BUCKET/pkg/entry_script/
           echo "✅ All artifacts successfully published to S3 bucket: $AWS_S3_BUCKET"
 
-      - name: Login to Amazon ECR Public
-        run: |
-          aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
+      - uses: aws-actions/amazon-ecr-login@v2
 
       - name: Pull latest Docker image
         run: docker pull $DOCKER_REPO:main || echo "No current latest image"
