@@ -492,6 +492,43 @@ jobs:
 ---
 
 **Built with ❤️ for Digital Land data processing**
+
+## 📦 Deployment & Versioning
+
+### Docker Image Versioning
+- **SHA Tag**: `{repo}:{short-sha}` (e.g., `repo:abc1234`) - Immutable reference
+- **Version Tag**: `{repo}:v{YYYY.MM.DD}-{short-sha}` (e.g., `repo:v2025.01.15-abc1234`) - Semantic versioning
+- **Latest Tag**: `{repo}:main` - Always points to latest build
+
+### S3 Artifact Layout
+```
+s3://{bucket}/pkg/
+├── whl_pkg/                    # Python wheel packages
+│   └── pyspark_jobs-*.whl
+├── dependencies/               # External dependencies
+│   └── dependencies.zip
+├── entry_script/              # EMR entry points
+│   └── run_main.py
+└── jars/                      # Java dependencies
+    ├── sedona-spark-*.jar
+    └── postgresql-*.jar
+```
+
+### How Jobs Reference Artifacts
+**EMR Serverless Configuration:**
+```json
+{
+  "sparkSubmit": {
+    "entryPoint": "s3://{bucket}/pkg/entry_script/run_main.py",
+    "sparkSubmitParameters": "--py-files s3://{bucket}/pkg/whl_pkg/pyspark_jobs-*.whl --jars s3://{bucket}/pkg/jars/*.jar"
+  }
+}
+```
+
+### Runtime Dependency Strategy
+- **Base Image**: `public.ecr.aws/emr-serverless/spark/emr-7.9.0:latest`
+- **Pre-installed**: Apache Sedona 1.8.0, PostgreSQL JDBC 42.7.4, pandas 2.2.3
+- **Runtime**: Dependencies loaded from S3 artifacts with exact version pinning
 pyspark-jobs
 repo for pyspark jobs. added code for issue table, fact-res, fact tables.
 main

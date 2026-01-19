@@ -84,4 +84,19 @@ jobs:
         with:
           name: coverage-report
           path: htmlcov/
+          retention-days: 30
+
+      - name: Generate Coverage Summary
+        run: |
+          if [ -f .coverage ]; then
+            coverage json -o coverage-summary.json
+          else
+            echo '{"totals": {"percent_covered": 0}}' > coverage-summary.json
+          fi
+
+      - name: Upload Coverage Summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-summary
+          path: coverage-summary.json
           retention-days: 30  

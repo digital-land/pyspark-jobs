@@ -43,7 +43,9 @@ jobs:
 
       - name: Get Short SHA
         id: vars
-        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+        run: |
+          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "version=v$(date +%Y.%m.%d)-$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
       - name: Build artifacts
         run: |
@@ -55,6 +57,18 @@ jobs:
           name: pyspark-build-artifacts
           path: build_output/
           retention-days: 7
+
+      - name: Generate SBOM
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          syft . -o json > sbom.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.json
+          retention-days: 30
 
       - name: Upload SHA
         run: echo "${{ steps.vars.outputs.sha_short }}" > sha_short.txt
@@ -92,9 +106,11 @@ jobs:
           name: sha-short
           path: .
 
-      - name: Set SHA variable
+      - name: Set SHA and version variables
         id: sha
-        run: echo "sha_short=$(cat sha_short.txt)" >> $GITHUB_OUTPUT
+        run: |
+          echo "sha_short=$(cat sha_short.txt)" >> $GITHUB_OUTPUT
+          echo "version=v$(date +%Y.%m.%d)-$(cat sha_short.txt)" >> $GITHUB_OUTPUT
 
       - name: Install AWS CLI
         run: |
@@ -133,17 +149,20 @@ jobs:
       - name: Build Docker image
         run: docker build --build-arg DEPLOY_TIME="$(date +%Y-%m-%dT%H:%M:%S)" -t $DOCKER_REPO:${{ steps.sha.outputs.sha_short }} .
 
-      - name: Tag Docker image
-        run: docker tag $DOCKER_REPO:${{ steps.sha.outputs.sha_short }} $DOCKER_REPO:main
+      - name: Tag Docker images
+        run: |
+          docker tag $DOCKER_REPO:${{ steps.sha.outputs.sha_short }} $DOCKER_REPO:main
+          docker tag $DOCKER_REPO:${{ steps.sha.outputs.sha_short }} $DOCKER_REPO:${{ steps.sha.outputs.version }}
 
-      - name: Push Docker image (SHA)
-        run: docker push $DOCKER_REPO:${{ steps.sha.outputs.sha_short }}
-
-      - name: Push Docker image (main)
-        run: docker push $DOCKER_REPO:main
+      - name: Push Docker images
+        run: |
+          docker push $DOCKER_REPO:${{ steps.sha.outputs.sha_short }}
+          docker push $DOCKER_REPO:main
+          docker push $DOCKER_REPO:${{ steps.sha.outputs.version }}
 
       - name: Verify Docker Publishment
         run: |
           echo "✅ Docker images pushed:"
-          echo "  - $DOCKER_REPO:${{ steps.sha.outputs.sha_short }}"
-          echo "  - $DOCKER_REPO:main"
+          echo "  - $DOCKER_REPO:${{ steps.sha.outputs.sha_short }} (SHA)"
+          echo "  - $DOCKER_REPO:main (latest)"
+          echo "  - $DOCKER_REPO:${{ steps.sha.outputs.version }} (version)"
