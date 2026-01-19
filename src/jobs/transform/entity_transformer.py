@@ -59,17 +59,23 @@ class EntityTransformer:
         show_df(df, 20, env)
 
         # Step 1: Deduplicate EAV records - keep highest priority per (entity, field)
-        logger.info("_deduplicate_eav: Step 1: Deduplicate EAV records - keep highest priority per (entity, field)")
+        logger.info(
+            "_deduplicate_eav: Step 1: Deduplicate EAV records - keep highest priority per (entity, field)"
+        )
         df_ranked = self._deduplicate_eav(df)
         show_df(df_ranked, 5, env)
 
         # Step 2: Pivot from EAV format to wide format (one row per entity)
-        logger.info("_pivot_to_entity: Step 2: Pivot from EAV format to wide format (one row per entity)")
+        logger.info(
+            "_pivot_to_entity: Step 2: Pivot from EAV format to wide format (one row per entity)"
+        )
         pivot_df = self._pivot_to_entity(df_ranked, env)
         show_df(pivot_df, 5, env)
 
         # Step 3: Add quality column based on max priority (1=same, 2=authoritative)
-        logger.info("_add_quality_column: Step 3: Add quality column based on max priority (1=same, 2=authoritative)")
+        logger.info(
+            "_add_quality_column: Step 3: Add quality column based on max priority (1=same, 2=authoritative)"
+        )
         pivot_df = self._add_quality_column(df, pivot_df)
         show_df(pivot_df, 5, env)
 
@@ -79,7 +85,9 @@ class EntityTransformer:
         show_df(pivot_df, 5, env)
 
         # Step 5: Normalise column names (kebab-case to snake_case)
-        logger.info("_normalise_column_names: Step 5: Normalise column names (kebab-case to snake_case)")
+        logger.info(
+            "_normalise_column_names: Step 5: Normalise column names (kebab-case to snake_case)"
+        )
         pivot_df = self._normalise_column_names(pivot_df)
         show_df(pivot_df, 5, env)
 
@@ -89,22 +97,30 @@ class EntityTransformer:
         show_df(pivot_df, 5, env)
 
         # Step 7: Join organisation data to get organisation_entity
-        logger.info("_join_organisation: Step 7: Join organisation data to get organisation_entity")
+        logger.info(
+            "_join_organisation: Step 7: Join organisation data to get organisation_entity"
+        )
         pivot_df = self._join_organisation(pivot_df, spark, env)
         show_df(pivot_df, 5, env)
 
         # Step 8: Build JSON column from non-standard columns
-        logger.info("_build_json_column: Step 8: Build JSON column from non-standard columns")
+        logger.info(
+            "_build_json_column: Step 8: Build JSON column from non-standard columns"
+        )
         pivot_df = self._build_json_column(pivot_df)
         show_df(pivot_df, 5, env)
 
         # Step 9: Normalise date columns to proper date type
-        logger.info("_normalise_dates: Step 9: Normalise date columns to proper date type")
+        logger.info(
+            "_normalise_dates: Step 9: Normalise date columns to proper date type"
+        )
         pivot_df = self._normalise_dates(pivot_df)
         show_df(pivot_df, 5, env)
 
         # Step 10: Normalise geometry columns (validate WKT format)
-        logger.info("_normalise_geometry: Step 10: Normalise geometry columns (validate WKT format)")
+        logger.info(
+            "_normalise_geometry: Step 10: Normalise geometry columns (validate WKT format)"
+        )
         pivot_df = self._normalise_geometry(pivot_df)
         show_df(pivot_df, 5, env)
 
