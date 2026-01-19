@@ -100,20 +100,20 @@ class EntityTransformer:
         EAV Deduplication: Select top record per (entity, field) by priority.
 
         For each unique (entity, field) combination, keep only the record with:
-        1. Highest priority (if column exists)
-        2. Most recent entry_date (tiebreaker)
+        1. Most recent entry_date (primary sort)
+        2. Highest priority (secondary sort, if column exists)
         3. Highest entry_number (final tiebreaker)
         """
         # Determine ordering columns based on available fields
         if "priority" in df.columns:
-            ordering_cols = [desc("priority"), desc("entry_date"), desc("entry_number")]
+            ordering_cols = [desc("entry_date"), desc("priority"), desc("entry_number")]
         else:
             ordering_cols = [desc("entry_date"), desc("entry_number")]
 
-        # Create window partitioned by (entity, field) and ordered by priority/dates
+        # Create window partitioned by (entity, field) and ordered by entry_date/priority
         w = Window.partitionBy("entity", "field").orderBy(*ordering_cols)
 
-        # Assign row numbers and keep only rank 1 (highest priority)
+        # Assign row numbers and keep only rank 1 (most recent entry_date, then highest priority)
         return (
             df.withColumn("row_num", row_number().over(w))
             .filter(col("row_num") == 1)
