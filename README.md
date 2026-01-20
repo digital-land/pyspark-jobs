@@ -474,6 +474,22 @@ The project includes automated CI/CD workflows for:
 - **Docker Images**: Container builds with multi-tag versioning
 - **S3 Artifacts**: Automated deployment of wheels, dependencies, and scripts
 
+### Deployment Pipeline
+
+#### Automatic Deployment (Push to Main)
+When a PR is merged to the main branch, the workflow automatically:
+
+1. **Development Environment** → Deploys immediately after successful build
+2. **Staging Environment** → Deploys after development deployment succeeds
+3. **Production Environment** → Requires manual approval after staging deployment
+
+#### Manual Deployment (Workflow Dispatch)
+For targeted deployments, you can manually trigger deployment to any specific environment:
+
+- **Development**: Runs `publish-development` job independently
+- **Staging**: Runs `publish-staging` job independently  
+- **Production**: Runs `publish-production` job independently (requires approval)
+
 ### Automated Workflows
 
 #### Test Workflow (`test.yml`)
@@ -483,8 +499,9 @@ The project includes automated CI/CD workflows for:
 - **Database**: Automated PostgreSQL setup for integration tests
 
 #### Publish Workflow (`publish.yml`)
-- **Triggers**: Push to main (after successful tests), manual dispatch
-- **Dependencies**: Runs only after test workflow passes
+- **Triggers**: Push to main (automatic sequential deployment), manual dispatch (targeted deployment)
+- **Sequential Flow**: Development → Staging → Production (with approval)
+- **Manual Flow**: Deploy to selected environment only
 - **Artifacts**: 
   - Python wheels uploaded to S3
   - Dependencies and JARs uploaded to S3
@@ -492,6 +509,22 @@ The project includes automated CI/CD workflows for:
   - Docker images pushed to ECR with multiple tags
   - SBOM (Software Bill of Materials) generated
 - **Versioning**: Semantic versioning with SHA and date-based tags
+
+### Environment Configuration
+
+To enable production approval requirements:
+1. Go to GitHub Settings → Environments
+2. Create/configure the `production` environment
+3. Add required reviewers under "Required reviewers"
+4. Optionally set deployment branch rules
+
+### Docker Image Tags by Environment
+
+| Environment | Docker Tags |
+|-------------|-------------|
+| **Development** | `{repo}:{sha}`, `{repo}:latest`, `{repo}:{version}` |
+| **Staging** | `{repo}:{sha}`, `{repo}:latest`, `{repo}:{version}` |
+| **Production** | `{repo}:{sha}`, `{repo}:latest`, `{repo}:{version}` |
 
 ### Build Artifacts
 
@@ -503,7 +536,7 @@ The project includes automated CI/CD workflows for:
 └── Docker images:              # Multi-tagged container images
     ├── {repo}:{sha}           # Immutable SHA tag
     ├── {repo}:v{date}-{sha}   # Version tag
-    └── {repo}:main            # Latest tag
+    └── {repo}:latest            # Latest tag
 ```
 
 ### GitHub Actions (if configured)
@@ -531,7 +564,7 @@ jobs:
 ### Docker Image Versioning
 - **SHA Tag**: `{repo}:{short-sha}` (e.g., `repo:abc1234`) - Immutable reference
 - **Version Tag**: `{repo}:v{YYYY.MM.DD}-{short-sha}` (e.g., `repo:v2025.01.15-abc1234`) - Semantic versioning
-- **Latest Tag**: `{repo}:main` - Always points to latest build
+- **Latest Tag**: `{repo}:latest` - Points to latest successful deployment
 
 ### S3 Artifact Layout
 ```
@@ -542,9 +575,7 @@ s3://{bucket}/pkg/
 │   └── dependencies.zip
 ├── entry_script/              # EMR entry points
 │   └── run_main.py
-└── jars/                      # Java dependencies
-    ├── sedona-spark-*.jar
-    └── postgresql-*.jar
+
 ```
 
 ### How Jobs Reference Artifacts
@@ -553,7 +584,7 @@ s3://{bucket}/pkg/
 {
   "sparkSubmit": {
     "entryPoint": "s3://{bucket}/pkg/entry_script/run_main.py",
-    "sparkSubmitParameters": "--py-files s3://{bucket}/pkg/whl_pkg/pyspark_jobs-*.whl --jars s3://{bucket}/pkg/jars/*.jar"
+    "sparkSubmitParameters": "--py-files s3://{bucket}/pkg/whl_pkg/pyspark_jobs-*.whl"
   }
 }
 ```
