@@ -164,7 +164,6 @@ jobs:
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
             --tag $DOCKER_REPO:${{ needs.build.outputs.sha_short }} \
-            --tag $DOCKER_REPO:production \
             --tag $DOCKER_REPO:latest \
             --tag $DOCKER_REPO:${{ needs.build.outputs.version }} \
             --push .
