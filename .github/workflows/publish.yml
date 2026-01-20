@@ -50,7 +50,7 @@ jobs:
           path: sbom.json
           retention-days: 30
 
-  deploy-development:
+  publish-development:
     runs-on: ubuntu-latest
     needs: [build]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -91,9 +91,9 @@ jobs:
             --tag $DOCKER_REPO:${{ needs.build.outputs.version }} \
             --push .
 
-  deploy-staging:
+  publish-staging:
     runs-on: ubuntu-latest
-    needs: [build, deploy-development]
+    needs: [build, publish-development]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment: staging
     env:
@@ -132,9 +132,9 @@ jobs:
             --tag $DOCKER_REPO:${{ needs.build.outputs.version }} \
             --push .
 
-  deploy-production:
+  publish-production:
     runs-on: ubuntu-latest
-    needs: [build, deploy-staging]
+    needs: [build, publish-staging]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment: production
     env:
@@ -169,7 +169,7 @@ jobs:
             --tag $DOCKER_REPO:${{ needs.build.outputs.version }} \
             --push .
 
-  deploy-manual:
+  publish-manual:
     runs-on: ubuntu-latest
     needs: [build]
     if: github.event_name == 'workflow_dispatch'
