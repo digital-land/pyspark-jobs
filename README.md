@@ -467,11 +467,77 @@ For issues and questions:
 
 ## 🔄 CI/CD
 
-The project includes configuration for:
-- Automated testing with pytest
-- Code quality checks
-- AWS deployment pipelines
-- Docker containerization support
+The project includes automated CI/CD workflows for:
+- **Testing**: Automated unit, integration, and acceptance tests
+- **Code Quality**: Black formatting, Flake8 linting, and security scans
+- **Build & Deploy**: Automated package building and artifact publishing
+- **Docker Images**: Container builds with multi-tag versioning
+- **S3 Artifacts**: Automated deployment of wheels, dependencies, and scripts
+
+### Deployment Pipeline
+
+#### Automatic Deployment (Push to Main)
+When a PR is merged to the main branch, the workflow automatically:
+
+1. **Development Environment** → Deploys immediately after successful build
+2. **Staging Environment** → Deploys after development deployment succeeds
+3. **Production Environment** → Requires manual approval after staging deployment
+
+#### Manual Deployment (Workflow Dispatch)
+For targeted deployments, you can manually trigger deployment to any specific environment:
+
+- **Development**: Runs `publish-development` job independently
+- **Staging**: Runs `publish-staging` job independently  
+- **Production**: Runs `publish-production` job independently (requires approval)
+
+### Automated Workflows
+
+#### Test Workflow (`test.yml`)
+- **Triggers**: Push to main, manual dispatch, workflow calls
+- **Jobs**: Linting checks and comprehensive test suite with PostgreSQL
+- **Artifacts**: Coverage reports and test results
+- **Database**: Automated PostgreSQL setup for integration tests
+
+#### Publish Workflow (`publish.yml`)
+- **Triggers**: Push to main (automatic sequential deployment), manual dispatch (targeted deployment)
+- **Sequential Flow**: Development → Staging → Production (with approval)
+- **Manual Flow**: Deploy to selected environment only
+- **Artifacts**: 
+  - Python wheels uploaded to S3
+  - Dependencies and JARs uploaded to S3
+  - Entry scripts deployed to S3
+  - Docker images pushed to ECR with multiple tags
+  - SBOM (Software Bill of Materials) generated
+- **Versioning**: Semantic versioning with SHA and date-based tags
+
+### Environment Configuration
+
+To enable production approval requirements:
+1. Go to GitHub Settings → Environments
+2. Create/configure the `production` environment
+3. Add required reviewers under "Required reviewers"
+4. Optionally set deployment branch rules
+
+### Docker Image Tags by Environment
+
+| Environment | Docker Tags |
+|-------------|-------------|
+| **Development** | `{repo}:{sha}`, `{repo}:latest`, `{repo}:{version}` |
+| **Staging** | `{repo}:{sha}`, `{repo}:latest`, `{repo}:{version}` |
+| **Production** | `{repo}:{sha}`, `{repo}:latest`, `{repo}:{version}` |
+
+### Build Artifacts
+
+```bash
+# Generated artifacts per build:
+├── pyspark-build-artifacts/     # Python wheels and dependencies
+├── sbom.json                   # Software Bill of Materials
+├── coverage-report/            # HTML coverage reports
+└── Docker images:              # Multi-tagged container images
+    ├── {repo}:{sha}           # Immutable SHA tag
+    ├── {repo}:v{date}-{sha}   # Version tag
+    └── {repo}:latest            # Latest tag
+```
 
 ### GitHub Actions (if configured)
 
@@ -492,6 +558,41 @@ jobs:
 ---
 
 **Built with ❤️ for Digital Land data processing**
+
+## 📦 Deployment & Versioning
+
+### Docker Image Versioning
+- **SHA Tag**: `{repo}:{short-sha}` (e.g., `repo:abc1234`) - Immutable reference
+- **Version Tag**: `{repo}:v{YYYY.MM.DD}-{short-sha}` (e.g., `repo:v2025.01.15-abc1234`) - Semantic versioning
+- **Latest Tag**: `{repo}:latest` - Points to latest successful deployment
+
+### S3 Artifact Layout
+```
+s3://{bucket}/pkg/
+├── whl_pkg/                    # Python wheel packages
+│   └── pyspark_jobs-*.whl
+├── dependencies/               # External dependencies
+│   └── dependencies.zip
+├── entry_script/              # EMR entry points
+│   └── run_main.py
+
+```
+
+### How Jobs Reference Artifacts
+**EMR Serverless Configuration:**
+```json
+{
+  "sparkSubmit": {
+    "entryPoint": "s3://{bucket}/pkg/entry_script/run_main.py",
+    "sparkSubmitParameters": "--py-files s3://{bucket}/pkg/whl_pkg/pyspark_jobs-*.whl"
+  }
+}
+```
+
+### Runtime Dependency Strategy
+- **Base Image**: `public.ecr.aws/emr-serverless/spark/emr-7.9.0:latest`
+- **Pre-installed**: Apache Sedona 1.8.0, PostgreSQL JDBC 42.7.4, pandas 2.2.3
+- **Runtime**: Dependencies loaded from S3 artifacts with exact version pinning
 pyspark-jobs
 repo for pyspark jobs. added code for issue table, fact-res, fact tables.
 main
