@@ -467,11 +467,44 @@ For issues and questions:
 
 ## 🔄 CI/CD
 
-The project includes configuration for:
-- Automated testing with pytest
-- Code quality checks
-- AWS deployment pipelines
-- Docker containerization support
+The project includes automated CI/CD workflows for:
+- **Testing**: Automated unit, integration, and acceptance tests
+- **Code Quality**: Black formatting, Flake8 linting, and security scans
+- **Build & Deploy**: Automated package building and artifact publishing
+- **Docker Images**: Container builds with multi-tag versioning
+- **S3 Artifacts**: Automated deployment of wheels, dependencies, and scripts
+
+### Automated Workflows
+
+#### Test Workflow (`test.yml`)
+- **Triggers**: Push to main, manual dispatch, workflow calls
+- **Jobs**: Linting checks and comprehensive test suite with PostgreSQL
+- **Artifacts**: Coverage reports and test results
+- **Database**: Automated PostgreSQL setup for integration tests
+
+#### Publish Workflow (`publish.yml`)
+- **Triggers**: Push to main (after successful tests), manual dispatch
+- **Dependencies**: Runs only after test workflow passes
+- **Artifacts**: 
+  - Python wheels uploaded to S3
+  - Dependencies and JARs uploaded to S3
+  - Entry scripts deployed to S3
+  - Docker images pushed to ECR with multiple tags
+  - SBOM (Software Bill of Materials) generated
+- **Versioning**: Semantic versioning with SHA and date-based tags
+
+### Build Artifacts
+
+```bash
+# Generated artifacts per build:
+├── pyspark-build-artifacts/     # Python wheels and dependencies
+├── sbom.json                   # Software Bill of Materials
+├── coverage-report/            # HTML coverage reports
+└── Docker images:              # Multi-tagged container images
+    ├── {repo}:{sha}           # Immutable SHA tag
+    ├── {repo}:v{date}-{sha}   # Version tag
+    └── {repo}:main            # Latest tag
+```
 
 ### GitHub Actions (if configured)
 
