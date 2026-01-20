@@ -350,3 +350,4 @@ reports/
 
 # Virtual environments
 *venv/
+pyspark-jobs-venv/

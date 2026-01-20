@@ -6,9 +6,6 @@ __all__ = [
     "get_secret_json",
     "get_database_credentials",
     "get_postgres_secret",
-    "load_json_from_repo",
-    "resolve_repo_path",
-    "resolve_desktop_path",
     "cleanup_dataset_data",
     "validate_s3_path",
     "validate_s3_bucket_access",
@@ -31,14 +28,6 @@ def __getattr__(name):
             get_postgres_secret,
             get_secret,
             get_secret_json,
-        )
-
-        return locals()[name]
-    elif name in ["load_json_from_repo", "resolve_repo_path", "resolve_desktop_path"]:
-        from .path_utils import (
-            load_json_from_repo,
-            resolve_desktop_path,
-            resolve_repo_path,
         )
 
         return locals()[name]

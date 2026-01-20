@@ -8,12 +8,10 @@ from datetime import datetime
 import boto3
 from pyspark.sql import SparkSession
 
-from jobs.transform_collection_data import (
-    transform_data_entity,
-    transform_data_fact,
-    transform_data_fact_res,
-    transform_data_issue,
-)
+from jobs.transform.entity_transformer import EntityTransformer
+from jobs.transform.fact_resource_transformer import FactResourceTransformer
+from jobs.transform.fact_transformer import FactTransformer
+from jobs.transform.issue_transformer import IssueTransformer
 from jobs.utils.df_utils import count_df, show_df
 
 # Import the new logging module
@@ -227,17 +225,21 @@ def transform_data(df, schema_name, data_set, spark):
 
         if schema_name == "fact_resource":
             logger.info("transform_data: Transforming data for Fact Resource table")
-            return transform_data_fact_res(df)
+            transformer = FactResourceTransformer()
+            return transformer.transform(df)
         elif schema_name == "fact":
             logger.info("transform_data: Transforming data for Fact table")
-            return transform_data_fact(df)
+            transformer = FactTransformer()
+            return transformer.transform(df)
         elif schema_name == "entity":
             logger.info("transform_data: Transforming data for Entity table")
             show_df(df, 5, env)
-            return transform_data_entity(df, data_set, spark, env)
+            transformer = EntityTransformer()
+            return transformer.transform(df, data_set, spark, env)
         elif schema_name == "issue":
             logger.info("transform_data: Transforming data for Issue table")
-            return transform_data_issue(df)
+            transformer = IssueTransformer()
+            return transformer.transform(df)
         else:
             raise ValueError(f"Unknown table name: {schema_name}")
 
