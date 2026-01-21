@@ -471,24 +471,21 @@ The project includes automated CI/CD workflows for:
 - **Testing**: Automated unit, integration, and acceptance tests
 - **Code Quality**: Black formatting, Flake8 linting, and security scans
 - **Build & Deploy**: Automated package building and artifact publishing
-- **Docker Images**: Container builds with multi-tag versioning
+- **Docker Images**: Multi-platform container builds (linux/amd64, linux/arm64)
 - **S3 Artifacts**: Automated deployment of wheels, dependencies, and scripts
 
 ### Deployment Pipeline
 
-#### Automatic Deployment (Push to Main)
-When a PR is merged to the main branch, the workflow automatically:
+#### Matrix-Based Deployment
+The workflow uses a matrix strategy to deploy to multiple environments:
 
-1. **Development Environment** → Deploys immediately after successful build
-2. **Staging Environment** → Deploys after development deployment succeeds
-3. **Production Environment** → Requires manual approval after staging deployment
+- **Automatic Deployment (Push to Main)**: Deploys to all configured environments simultaneously
+- **Manual Deployment (Workflow Dispatch)**: Deploy to a specific selected environment only
 
-#### Manual Deployment (Workflow Dispatch)
-For targeted deployments, you can manually trigger deployment to any specific environment:
-
-- **Development**: Runs `publish-development` job independently
-- **Staging**: Runs `publish-staging` job independently  
-- **Production**: Runs `publish-production` job independently (requires approval)
+#### Environment Detection
+The workflow automatically detects available environments from GitHub repository settings:
+- If manual trigger: deploys only to the selected environment
+- If push to main: deploys to all configured environments in parallel
 
 ### Automated Workflows
 
@@ -499,32 +496,47 @@ For targeted deployments, you can manually trigger deployment to any specific en
 - **Database**: Automated PostgreSQL setup for integration tests
 
 #### Publish Workflow (`publish.yml`)
-- **Triggers**: Push to main (automatic sequential deployment), manual dispatch (targeted deployment)
-- **Sequential Flow**: Development → Staging → Production (with approval)
-- **Manual Flow**: Deploy to selected environment only
+- **Triggers**: Push to main (automatic deployment), manual dispatch (targeted deployment)
+- **Strategy**: Matrix-based deployment to multiple environments
+- **Multi-Platform**: Docker buildx with linux/amd64 and linux/arm64 support
 - **Artifacts**: 
   - Python wheels uploaded to S3
-  - Dependencies and JARs uploaded to S3
+  - Dependencies uploaded to S3
   - Entry scripts deployed to S3
-  - Docker images pushed to ECR with multiple tags
+  - Multi-platform Docker images pushed to ECR
   - SBOM (Software Bill of Materials) generated
 - **Versioning**: Semantic versioning with SHA and date-based tags
 
 ### Environment Configuration
 
-To enable production approval requirements:
+Environments are automatically detected from GitHub repository settings:
 1. Go to GitHub Settings → Environments
-2. Create/configure the `production` environment
-3. Add required reviewers under "Required reviewers"
-4. Optionally set deployment branch rules
+2. Create environments (e.g., `development`, `staging`, `production`)
+3. Configure environment-specific secrets and protection rules
+4. Add required reviewers for sensitive environments
 
-### Docker Image Tags by Environment
+### Docker Multi-Platform Support
 
-| Environment | Docker Tags |
-|-------------|-------------|
-| **Development** | `{repo}:{sha}`, `{repo}:latest`, `{repo}:{version}` |
-| **Staging** | `{repo}:{sha}`, `{repo}:latest`, `{repo}:{version}` |
-| **Production** | `{repo}:{sha}`, `{repo}:latest`, `{repo}:{version}` |
+The workflow builds Docker images for multiple architectures:
+- **linux/amd64**: Standard x86_64 architecture
+- **linux/arm64**: ARM64 architecture (Apple Silicon, AWS Graviton)
+- **Build Tool**: Docker Buildx with cross-platform compilation
+- **Registry**: Automatic push to Amazon ECR
+
+### Docker Image Tags
+
+| Tag Type | Format | Description |
+|----------|--------|-------------|
+| **SHA** | `{repo}:{short-sha}` | Immutable reference to specific commit |
+| **Version** | `{repo}:v{YYYY.MM.DD}-{short-sha}` | Semantic versioning with date |
+| **Latest** | `{repo}:latest` | Points to most recent successful build |
+
+### Multi-Platform Architecture Support
+
+| Platform | Architecture | Use Case |
+|----------|-------------|----------|
+| **linux/amd64** | x86_64 | Standard EC2 instances, most cloud environments |
+| **linux/arm64** | ARM64 | AWS Graviton processors, Apple Silicon (M1/M2) |
 
 ### Build Artifacts
 
