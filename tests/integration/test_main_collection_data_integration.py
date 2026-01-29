@@ -228,7 +228,7 @@ class TestEndToEndIntegration:
         with patch(
             "jobs.main_collection_data.create_spark_session"
         ) as mock_create_spark, patch(
-            "jobs.main_collection_data.write_to_s3_format"
+            "jobs.main_collection_data.write_entity_formats_to_s3"
         ) as mock_cleanup:
 
             mock_spark = Mock()
