@@ -23,7 +23,7 @@ from jobs.utils.logger_config import (
 )
 from jobs.utils.postgres_writer_utils import write_dataframe_to_postgres_jdbc
 from jobs.utils.s3_utils import cleanup_dataset_data
-from jobs.utils.s3_writer_utils import write_parquet_to_s3, write_entity_formats_to_s3
+from jobs.utils.s3_writer_utils import write_entity_formats_to_s3, write_parquet_to_s3
 
 
 # -------------------- Logging Setup --------------------

@@ -233,7 +233,9 @@ def write_entity_formats_to_s3(df, output_path, dataset_name, table_name, spark,
     """Write DataFrame to S3 in CSV, JSON, and GeoJSON formats."""
     try:
         count = count_df(df, env)
-        logger.info(f"write_entity_formats_to_s3: Input DataFrame contains {count} records")
+        logger.info(
+            f"write_entity_formats_to_s3: Input DataFrame contains {count} records"
+        )
 
         path_bake = f"s3://{env}-collection-data/{dataset_name}-collection/dataset/{dataset_name}.csv"
         df_bake = read_csv_from_s3(spark, path_bake)
@@ -406,7 +408,9 @@ def write_entity_formats_to_s3(df, output_path, dataset_name, table_name, spark,
 
         return df
     except Exception as e:
-        logger.error(f"write_entity_formats_to_s3: Failed to write to S3: {e}", exc_info=True)
+        logger.error(
+            f"write_entity_formats_to_s3: Failed to write to S3: {e}", exc_info=True
+        )
         raise
     finally:
         if "temp_df" in locals() and temp_df is not None:
