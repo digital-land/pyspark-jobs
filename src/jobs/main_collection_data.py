@@ -23,7 +23,7 @@ from jobs.utils.logger_config import (
 )
 from jobs.utils.postgres_writer_utils import write_dataframe_to_postgres_jdbc
 from jobs.utils.s3_utils import cleanup_dataset_data
-from jobs.utils.s3_writer_utils import write_to_s3, write_to_s3_format
+from jobs.utils.s3_writer_utils import write_parquet_to_s3, write_entity_formats_to_s3
 
 
 # -------------------- Logging Setup --------------------
@@ -154,17 +154,6 @@ def load_metadata(uri: str) -> dict:
         raise
     except Exception as e:
         logger.error(f"Error loading metadata from {uri}: {e}")
-        raise
-
-
-# -------------------- Data Reader --------------------
-def read_data(spark, input_path):
-    try:
-        logger.info(f"Reading data from {input_path}")
-        return spark.read.csv(input_path, header=True, inferSchema=True)
-
-    except Exception as e:
-        logger.error(f"Error reading data from {input_path}: {str(e)}")
         raise
 
 
@@ -365,9 +354,9 @@ def main(args):
 
                     if table_name == "entity":
                         logger.info(
-                            f"Main: Invocation of write_to_s3_format method for {table_name} table"
+                            f"Main: Invocation of write_entity_formats_to_s3 method for {table_name} table"
                         )
-                        df_entity = write_to_s3_format(
+                        df_entity = write_entity_formats_to_s3(
                             df,
                             f"{output_path}{table_name}",
                             data_set,
@@ -389,7 +378,7 @@ def main(args):
                         )
 
                     # Write to S3 for Fact Resource table
-                    write_to_s3(
+                    write_parquet_to_s3(
                         processed_df,
                         f"{output_path}{table_name}",
                         data_set,
@@ -418,7 +407,7 @@ def main(args):
                     )
 
                     # Write to S3 for Fact table
-                    write_to_s3(
+                    write_parquet_to_s3(
                         processed_df,
                         f"{output_path}{table_name}",
                         data_set,
@@ -443,72 +432,6 @@ def main(args):
                 write_dataframe_to_postgres_jdbc(df_entity, table_name, data_set, env)
             else:
                 logger.info("Main: df_entity is None, skipping Postgres write")
-
-        # elif(load_type == 'delta'):
-        #     #invoke delta load logic
-        #     logger.info(f"Main: Delta load type specified: {load_type}")
-
-        # elif(load_type == 'sample'):
-        #     #invoke sample load logic
-        #     logger.info(f"Main: Sample load type is {load_type} and dataset is {data_set} and path is {s3_uri}")
-
-        #     logger.info(f"Main: Processing dataset with path information : {s3_uri}")
-
-        #     logger.info("Main: Set target s3 output path")
-        #     output_path = f"s3://{env}-parquet-datasets/"
-        #     logger.info(f" Main: Target output path: {output_path}")
-
-        #     df = None  # Initialise df to avoid UnboundLocalError
-
-        #     for table_name in table_names:
-        #         if(table_name== 'fact' or table_name== 'fact_resource' or table_name== 'entity'):
-        #             full_path = f"{s3_uri}"+"/transformed/sample-"+data_set+"/*.csv"
-        #             logger.info(f"Main: Dataset input path including csv file path: {full_path}")
-
-        #             if df is None:
-        #                 # Read CSV using the dynamic schema
-        #                 logger.info("Main: dataframe is empty")
-        #                 df = spark.read.option("header", "true").csv(full_path)
-        #                 df.cache()  # Cache the DataFrame for performance
-
-        #             # Show schema and sample data
-        #             df.printSchema()
-        #             logger.info(f"Main: Schema information for the loaded dataframe")
-        #             df.show(5)
-        #             #revise this code and for converting spark session as singleton in future
-        #             processed_df = transform_data(df,table_name,data_set,spark)
-        #             logger.info(f"Main: Transforming data for {table_name} table completed")
-
-        #             # Write to S3 for Fact Resource table
-        #             sample_dataset_name = f"sample-{data_set}"
-        #             write_to_s3(processed_df, f"{output_path}{table_name}", sample_dataset_name, table_name)
-        #             logger.info(f"Main: Writing to s3 for {table_name} table completed")
-
-        #             # Write to Postgres for Entity table
-        #             if (table_name == 'entity'):
-        #                 write_dataframe_to_postgres(processed_df, table_name, data_set, env, use_jdbc)
-        #                 logger.info(f"Main: Writing to Postgres for {table_name} table completed")
-
-        #         elif(table_name== 'issue'):
-        #             full_path = f"{s3_uri}"+"/issue/"+data_set+"/*.csv"
-        #             logger.info(f"Main: Dataset input path including csv file path: {full_path}")
-
-        #             # Read CSV using the dynamic schema
-        #             df = spark.read.option("header", "true").csv(full_path)
-        #             df.cache()  # Cache the DataFrame for performance
-
-        #             # Show schema and sample data
-        #             df.printSchema()
-        #             logger.info(f"Main: Schema information for the loaded dataframe")
-        #             df.show(5)
-        #             processed_df = transform_data(df,table_name,data_set,spark)
-
-        #             logger.info(f"Main: Transforming data for {table_name} table completed")
-
-        #             # Write to S3 for Fact table
-        #             sample_dataset_name = f"sample-{data_set}"
-        #             write_to_s3(processed_df, f"{output_path}{table_name}", sample_dataset_name, table_name)
-        #             logger.info(f"Main: Writing to s3 for {table_name} table completed")
         else:
             logger.error(f"Main: Invalid load type specified: {load_type}")
             raise ValueError(f"Invalid load type: {load_type}")
