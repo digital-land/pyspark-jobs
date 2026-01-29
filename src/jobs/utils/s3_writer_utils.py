@@ -77,16 +77,16 @@ def normalise_dataframe_schema(df, schema_name, data_set, spark, env=None):
 
 
 @log_execution_time
-def write_to_s3(df, output_path, dataset_name, table_name, env=None):
+def write_parquet_to_s3(df, output_path, dataset_name, table_name, env=None):
     """Write DataFrame to S3 in Parquet format with partitioning."""
     try:
         from datetime import datetime
 
-        logger.info(f"write_to_s3: Writing data to S3 at {output_path}")
+        logger.info(f"write_parquet_to_s3: Writing data to S3 at {output_path}")
 
         cleanup_summary = cleanup_dataset_data(output_path, dataset_name)
         logger.info(
-            f"write_to_s3: Cleaned up {cleanup_summary['objects_deleted']} objects"
+            f"write_parquet_to_s3: Cleaned up {cleanup_summary['objects_deleted']} objects"
         )
 
         df = df.withColumn("dataset", lit(dataset_name))
@@ -118,10 +118,10 @@ def write_to_s3(df, output_path, dataset_name, table_name, env=None):
             output_path
         )
 
-        logger.info(f"write_to_s3: Successfully wrote {row_count} rows")
+        logger.info(f"write_parquet_to_s3: Successfully wrote {row_count} rows")
 
     except Exception as e:
-        logger.error(f"write_to_s3: Failed to write to S3: {e}", exc_info=True)
+        logger.error(f"write_parquet_to_s3: Failed to write to S3: {e}", exc_info=True)
         raise
 
 
@@ -229,11 +229,11 @@ def s3_rename_and_move(env, dataset_name, file_type, bucket_name):
 
 
 @log_execution_time
-def write_to_s3_format(df, output_path, dataset_name, table_name, spark, env):
+def write_entity_formats_to_s3(df, output_path, dataset_name, table_name, spark, env):
     """Write DataFrame to S3 in CSV, JSON, and GeoJSON formats."""
     try:
         count = count_df(df, env)
-        logger.info(f"write_to_s3_format: Input DataFrame contains {count} records")
+        logger.info(f"write_entity_formats_to_s3: Input DataFrame contains {count} records")
 
         path_bake = f"s3://{env}-collection-data/{dataset_name}-collection/dataset/{dataset_name}.csv"
         df_bake = read_csv_from_s3(spark, path_bake)
@@ -250,7 +250,7 @@ def write_to_s3_format(df, output_path, dataset_name, table_name, spark, env):
 
         cleanup_summary = cleanup_dataset_data(output_path, dataset_name)
         logger.info(
-            f"write_to_s3_format: Cleaned up {cleanup_summary['objects_deleted']} objects"
+            f"write_entity_formats_to_s3: Cleaned up {cleanup_summary['objects_deleted']} objects"
         )
 
         df = df.withColumn("dataset", lit(dataset_name))
@@ -303,7 +303,7 @@ def write_to_s3_format(df, output_path, dataset_name, table_name, spark, env):
         s3_client.put_object(
             Bucket=f"{env}-collection-data", Key=target_key, Body=json_buffer
         )
-        logger.info(f"write_to_s3_format: JSON file written to {target_key}")
+        logger.info(f"write_entity_formats_to_s3: JSON file written to {target_key}")
 
         # Write GeoJSON
         target_key_geojson = f"dataset/{dataset_name}.geojson"
@@ -390,7 +390,7 @@ def write_to_s3_format(df, output_path, dataset_name, table_name, spark, env):
                 MultipartUpload={"Parts": parts},
             )
             logger.info(
-                f"write_to_s3_format: GeoJSON file written to {target_key_geojson}"
+                f"write_entity_formats_to_s3: GeoJSON file written to {target_key_geojson}"
             )
         except Exception as e:
             logger.error(f"Error during GeoJSON multipart upload: {e}")
@@ -406,7 +406,7 @@ def write_to_s3_format(df, output_path, dataset_name, table_name, spark, env):
 
         return df
     except Exception as e:
-        logger.error(f"write_to_s3_format: Failed to write to S3: {e}", exc_info=True)
+        logger.error(f"write_entity_formats_to_s3: Failed to write to S3: {e}", exc_info=True)
         raise
     finally:
         if "temp_df" in locals() and temp_df is not None:

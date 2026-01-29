@@ -23,7 +23,7 @@ from jobs.utils.logger_config import (
 )
 from jobs.utils.postgres_writer_utils import write_dataframe_to_postgres_jdbc
 from jobs.utils.s3_utils import cleanup_dataset_data
-from jobs.utils.s3_writer_utils import write_to_s3, write_to_s3_format
+from jobs.utils.s3_writer_utils import write_parquet_to_s3, write_entity_formats_to_s3
 
 
 # -------------------- Logging Setup --------------------
@@ -354,9 +354,9 @@ def main(args):
 
                     if table_name == "entity":
                         logger.info(
-                            f"Main: Invocation of write_to_s3_format method for {table_name} table"
+                            f"Main: Invocation of write_entity_formats_to_s3 method for {table_name} table"
                         )
-                        df_entity = write_to_s3_format(
+                        df_entity = write_entity_formats_to_s3(
                             df,
                             f"{output_path}{table_name}",
                             data_set,
@@ -378,7 +378,7 @@ def main(args):
                         )
 
                     # Write to S3 for Fact Resource table
-                    write_to_s3(
+                    write_parquet_to_s3(
                         processed_df,
                         f"{output_path}{table_name}",
                         data_set,
@@ -407,7 +407,7 @@ def main(args):
                     )
 
                     # Write to S3 for Fact table
-                    write_to_s3(
+                    write_parquet_to_s3(
                         processed_df,
                         f"{output_path}{table_name}",
                         data_set,
