@@ -49,7 +49,7 @@ def test_sedona_spatial_operations():
     )
 
     # Assert expected values
-    assert row['area'] == 100.0, "Expected area of 10x10 square to be 100"
-    assert row['perimeter'] == 40.0, "Expected perimeter of 10x10 square to be 40"
-    assert row['centroid_x'] == 5.0, "Expected centroid X coordinate to be 5"
-    assert row['centroid_y'] == 5.0, "Expected centroid Y coordinate to be 5"
+    assert row["area"] == 100.0, "Expected area of 10x10 square to be 100"
+    assert row["perimeter"] == 40.0, "Expected perimeter of 10x10 square to be 40"
+    assert row["centroid_x"] == 5.0, "Expected centroid X coordinate to be 5"
+    assert row["centroid_y"] == 5.0, "Expected centroid Y coordinate to be 5"
