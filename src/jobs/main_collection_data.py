@@ -157,17 +157,6 @@ def load_metadata(uri: str) -> dict:
         raise
 
 
-# -------------------- Data Reader --------------------
-def read_data(spark, input_path):
-    try:
-        logger.info(f"Reading data from {input_path}")
-        return spark.read.csv(input_path, header=True, inferSchema=True)
-
-    except Exception as e:
-        logger.error(f"Error reading data from {input_path}: {str(e)}")
-        raise
-
-
 # -------------------- Data Transformer --------------------
 @log_execution_time
 def transform_data(df, schema_name, data_set, spark):
