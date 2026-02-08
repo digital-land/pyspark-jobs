@@ -225,7 +225,10 @@ def transform_data(df, schema_name, data_set, spark, organisation_df):
             show_df(df, 5, env)
             transformer = EntityTransformer()
             return transformer.transform(
-                df, data_set, spark, organisation_df,
+                df,
+                data_set,
+                spark,
+                organisation_df,
             )
         elif schema_name == "issue":
             logger.info("transform_data: Transforming data for Issue table")
@@ -260,25 +263,23 @@ def validate_s3_path(s3_path):
 
 env = None
 
-#TODO no idea why this just takes arge, it should be the responsibility of the cli script to organise the args
+
+# TODO no idea why this just takes arge, it should be the responsibility of the cli script to organise the args
 @log_execution_time
-def main(collection_data_path,parquet_datasets_path, env, load_type, dataset, collection, use_jdbc=False):
+def main(
+    collection_data_path,
+    parquet_datasets_path,
+    env,
+    load_type,
+    dataset,
+    collection,
+    use_jdbc=False,
+):
     # TODO: args renamed above so be wary until finished
     # global env, df_entity
     logger.info("Main: Initialize logging and invoking initialize_logging method")
 
     initialize_logging(env)  # Initialize logging with env
-
-    #TODO delete below code as now replaced by actual function arguements
-    # Validate input arguments
-    # if not hasattr(args, "load_type") or not args.load_type:
-    #     raise ValueError("main:load_type is required")
-    # if not hasattr(args, "data_set") or not args.data_set:
-    #     raise ValueError("main:data_set is required")
-    # if not hasattr(args, "path") or not args.path:
-    #     raise ValueError("main:path is required")
-    # if not hasattr(args, "env") or not args.env:
-    #     raise ValueError("main:env is required")
 
     # Validate load_type
     allowed_load_types = ["full", "delta", "sample"]
@@ -295,15 +296,22 @@ def main(collection_data_path,parquet_datasets_path, env, load_type, dataset, co
     # align inputs
     collection = collection if collection else None
     dataset = dataset if dataset else None
-    organisation_path = collection_data_path + "organisation-collection/dataset/organisation.csv"
-    transformed_path = collection_data_path + collection + "-collection/transformed/" + dataset + "/*.csv"
+    organisation_path = (
+        collection_data_path + "organisation-collection/dataset/organisation.csv"
+    )
+    transformed_path = (
+        collection_data_path
+        + collection
+        + "-collection/transformed/"
+        + dataset
+        + "/*.csv"
+    )
 
     fact_resource_output_path = parquet_datasets_path + "fact_resource/"
-    fact_output_path= parquet_datasets_path + "fact/"
+    fact_output_path = parquet_datasets_path + "fact/"
     entity_output_path = parquet_datasets_path + "entity/"
 
     databaset_variable_to_be_renamed = None
-    
 
     # Validate S3 path
     validate_s3_path(collection_data_path)
@@ -336,11 +344,9 @@ def main(collection_data_path,parquet_datasets_path, env, load_type, dataset, co
 
         if load_type == "full":
             # invoke full load logic
-            logger.info(
-                f"Main: Load type is {load_type} and dataset is {dataset}"
-            )
+            logger.info(f"Main: Load type is {load_type} and dataset is {dataset}")
 
-            #TODO get from args
+            # TODO get from args
             #  deefine output path per dataset instead of here
             # output_path = f"{parquet_datasets_path}/"
             logger.info(f" Main: Target output path: {parquet_datasets_path}")
@@ -374,7 +380,7 @@ def main(collection_data_path,parquet_datasets_path, env, load_type, dataset, co
                     logger.info("Main: Schema information for the loaded dataframe")
                     show_df(df, 5, env)
 
-                    #TODO remove this as it's wrong, It's causing the the reprocessing of data for entity
+                    # TODO remove this as it's wrong, It's causing the the reprocessing of data for entity
                     if table_name == "entity":
                         logger.info(
                             f"Main: Invocation of write_entity_formats_to_s3 method for {table_name} table"
@@ -390,7 +396,9 @@ def main(collection_data_path,parquet_datasets_path, env, load_type, dataset, co
                         )
 
                     # TODO: revise this code and for converting spark session as singleton in future
-                    processed_df = transform_data(df, table_name, dataset, spark, organisation_df)
+                    processed_df = transform_data(
+                        df, table_name, dataset, spark, organisation_df
+                    )
                     logger.info(
                         f"Main: Transforming data for {table_name} table completed"
                     )
@@ -411,7 +419,13 @@ def main(collection_data_path,parquet_datasets_path, env, load_type, dataset, co
                     )
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")
                 elif table_name == "issue":
-                    issue_path = f"{collection_data_path}"+ collection + "-collection//issue/" + dataset + "/*.csv"
+                    issue_path = (
+                        f"{collection_data_path}"
+                        + collection
+                        + "-collection/issue/"
+                        + dataset
+                        + "/*.csv"
+                    )
                     logger.info(
                         f"Main: Dataset input path including csv file path: {issue_path}"
                     )
@@ -424,7 +438,9 @@ def main(collection_data_path,parquet_datasets_path, env, load_type, dataset, co
                     df.printSchema()
                     logger.info("Main: Schema information for the loaded dataframe")
                     show_df(df, 5, env)
-                    processed_df = transform_data(df, table_name, dataset, spark,organisation_df=organisation_df)
+                    processed_df = transform_data(
+                        df, table_name, dataset, spark, organisation_df=organisation_df
+                    )
 
                     logger.info(
                         f"Main: Transforming data for {table_name} table completed"
