@@ -28,12 +28,12 @@ from jobs.utils.s3_writer_utils import write_entity_formats_to_s3, write_parquet
 
 # -------------------- Logging Setup --------------------
 # Setup logging for EMR Serverless (console output goes to CloudWatch automatically)
-def initialize_logging(args):
+def initialize_logging(env):
     try:
         setup_logging(
             log_level=os.getenv("LOG_LEVEL", "INFO"),
             log_file=os.getenv("LOG_FILE") if os.getenv("LOG_FILE") else None,
-            environment=args.env,
+            environment=env,
         )
     except AttributeError as e:
         print(f"Error: Missing required argument attribute: {e}")
@@ -159,7 +159,7 @@ def load_metadata(uri: str) -> dict:
 
 # -------------------- Data Transformer --------------------
 @log_execution_time
-def transform_data(df, schema_name, data_set, spark):
+def transform_data(df, schema_name, data_set, spark, organisation_df):
     try:
         # Validate DataFrame
         if df is None:
@@ -224,7 +224,9 @@ def transform_data(df, schema_name, data_set, spark):
             logger.info("transform_data: Transforming data for Entity table")
             show_df(df, 5, env)
             transformer = EntityTransformer()
-            return transformer.transform(df, data_set, spark, env)
+            return transformer.transform(
+                df, data_set, spark, organisation_df,
+            )
         elif schema_name == "issue":
             logger.info("transform_data: Transforming data for Issue table")
             transformer = IssueTransformer()
@@ -258,58 +260,71 @@ def validate_s3_path(s3_path):
 
 env = None
 
-
+#TODO no idea why this just takes arge, it should be the responsibility of the cli script to organise the args
 @log_execution_time
-def main(args):
-    global env, df_entity
+def main(collection_data_path,parquet_datasets_path, env, load_type, dataset, collection, use_jdbc=False):
+    # TODO: args renamed above so be wary until finished
+    # global env, df_entity
     logger.info("Main: Initialize logging and invoking initialize_logging method")
 
-    initialize_logging(args)  # Initialize logging with args
+    initialize_logging(env)  # Initialize logging with env
 
+    #TODO delete below code as now replaced by actual function arguements
     # Validate input arguments
-    if not hasattr(args, "load_type") or not args.load_type:
-        raise ValueError("main:load_type is required")
-    if not hasattr(args, "data_set") or not args.data_set:
-        raise ValueError("main:data_set is required")
-    if not hasattr(args, "path") or not args.path:
-        raise ValueError("main:path is required")
-    if not hasattr(args, "env") or not args.env:
-        raise ValueError("main:env is required")
+    # if not hasattr(args, "load_type") or not args.load_type:
+    #     raise ValueError("main:load_type is required")
+    # if not hasattr(args, "data_set") or not args.data_set:
+    #     raise ValueError("main:data_set is required")
+    # if not hasattr(args, "path") or not args.path:
+    #     raise ValueError("main:path is required")
+    # if not hasattr(args, "env") or not args.env:
+    #     raise ValueError("main:env is required")
 
     # Validate load_type
     allowed_load_types = ["full", "delta", "sample"]
-    if args.load_type not in allowed_load_types:
+    if load_type not in allowed_load_types:
         raise ValueError(
-            f"Invalid load_type: {args.load_type}. Must be one of {allowed_load_types}"
+            f"Invalid load_type: {load_type}. Must be one of {allowed_load_types}"
         )
 
     # Validate environment
     allowed_envs = ["development", "staging", "production", "local"]
-    if args.env not in allowed_envs:
-        raise ValueError(f"Invalid env: {args.env}. Must be one of {allowed_envs}")
+    if env not in allowed_envs:
+        raise ValueError(f"Invalid env: {env}. Must be one of {allowed_envs}")
+
+    # align inputs
+    collection = collection if collection else None
+    dataset = dataset if dataset else None
+    organisation_path = collection_data_path + "organisation-collection/dataset/organisation.csv"
+    transformed_path = collection_data_path + collection + "-collection/transformed/" + dataset + "/*.csv"
+
+    fact_resource_output_path = parquet_datasets_path + "fact_resource/"
+    fact_output_path= parquet_datasets_path + "fact/"
+    entity_output_path = parquet_datasets_path + "entity/"
+
+    databaset_variable_to_be_renamed = None
+    
 
     # Validate S3 path
-    validate_s3_path(args.path)
+    validate_s3_path(collection_data_path)
 
     # Determine import method from command line argument
-    use_jdbc = hasattr(args, "use_jdbc") and args.use_jdbc
     import_method = "JDBC" if use_jdbc else "Aurora S3 Import"
     logger.info(f"Main: Using import method: {import_method}")
 
     logger.info(
-        f"Main: Starting ETL process for Collection Data {args.load_type} and dataset {args.data_set}"
+        f"Main: Starting ETL process for Collection Data {load_type} and dataset {dataset}"
     )
     try:
         logger.info("Main: Starting main ETL process for collection Data")
         start_time = datetime.now()
         logger.info(f"Main: Spark session started at: {start_time}")
-        load_type = args.load_type
-        data_set = args.data_set
-        s3_uri = args.path
-        env = args.env
+        # TODO remove
+        # s3_uri = path
         logger.info(f"Main: env variable for the dataset: {env}")
 
-        s3_uri = s3_uri + data_set + "-collection"
+        # get collection_path (can be uri or local path)
+        # s3_uri = s3_uri + collection + "-collection"
 
         table_names = ["fact", "fact_resource", "entity", "issue"]
 
@@ -317,34 +332,41 @@ def main(args):
 
         if spark is None:
             raise Exception("Failed to create Spark session")
-        logger.info(f"Main: Spark session created successfully for dataset: {data_set}")
+        logger.info(f"Main: Spark session created successfully for dataset: {dataset}")
 
         if load_type == "full":
             # invoke full load logic
             logger.info(
-                f"Main: Load type is {load_type} and dataset is {data_set} and path is {s3_uri}"
+                f"Main: Load type is {load_type} and dataset is {dataset}"
             )
 
-            output_path = f"s3://{env}-parquet-datasets/"
-            logger.info(f" Main: Target output path: {output_path}")
+            #TODO get from args
+            #  deefine output path per dataset instead of here
+            # output_path = f"{parquet_datasets_path}/"
+            logger.info(f" Main: Target output path: {parquet_datasets_path}")
 
             df = None  # Initialise df to avoid UnboundLocalError
 
+            # load organisation data in and cache for later use
+            organisation_df = spark.read.option("header", "true").csv(organisation_path)
+            organisation_df.cache()
+
+            # TODO remove for loop and just have the logic for each table separately, as they are quite different, and it will be more readable, also we can have better error handling for each table separately, rather than one try catch for all tables
             for table_name in table_names:
                 if (
                     table_name == "fact"
                     or table_name == "fact_resource"
                     or table_name == "entity"
                 ):
-                    full_path = f"{s3_uri}" + "/transformed/" + data_set + "/*.csv"
+                    table_output_path = parquet_datasets_path + f"{table_name}/"
                     logger.info(
-                        f"Main: Dataset input path including csv file path: {full_path}"
+                        f"Main: Dataset input path including csv file path: {transformed_path}"
                     )
 
                     if df is None:
                         # Read CSV using the dynamic schema
                         logger.info("Main: dataframe is empty")
-                        df = spark.read.option("header", "true").csv(full_path)
+                        df = spark.read.option("header", "true").csv(transformed_path)
                         df.cache()  # Cache the DataFrame for performance
 
                     # Show schema and sample data
@@ -352,21 +374,23 @@ def main(args):
                     logger.info("Main: Schema information for the loaded dataframe")
                     show_df(df, 5, env)
 
+                    #TODO remove this as it's wrong, It's causing the the reprocessing of data for entity
                     if table_name == "entity":
                         logger.info(
                             f"Main: Invocation of write_entity_formats_to_s3 method for {table_name} table"
                         )
                         df_entity = write_entity_formats_to_s3(
                             df,
-                            f"{output_path}{table_name}",
-                            data_set,
+                            table_output_path,
+                            dataset,
                             table_name,
                             spark,
+                            organisation_df,
                             env,
                         )
 
                     # TODO: revise this code and for converting spark session as singleton in future
-                    processed_df = transform_data(df, table_name, data_set, spark)
+                    processed_df = transform_data(df, table_name, dataset, spark, organisation_df)
                     logger.info(
                         f"Main: Transforming data for {table_name} table completed"
                     )
@@ -380,27 +404,27 @@ def main(args):
                     # Write to S3 for Fact Resource table
                     write_parquet_to_s3(
                         processed_df,
-                        f"{output_path}{table_name}",
-                        data_set,
+                        table_output_path,
+                        dataset,
                         table_name,
                         env,
                     )
                     logger.info(f"Main: Writing to s3 for {table_name} table completed")
                 elif table_name == "issue":
-                    full_path = f"{s3_uri}" + "/issue/" + data_set + "/*.csv"
+                    issue_path = f"{collection_data_path}"+ collection + "-collection//issue/" + dataset + "/*.csv"
                     logger.info(
-                        f"Main: Dataset input path including csv file path: {full_path}"
+                        f"Main: Dataset input path including csv file path: {issue_path}"
                     )
 
                     # Read CSV using the dynamic schema
-                    df = spark.read.option("header", "true").csv(full_path)
+                    df = spark.read.option("header", "true").csv(issue_path)
                     df.cache()  # Cache the DataFrame for performance
 
                     # Show schema and sample data
                     df.printSchema()
                     logger.info("Main: Schema information for the loaded dataframe")
                     show_df(df, 5, env)
-                    processed_df = transform_data(df, table_name, data_set, spark)
+                    processed_df = transform_data(df, table_name, dataset, spark,organisation_df=organisation_df)
 
                     logger.info(
                         f"Main: Transforming data for {table_name} table completed"
@@ -409,8 +433,8 @@ def main(args):
                     # Write to S3 for Fact table
                     write_parquet_to_s3(
                         processed_df,
-                        f"{output_path}{table_name}",
-                        data_set,
+                        table_output_path,
+                        dataset,
                         table_name,
                         env,
                     )
@@ -429,7 +453,7 @@ def main(args):
                     "Main: before writing to postgres, df_entity dataframe is below"
                 )
                 show_df(df_entity, 5, env)
-                write_dataframe_to_postgres_jdbc(df_entity, table_name, data_set, env)
+                write_dataframe_to_postgres_jdbc(df_entity, table_name, dataset, env)
             else:
                 logger.info("Main: df_entity is None, skipping Postgres write")
         else:

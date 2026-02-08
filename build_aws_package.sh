@@ -317,11 +317,11 @@ copy_entry_scripts() {
     print_status "Copying entry scripts..."
     
     # Copy the main entry script
-    if [[ -f "$PROJECT_DIR/run_main.py" ]]; then
-        cp "$PROJECT_DIR/run_main.py" "$BUILD_DIR/entry_script/"
-        print_success "Entry script copied: run_main.py"
+    if [[ -f "$PROJECT_DIR/entry_points/run_main.py" ]]; then
+        cp "$PROJECT_DIR/entry_points/run_main.py" "$BUILD_DIR/entry_script/"
+        print_success "Entry script copied: entry_points/run_main.py"
     else
-        print_error "Entry script not found: run_main.py"
+        print_error "Entry script not found: entry_points/run_main.py"
         exit 1
     fi
     

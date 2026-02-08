@@ -55,7 +55,7 @@ class EntityTransformer:
     }
 
     @log_execution_time
-    def transform(self, df, data_set, spark, env=None):
+    def transform(self, df, data_set, spark, organisation_df, env=None):
         """Transform EAV data to entity format."""
         logger.info("EntityTransformer: Transforming data for Entity table")
         show_df(df, 20, env)
@@ -102,7 +102,7 @@ class EntityTransformer:
         logger.info(
             "_join_organisation: Step 7: Join organisation data to get organisation_entity"
         )
-        pivot_df = self._join_organisation(pivot_df, spark, env)
+        pivot_df = self._join_organisation(pivot_df, organisation_df)
         show_df(pivot_df, 5, env)
 
         # Step 8: Build JSON column from non-standard columns
@@ -243,18 +243,13 @@ class EntityTransformer:
             df = df.drop("geojson")
         return df
 
-    def _join_organisation(self, df, spark, env):
+    def _join_organisation(self, df, organisation_df):
         """
         Join organisation to fetch organisation_entity.
 
         Replaces organisation code with organisation_entity ID
         by joining with the organisation reference dataset.
         """
-        # Read organisation reference data from S3
-        organisation_df = spark.read.option("header", "true").csv(
-            f"s3://{env}-collection-data/organisation/dataset/organisation.csv"
-        )
-
         # Left join to get organisation_entity, then drop original organisation column
         return (
             df.join(

@@ -8,12 +8,26 @@
 
 # Variables
 PYTHON := python3
-VENV_DIR := pyspark-jobs-venv
+VENV_DIR := .venv
 VENV_ACTIVATE := $(VENV_DIR)/bin/activate
 PROJECT_DIR := $(shell pwd)
 SRC_DIR := src
 TESTS_DIR := tests
 DOCS_DIR := docs
+
+# Helper: run a command inside a virtual environment.
+# If already in an active venv (VIRTUAL_ENV is set), run directly.
+# Otherwise source VENV_ACTIVATE as a fallback.
+define run-in-venv
+	@if [ -n "$$VIRTUAL_ENV" ]; then \
+		$(1); \
+	elif [ -f $(VENV_ACTIVATE) ]; then \
+		. $(VENV_ACTIVATE) && $(1); \
+	else \
+		echo "$(RED)No active virtual environment and $(VENV_ACTIVATE) not found. Run 'make init' or activate a venv.$(NC)"; \
+		exit 1; \
+	fi
+endef
 
 # Colors for output
 BLUE := \033[0;34m
@@ -56,99 +70,40 @@ check-venv: ## Check if virtual environment is set up
 # Testing
 test: ## Run all tests with coverage
 	@echo "$(BLUE)Running all tests with coverage...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && pytest tests/ --cov=src --cov-report=html --cov-report=term-missing; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+	$(call run-in-venv,pytest tests/ --cov=src --cov-report=html --cov-report=term-missing)
 
 test-unit: ## Run unit tests only
 	@echo "$(BLUE)Running unit tests...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && pytest tests/unit/ -v; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+	$(call run-in-venv,pytest tests/unit/ -v)
 
 test-integration: ## Run integration tests
 	@echo "$(BLUE)Running integration tests...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && pytest tests/integration/ -v; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+	$(call run-in-venv,pytest tests/integration/ -v)
 
 test-acceptance: ## Run acceptance tests
 	@echo "$(BLUE)Running acceptance tests...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		if [ -d tests/acceptance/ ]; then \
-			. $(VENV_ACTIVATE) && pytest tests/acceptance/ -v; \
-		else \
-			echo "$(YELLOW)No acceptance tests found. Acceptance tests require full infrastructure.$(NC)"; \
-		fi; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+	$(call run-in-venv,pytest tests/acceptance/ -v)
 
 test-coverage: ## Run tests with HTML coverage report
 	@echo "$(BLUE)Running tests with HTML coverage report...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && pytest tests/ --cov=src --cov-report=html; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+	$(call run-in-venv,pytest tests/ --cov=src --cov-report=html)
 
 test-quick: ## Run quick tests (unit tests only, no coverage)
 	@echo "$(BLUE)Running quick tests...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && pytest tests/unit/ -v --tb=short; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+	$(call run-in-venv,pytest tests/unit/ -v --tb=short)
 
 test-parallel: ## Run tests in parallel
 	@echo "$(BLUE)Running tests in parallel...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && pytest tests/ -n auto --cov=src; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+	$(call run-in-venv,pytest tests/ -n auto --cov=src)
 
 # Code Quality
 lint: ## Run all linting checks
 	@echo "$(BLUE)Running linting checks...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && \
-		echo "$(BLUE)Running Black...$(NC)" && \
-		black --check src/ tests/ 2>&1 || (echo "$(YELLOW)Black formatting issues found. Run 'make format' to fix.$(NC)" && exit 1) && \
-		echo "$(BLUE)Running Flake8...$(NC)" && \
-		flake8 src/ tests/ && \
-		echo "$(GREEN)All linting checks passed!$(NC)"; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+	$(call run-in-venv,echo "$(BLUE)Running Black...$(NC)" && black --check src/ tests/ 2>&1 || (echo "$(YELLOW)Black formatting issues found. Run 'make format' to fix.$(NC)" && exit 1) && echo "$(BLUE)Running Flake8...$(NC)" && flake8 src/ tests/ && echo "$(GREEN)All linting checks passed!$(NC)")
 
 format: ## Format code with black and isort
 	@echo "$(BLUE)Formatting code...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && \
-		echo "$(BLUE)Running Black formatter...$(NC)" && \
-		black src/ tests/ && \
-		echo "$(BLUE)Running isort...$(NC)" && \
-		isort src/ tests/ && \
-		echo "$(GREEN)Code formatting complete!$(NC)"; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+	$(call run-in-venv,echo "$(BLUE)Running Black formatter...$(NC)" && black src/ tests/ && echo "$(BLUE)Running isort...$(NC)" && isort src/ tests/ && echo "$(GREEN)Code formatting complete!$(NC)")
 
 # TODO: implement type checking
 # type-check: ## Run type checking with mypy
@@ -162,14 +117,7 @@ format: ## Format code with black and isort
 
 security: ## Run security scanning
 	@echo "$(BLUE)Running security scans...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && \
-		bandit -r $(SRC_DIR) && \
-		safety check; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+	$(call run-in-venv,bandit -r $(SRC_DIR) && safety check)
 
 pre-commit: check-venv ## Run pre-commit on all files
 	pre-commit run --all-files
@@ -177,23 +125,13 @@ pre-commit: check-venv ## Run pre-commit on all files
 # Documentation
 docs: ## Generate documentation
 	@echo "$(BLUE)Generating documentation...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && sphinx-build -b html $(DOCS_DIR) $(DOCS_DIR)/_build/html; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+	$(call run-in-venv,sphinx-build -b html $(DOCS_DIR) $(DOCS_DIR)/_build/html)
 
 # TODO: do we really need this? I haven't seen any notebooks in the repo
 # Development Tools
 run-notebook: ## Start Jupyter Lab for development
 	@echo "$(BLUE)Starting Jupyter Lab...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && jupyter lab --notebook-dir=.; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+	$(call run-in-venv,jupyter lab --notebook-dir=.)
 
 # Build and Package
 build: check-venv ## Build the package
@@ -267,13 +205,7 @@ install-deps: check-venv ## Install/update dependencies
 
 freeze: ## Freeze current dependencies
 	@echo "$(BLUE)Freezing current dependencies...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && pip freeze > requirements-frozen.txt; \
-		echo "$(GREEN)Dependencies frozen to requirements-frozen.txt$(NC)"; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+	$(call run-in-venv,pip freeze > requirements-frozen.txt && echo "$(GREEN)Dependencies frozen to requirements-frozen.txt$(NC)")
 
 # TODO: remove these as the CI/CD should use the same tagets as development
 # CI/CD targets)

@@ -29,14 +29,13 @@ df_entity = None
 
 
 @log_execution_time
-def transform_data_entity_format(df, data_set, spark, env=None):
+def transform_data_entity_format(df, data_set, spark, organisation_df, env):
     """Transform Entity-Attribute-Value (EAV) format data into entity records."""
     transformer = EntityTransformer()
-    return transformer.transform(df, data_set, spark, env)
-
+    return transformer.transform(df, data_set, spark, organisation_df, env)
 
 @log_execution_time
-def normalise_dataframe_schema(df, schema_name, data_set, spark, env=None):
+def normalise_dataframe_schema(df, schema_name, data_set, spark, organisation_df, env=None):
     """Normalize dataframe schema based on table type."""
     try:
         from jobs.main_collection_data import load_metadata
@@ -67,7 +66,7 @@ def normalise_dataframe_schema(df, schema_name, data_set, spark, env=None):
         show_df(df, 5, env)
 
         if schema_name == "entity":
-            return transform_data_entity_format(df, data_set, spark, env)
+            return transform_data_entity_format(df, data_set, spark, env, organisation_df)
         else:
             raise ValueError(f"Unknown table name: {schema_name}")
 
@@ -229,7 +228,7 @@ def s3_rename_and_move(env, dataset_name, file_type, bucket_name):
 
 
 @log_execution_time
-def write_entity_formats_to_s3(df, output_path, dataset_name, table_name, spark, env):
+def write_entity_formats_to_s3(df, output_path, dataset_name, table_name, spark, organisation_df, env):
     """Write DataFrame to S3 in CSV, JSON, and GeoJSON formats."""
     try:
         count = count_df(df, env)
@@ -247,7 +246,7 @@ def write_entity_formats_to_s3(df, output_path, dataset_name, table_name, spark,
 
         temp_output_path = f"s3://{env}-collection-data/dataset/temp/{dataset_name}/"
 
-        df = normalise_dataframe_schema(df, table_name, dataset_name, spark, env)
+        df = normalise_dataframe_schema(df, table_name, dataset_name, spark, env,organisation_df=organisation_df)
         show_df(df, 5, env)
 
         cleanup_summary = cleanup_dataset_data(output_path, dataset_name)
