@@ -56,8 +56,15 @@ init: init-local ## Default: Initialize local testing environment
 
 init-local: ## Initialize local testing environment (lightweight)
 	@echo "$(BLUE)Setting up local testing environment...$(NC)"
-	./setup_venv.sh --type local
-	@echo "$(GREEN)Local testing environment ready!$(NC)"
+	@if [ -n "$$VIRTUAL_ENV" ]; then \
+		echo "$(BLUE)Virtual environment detected at $$VIRTUAL_ENV — installing dependencies...$(NC)" && \
+		pip install --upgrade pip setuptools wheel && \
+		pip install -r requirements-local.txt && \
+		pip install -e . && \
+		echo "$(GREEN)Local testing environment ready!$(NC)"; \
+	else \
+		./setup_venv.sh --type local; \
+	fi
 
 check-venv: ## Check if virtual environment is set up
 	@if [ "$(ENVIRONMENT)" = "local" ] ; then \

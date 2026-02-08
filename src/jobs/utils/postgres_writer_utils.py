@@ -1,15 +1,9 @@
 from pyspark.sql.functions import col, lit, to_json
 
-from jobs.dbaccess.postgres_connectivity import (
-    ENTITY_TABLE_NAME,
-    calculate_centroid_wkt,
-    commit_staging_to_production,
-    create_and_prepare_staging_table,
-    get_aws_secret,
-    write_to_postgres,
-)
+from jobs.dbaccess.postgres_connectivity import get_aws_secret
+
 from jobs.utils.df_utils import show_df
-from jobs.utils.logger_config import get_logger, log_execution_time
+from jobs.utils.logger_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -122,8 +116,7 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
         conn_params["timeout"] = 1800  # 30 minutes
         conn = pg8000.connect(**conn_params)
         cur = conn.cursor()
-        cur.execute(
-            f"""
+        cur.execute(f"""
         CREATE TABLE {staging_table} (
             entity BIGINT,
             name TEXT,
@@ -141,8 +134,7 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
             point GEOMETRY(POINT, 4326),
             quality TEXT
         );
-        """
-        )
+        """)
         conn.commit()
         cur.close()
         conn.close()
@@ -229,8 +221,7 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
             deleted = cur.rowcount
 
             # Insert using explicit column mapping to avoid positional mismatches
-            cur.execute(
-                f"""
+            cur.execute(f"""
             INSERT INTO entity (
                 entity, name, entry_date, start_date, end_date,
                 dataset, json, organisation_entity, prefix, reference,
@@ -253,8 +244,7 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
                 point,
                 quality::text
             FROM {staging_table};
-            """
-            )
+            """)
             inserted = cur.rowcount
 
             # Drop staging and commit

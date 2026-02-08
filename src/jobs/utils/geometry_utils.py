@@ -1,5 +1,4 @@
-from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import expr
+from pyspark.sql import DataFrame
 from sedona.spark import SedonaContext
 
 
@@ -23,10 +22,9 @@ def calculate_centroid(df: DataFrame) -> DataFrame:
     # Create temp view and use SQL to calculate centroid
     df.createOrReplaceTempView("temp_geometry")
 
-    return df.sparkSession.sql(
-        """
-        SELECT *, 
-            CASE 
+    return df.sparkSession.sql("""
+        SELECT *,
+            CASE
                 WHEN geometry IS NOT NULL THEN
                     ST_AsText(
                         ST_SetSRID(
@@ -40,5 +38,4 @@ def calculate_centroid(df: DataFrame) -> DataFrame:
                 ELSE NULL
             END as point
         FROM temp_geometry
-        """
-    )
+        """)
