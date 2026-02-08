@@ -7,15 +7,14 @@ testing the integration between components while avoiding real external dependen
 
 import os
 import sys
-import tempfile
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 import pytest
 
-from jobs.main_collection_data import create_spark_session, load_metadata, main
+from jobs.main_collection_data import main
 
 
 @pytest.mark.integration
@@ -78,28 +77,15 @@ class TestMainCollectionDataIntegration:
 
             assert main_collection_data is not None
 
-    def test_spark_session_configuration_integration(self):
+    def test_spark_session_configuration_integration(self, spark):
         """Test Spark session configuration for local testing."""
-        # Test that we can create a Spark session with appropriate config
-        session = create_spark_session("IntegrationTest")
+        assert spark.sparkContext.appName is not None
 
-        if session:  # Only test if session creation succeeded
-            # The actual app name might be different due to existing session
-            # Just verify we got a valid session
-            assert session.sparkContext.appName is not None
+        test_data = [{"col1": "value1", "col2": "value2"}]
+        df = spark.createDataFrame(test_data)
 
-            # Test basic DataFrame operations
-            test_data = [{"col1": "value1", "col2": "value2"}]
-            df = session.createDataFrame(test_data)
-
-            assert df.count() == 1
-            assert df.columns == ["col1", "col2"]
-
-            # Don't stop session as it might be shared
-        else:
-            # If session creation failed, that's okay for this integration test
-            # as it might be due to environment constraints
-            assert True
+        assert df.count() == 1
+        assert df.columns == ["col1", "col2"]
 
     def test_error_handling_integration(self):
         """Test error handling in the integration pipeline."""
