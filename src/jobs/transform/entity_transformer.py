@@ -13,8 +13,11 @@ from pyspark.sql.functions import (
     when,
 )
 from pyspark.sql.window import Window
+from pyspark.sql.types import TimestampType
+from datetime import datetime
 
 from jobs.utils.df_utils import show_df
+from jobs.utils.geometry_utils import calculate_centroid
 from jobs.utils.logger_config import get_logger, log_execution_time
 from jobs.utils.s3_dataset_typology import get_dataset_typology
 
@@ -23,8 +26,9 @@ logger = get_logger(__name__)
 
 class EntityTransformer:
     """
-    Transform Entity-Attribute-Value (EAV) format data into entity records.
+    Transform transformed data into entity records.
 
+    transformed data follows the EAV (Entity-Attribute-Value) model, where each row represents a single attribute of an entity.
     EAV Model:
     - entity: The main object or record (e.g., a property or organisation)
     - field: The attribute name (e.g., entry-date, geometry, organisation)
@@ -55,8 +59,8 @@ class EntityTransformer:
     }
 
     @log_execution_time
-    def transform(self, df, data_set, spark, organisation_df, env=None):
-        """Transform EAV data to entity format."""
+    def transform(self, df, dataset, organisation_df, env=None):
+        """Transform transformed data to entity format."""
         logger.info("EntityTransformer: Transforming data for Entity table")
         show_df(df, 20, env)
 
@@ -83,7 +87,7 @@ class EntityTransformer:
 
         # Step 4: Add typology from dataset specification
         logger.info("_add_typology: Step 4: Add typology from dataset specification")
-        pivot_df = self._add_typology(pivot_df, data_set, env)
+        pivot_df = self._add_typology(pivot_df, dataset, env)
         show_df(pivot_df, 5, env)
 
         # Step 5: Normalise column names (kebab-case to snake_case)
@@ -95,7 +99,7 @@ class EntityTransformer:
 
         # Step 6: Set dataset column and cleanup
         logger.info("_set_dataset: Step 6: Set dataset column and cleanup")
-        pivot_df = self._set_dataset(pivot_df, data_set)
+        pivot_df = self._set_dataset(pivot_df, dataset)
         show_df(pivot_df, 5, env)
 
         # Step 7: Join organisation data to get organisation_entity
@@ -133,6 +137,14 @@ class EntityTransformer:
 
         logger.info("EntityTransformer: Transformation complete")
         show_df(pivot_df, 5, env)
+
+        # add processing timestamp
+        pivot_df = pivot_df.withColumn(
+            "processed_timestamp",
+            lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()),
+        )
+
+        pivot_df = calculate_centroid(pivot_df)
         return pivot_df
 
     def _deduplicate_eav(self, df):

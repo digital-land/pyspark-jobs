@@ -1,5 +1,9 @@
 """Fact resource transformer for selecting and ordering fact resource columns."""
 
+from pyspark.sql.functions import lit
+from pyspark.sql.types import TimestampType
+from datetime import datetime
+
 from jobs.utils.logger_config import get_logger
 
 logger = get_logger(__name__)
@@ -9,7 +13,7 @@ class FactResourceTransformer:
     """Transform fact resource records by selecting required columns."""
 
     @staticmethod
-    def transform(df):
+    def transform(df, dataset):
         """
         Transform fact resource data.
 
@@ -21,7 +25,7 @@ class FactResourceTransformer:
             )
 
             # Select required columns in correct order
-            transf_df = df.select(
+            df = df.select(
                 "end_date",
                 "fact",
                 "entry_date",
@@ -31,10 +35,18 @@ class FactResourceTransformer:
                 "start_date",
             )
 
-            logger.info(
-                f"FactResourceTransformer: Transformation complete, columns: {transf_df.columns}"
+            # add dataset column
+            df = df.withColumn("dataset", lit(dataset))
+
+            df = df.withColumn(
+                "processed_timestamp",
+                lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()),
             )
-            return transf_df
+
+            logger.info(
+                f"FactResourceTransformer: Transformation complete, columns: {df.columns}"
+            )
+            return df
 
         except Exception as e:
             logger.error(f"FactResourceTransformer: Error occurred - {e}")

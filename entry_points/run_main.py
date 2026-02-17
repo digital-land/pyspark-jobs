@@ -1,7 +1,7 @@
 """
 run_main.py
 
-This script serves as the entry point for submitting PySpark jobs to Amazon EMR Serverless.
+This script serves as the entry point for submitting the assemble and load PySpark job to Amazon EMR Serverless.
 
 It is intentionally minimal and designed to be uploaded to S3 and referenced as the `entryPoint`
 in EMR Serverless job submissions. The actual job logic resides in the packaged `.whl` file,
@@ -23,11 +23,9 @@ This pattern ensures clean separation of concerns and supports scalable, maintai
 """
 
 import sys
-from types import SimpleNamespace
-
 import click
 
-from jobs import main_collection_data
+from jobs import job
 from jobs.utils.logger_config import get_logger, setup_logging
 
 # Setup basic logging for the entry point
@@ -82,17 +80,27 @@ logger = get_logger(__name__)
     default=None,
     help="Output path for parquet datasets (default: s3://{env}-parquet-datasets/)",
 )
-def run(load_type, dataset, collection, env, use_jdbc, collection_data_path, parquet_datasets_path):
+def run(
+    load_type,
+    dataset,
+    collection,
+    env,
+    use_jdbc,
+    collection_data_path,
+    parquet_datasets_path,
+):
     """ETL Process for Collection Data with Enhanced Import Options."""
-    main_collection_data.main(
+    job.assemble_and_load_entity(
         collection_data_path=collection_data_path or f"s3://{env}-collection-data/",
         parquet_datasets_path=parquet_datasets_path or f"s3://{env}-parquet-datasets/",
         env=env,
         load_type=load_type,
         dataset=dataset,
-        collection=collection,        
+        collection=collection,
         use_jdbc=use_jdbc,
     )
+
+
 if __name__ == "__main__":
     try:
         run()

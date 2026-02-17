@@ -90,15 +90,80 @@ class TestEntityTransformer:
         organisation_df = _build_organisation_df(spark)
 
         transformer = EntityTransformer()
-        result = transformer.transform(
-            df,
-            "test-dataset",
-            spark,
-            organisation_df,
-        )
+        result = transformer.transform(df, "test-dataset", organisation_df)
 
         result_row = result.collect()[0]
 
         assert "point" in result.columns
         assert result_row["point"] == "POINT(-0.1234 51.5678)"
         assert result_row["geometry"] is None
+
+    def test_transform_dataset_column_set(self, spark, mocker):
+        """The output entity DataFrame should have the dataset column
+        set to the dataset name passed to transform."""
+        mocker.patch(
+            "jobs.transform.entity_transformer.get_dataset_typology",
+            return_value="geography",
+        )
+
+        rows = [
+            {
+                "entity": "2002",
+                "field": "name",
+                "value": "Place B",
+                "entry_date": "2024-03-01",
+                "entry_number": "1",
+                "priority": "1",
+            },
+            {
+                "entity": "2002",
+                "field": "reference",
+                "value": "REF-B",
+                "entry_date": "2024-03-01",
+                "entry_number": "1",
+                "priority": "1",
+            },
+            {
+                "entity": "2002",
+                "field": "prefix",
+                "value": "test",
+                "entry_date": "2024-03-01",
+                "entry_number": "1",
+                "priority": "1",
+            },
+            {
+                "entity": "2002",
+                "field": "organisation",
+                "value": "local-authority:ABC",
+                "entry_date": "2024-03-01",
+                "entry_number": "1",
+                "priority": "1",
+            },
+            {
+                "entity": "2002",
+                "field": "entry-date",
+                "value": "2024-03-01",
+                "entry_date": "2024-03-01",
+                "entry_number": "1",
+                "priority": "1",
+            },
+            {
+                "entity": "2002",
+                "field": "start-date",
+                "value": "2024-01-01",
+                "entry_date": "2024-03-01",
+                "entry_number": "1",
+                "priority": "1",
+            },
+        ]
+
+        df = spark.createDataFrame(rows)
+        organisation_df = _build_organisation_df(spark)
+
+        transformer = EntityTransformer()
+        result = transformer.transform(df, "my-dataset", organisation_df)
+
+        result_row = result.collect()[0]
+
+        assert "dataset" in result.columns
+        assert result_row["dataset"] == "my-dataset"

@@ -16,7 +16,7 @@ Usage:
 """
 
 import logging
-from typing import Optional, Tuple
+from typing import Tuple
 
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
@@ -81,21 +81,32 @@ def parse_s3_path(s3_path: str) -> Tuple[str, str]:
     return bucket, prefix
 
 
-def validate_s3_path(s3_path: str) -> bool:
-    """
-    Validate S3 path format.
+# TODO duplicate fuinctions across files so have commented out one for now we may want to remove
+# def validate_s3_path(s3_path: str) -> bool:
+#     """
+#     Validate S3 path format.
 
-    Args:
-        s3_path (str): S3 path to validate
+#     Args:
+#         s3_path (str): S3 path to validate
 
-    Returns:
-        bool: True if valid, False otherwise
-    """
-    try:
-        parse_s3_path(s3_path)
-        return True
-    except S3UtilsError:
-        return False
+#     Returns:
+#         bool: True if valid, False otherwise
+#     """
+#     try:
+#         parse_s3_path(s3_path)
+#         return True
+#     except S3UtilsError:
+#         return False
+
+
+def validate_s3_path(s3_path):
+    """Validate S3 path format."""
+    if not s3_path or not isinstance(s3_path, str):
+        raise ValueError("S3 path must be a non-empty string")
+    if not s3_path.startswith("s3://"):
+        raise ValueError(f"Invalid S3 path format: {s3_path}. Must start with s3://")
+    if len(s3_path) <= 5:
+        raise ValueError(f"Invalid S3 path: {s3_path}. Path too short")
 
 
 def cleanup_dataset_data(output_path: str, dataset_name: str) -> dict:

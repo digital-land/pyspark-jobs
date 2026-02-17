@@ -7,7 +7,6 @@ and verify the CLI interface works correctly.
 
 import csv
 import os
-from unittest.mock import patch
 
 
 def test_missing_required_args_returns_nonzero(cli_runner, run_main_cmd):
@@ -98,55 +97,53 @@ def test_missing_collection_rejected(cli_runner, run_main_cmd):
     assert result.exit_code != 0
 
 
-def test_valid_args_calls_main(cli_runner, run_main_cmd):
-    """Valid arguments should pass CLI parsing and invoke the main function."""
-    with patch("jobs.main_collection_data.main") as mock_main:
-        result = cli_runner.invoke(
-            run_main_cmd,
-            [
-                "--load_type",
-                "full",
-                "--dataset",
-                "test-dataset",
-                "--collection",
-                "test-dataset",
-                "--env",
-                "local",
-            ],
-        )
-        assert (
-            result.exit_code == 0
-        ), f"CLI failed with valid arguments:\n{result.output}"
-        mock_main.assert_called_once()
-        kwargs = mock_main.call_args.kwargs
-        assert kwargs["load_type"] == "full"
-        assert kwargs["dataset"] == "test-dataset"
-        assert kwargs["collection"] == "test-dataset"
-        assert kwargs["env"] == "local"
-        assert kwargs["use_jdbc"] is False
-        assert kwargs["collection_data_path"] == "s3://local-collection-data/"
-        assert kwargs["parquet_datasets_path"] == "s3://local-parquet-datasets/"
+def test_valid_args_calls_job(cli_runner, run_main_cmd, mocker):
+    """Valid arguments should pass CLI parsing and invoke the job function."""
+    mock_job = mocker.patch("jobs.job.assemble_and_load_entity")
+    result = cli_runner.invoke(
+        run_main_cmd,
+        [
+            "--load_type",
+            "full",
+            "--dataset",
+            "test-dataset",
+            "--collection",
+            "test-dataset",
+            "--env",
+            "local",
+        ],
+    )
+    assert result.exit_code == 0, f"CLI failed with valid arguments:\n{result.output}"
+    mock_job.assert_called_once()
+    kwargs = mock_job.call_args.kwargs
+    assert kwargs["load_type"] == "full"
+    assert kwargs["dataset"] == "test-dataset"
+    assert kwargs["collection"] == "test-dataset"
+    assert kwargs["env"] == "local"
+    assert kwargs["use_jdbc"] is False
+    assert kwargs["collection_data_path"] == "s3://local-collection-data/"
+    assert kwargs["parquet_datasets_path"] == "s3://local-parquet-datasets/"
 
 
-def test_use_jdbc_flag(cli_runner, run_main_cmd):
-    """The --use-jdbc flag should be passed through to main."""
-    with patch("jobs.main_collection_data.main") as mock_main:
-        result = cli_runner.invoke(
-            run_main_cmd,
-            [
-                "--load_type",
-                "full",
-                "--dataset",
-                "test-dataset",
-                "--collection",
-                "test-dataset",
-                "--env",
-                "local",
-                "--use-jdbc",
-            ],
-        )
-        assert result.exit_code == 0
-        assert mock_main.call_args.kwargs["use_jdbc"] is True
+def test_use_jdbc_flag(cli_runner, run_main_cmd, mocker):
+    """The --use-jdbc flag should be passed through to the job function."""
+    mock_job = mocker.patch("jobs.job.assemble_and_load_entity")
+    result = cli_runner.invoke(
+        run_main_cmd,
+        [
+            "--load_type",
+            "full",
+            "--dataset",
+            "test-dataset",
+            "--collection",
+            "test-dataset",
+            "--env",
+            "local",
+            "--use-jdbc",
+        ],
+    )
+    assert result.exit_code == 0
+    assert mock_job.call_args.kwargs["use_jdbc"] is True
 
 
 # --------------- E2E test ---------------
@@ -285,86 +282,107 @@ def _write_csv(path, fieldnames, rows):
         writer.writerows(rows)
 
 
-def test_e2e_full_load_pipeline(cli_runner, run_main_cmd, spark, tmp_path):
+def test_e2e_full_load_pipeline(cli_runner, run_main_cmd, spark, tmp_path, mocker):
     """Run the full ETL pipeline end-to-end.
 
     Spark reads real CSV files from disk and all four transformers
     (Fact, FactResource, Entity, Issue) run on real DataFrames.
-    Only infrastructure I/O (S3 writes, Postgres, external HTTP) is mocked.
+    Parquet writes go to local disk for assertion.
+    Infrastructure I/O (S3 cleanup, consumer formats, Postgres) is mocked.
     """
     dataset = "test-dataset"
     base = str(tmp_path)
-    collection = os.path.join(base, f"{dataset}-collection")
+    collection_dir = os.path.join(base, f"{dataset}-collection")
+    parquet_base = os.path.join(base, "parquet-output/")
 
     # Write transformed CSV (source for fact, fact_resource, entity)
     _write_csv(
-        os.path.join(collection, "transformed", dataset, "data.csv"),
+        os.path.join(collection_dir, "transformed", dataset, "data.csv"),
         TRANSFORMED_COLUMNS,
         TRANSFORMED_ROWS,
     )
 
     # Write issue CSV
-    # issue_path = collection_data_path + "/issue/" + dataset + "/*.csv"
     _write_csv(
-        os.path.join(collection, "issue", dataset, "issue.csv"),
+        os.path.join(collection_dir, "issue", dataset, "issue.csv"),
         ISSUE_COLUMNS,
         ISSUE_ROWS,
     )
 
-    # Write organisation reference CSV at the path main() derives from collection_data_path:
-    # organisation_path = collection_data_path + "organisation-collection/dataset/organisation.csv"
+    # Write organisation reference CSV
     _write_csv(
         os.path.join(base, "organisation-collection", "dataset", "organisation.csv"),
         ["organisation", "entity"],
         ORGANISATION_ROWS,
     )
 
-    # Entity DF returned by mocked write_entity_formats_to_s3
-    # (main() later drops processed_timestamp/year/month/day before Postgres write)
-    entity_output_df = spark.createDataFrame(
-        [
-            {
-                "entity": "1001",
-                "name": "Test Property A",
-                "dataset": dataset,
-                "processed_timestamp": "2024-01-15T00:00:00",
-                "year": "2024",
-                "month": "01",
-                "day": "15",
-            },
-        ]
+    # --- Mock infrastructure I/O ---
+    mocker.patch("jobs.job.validate_s3_path")
+    mocker.patch(
+        "jobs.pipeline.cleanup_dataset_data",
+        return_value={"objects_found": 0, "objects_deleted": 0, "errors": []},
     )
-
-    with patch("jobs.main_collection_data.validate_s3_path"), patch(
-        "jobs.main_collection_data.write_entity_formats_to_s3",
-        return_value=entity_output_df,
-    ), patch("jobs.main_collection_data.write_parquet_to_s3") as mock_parquet, patch(
-        "jobs.main_collection_data.write_dataframe_to_postgres_jdbc"
-    ) as mock_pg, patch(
+    mocker.patch("jobs.job.create_spark_session", return_value=spark)
+    mocker.patch.object(spark, "stop")  # prevent finally block killing shared session
+    mock_pg = mocker.patch("jobs.pipeline.write_dataframe_to_postgres_jdbc")
+    mocker.patch(
         "jobs.transform.entity_transformer.get_dataset_typology",
         return_value="geography",
-    ):
+    )
 
-        result = cli_runner.invoke(
-            run_main_cmd,
-            [
-                "--load_type",
-                "full",
-                "--dataset",
-                dataset,
-                "--collection",
-                dataset,
-                "--env",
-                "local",
-                "--collection-data-path",
-                f"{base}/",
-            ],
-        )
+    # Mock consumer format section (CSV/JSON/GeoJSON writes use s3:// paths)
+    mock_consumer_df = mocker.MagicMock()
+    mock_consumer_df.columns = []
+    mock_consumer_df.count.return_value = 0
+    mock_consumer_df.toLocalIterator.return_value = iter([])
+    mock_consumer_df.repartition.return_value.toLocalIterator.return_value = iter([])
+    mocker.patch("jobs.pipeline.flatten_json_column", return_value=mock_consumer_df)
+    mocker.patch("jobs.pipeline.ensure_schema_fields", return_value=mock_consumer_df)
+    mocker.patch("jobs.pipeline.cleanup_temp_path")
+    mocker.patch("jobs.pipeline.s3_rename_and_move")
+    mocker.patch("jobs.pipeline.boto3")
 
-        assert (
-            result.exit_code == 0
-        ), f"E2E pipeline failed:\n{result.output}\n{result.exception}"
-        # 4 tables written to S3: fact, fact_resource, entity, issue
-        assert mock_parquet.call_count == 4
-        # entity written to Postgres
-        assert mock_pg.call_count == 1
+    result = cli_runner.invoke(
+        run_main_cmd,
+        [
+            "--load_type",
+            "full",
+            "--dataset",
+            dataset,
+            "--collection",
+            dataset,
+            "--env",
+            "local",
+            "--collection-data-path",
+            f"{base}/",
+            "--parquet-datasets-path",
+            parquet_base,
+        ],
+    )
+
+    assert (
+        result.exit_code == 0
+    ), f"E2E pipeline failed:\n{result.output}\n{result.exception}"
+
+    # Read back parquet outputs and verify transform correctness
+    expected_input_rows = len(TRANSFORMED_ROWS)
+    expected_unique_facts = len({r["fact"] for r in TRANSFORMED_ROWS})
+    expected_unique_entities = len({r["entity"] for r in TRANSFORMED_ROWS})
+
+    # Fact resource: no rows removed, same count as transformed input
+    fact_resource_df = spark.read.parquet(os.path.join(parquet_base, "fact_resource"))
+    assert fact_resource_df.count() == expected_input_rows
+
+    # Fact: one row per unique fact value after deduplication
+    fact_df = spark.read.parquet(os.path.join(parquet_base, "fact"))
+    assert fact_df.count() == expected_unique_facts
+
+    # Entity: one row per unique entity (pivoted from EAV to wide format)
+    entity_df = spark.read.parquet(os.path.join(parquet_base, "entity"))
+    assert entity_df.count() == expected_unique_entities
+
+    issue_df = spark.read.parquet(os.path.join(parquet_base, "issue"))
+    assert issue_df.count() > 0
+
+    # Entity written to Postgres
+    assert mock_pg.call_count == 1

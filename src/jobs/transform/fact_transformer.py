@@ -1,7 +1,9 @@
 """Fact transformer for deduplicating and transforming fact records."""
 
-from pyspark.sql.functions import row_number
+from pyspark.sql.functions import row_number, lit
 from pyspark.sql.window import Window
+from pyspark.sql.types import TimestampType
+from datetime import datetime
 
 from jobs.utils.logger_config import get_logger
 
@@ -17,7 +19,7 @@ class FactTransformer:
     """
 
     @staticmethod
-    def transform(df):
+    def transform(df, dataset):
         """
         Transform fact data with deduplication.
 
@@ -51,6 +53,13 @@ class FactTransformer:
                 "reference_entity",
                 "start_date",
                 "value",
+            )
+
+            transf_df = transf_df.withColumn("dataset", lit(dataset))
+
+            transf_df = transf_df.withColumn(
+                "processed_timestamp",
+                lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()),
             )
 
             logger.info(

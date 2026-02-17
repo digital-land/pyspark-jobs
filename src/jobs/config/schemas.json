@@ -1,5 +1,5 @@
 {
-  "schema_fact_res_fact_entity": [
+  "transformed": [
     "end_date",
     "entity",
     "fact",
@@ -12,7 +12,7 @@
     "start_date",
     "value"
   ],
-  "schema_issue": [
+  "issue": [
     "end_date",
     "entity",
     "entry_date",
