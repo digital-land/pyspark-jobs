@@ -1,9 +1,10 @@
 """Fact transformer for deduplicating and transforming fact records."""
 
-from pyspark.sql.functions import row_number, lit
-from pyspark.sql.window import Window
-from pyspark.sql.types import TimestampType
 from datetime import datetime
+
+from pyspark.sql.functions import lit, row_number
+from pyspark.sql.types import TimestampType
+from pyspark.sql.window import Window
 
 from jobs.utils.logger_config import get_logger
 

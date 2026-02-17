@@ -7,7 +7,7 @@ Pipeline implementations live in jobs.pipeline.
 
 import logging
 
-from jobs.pipeline import PipelineConfig, EntityPipeline, IssuePipeline
+from jobs.pipeline import EntityPipeline, IssuePipeline, PipelineConfig
 from jobs.utils.logger_config import initialize_logging
 from jobs.utils.s3_utils import validate_s3_path
 from jobs.utils.spark_session import create_spark_session

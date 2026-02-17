@@ -1,5 +1,6 @@
-from pyspark.sql import SparkSession
 import logging
+
+from pyspark.sql import SparkSession
 
 from jobs.utils.logger_config import log_execution_time
 

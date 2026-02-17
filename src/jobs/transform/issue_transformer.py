@@ -1,8 +1,9 @@
 """Issue transformer for adding date columns and selecting issue fields."""
 
+from datetime import datetime
+
 from pyspark.sql.functions import lit
 from pyspark.sql.types import TimestampType
-from datetime import datetime
 
 from jobs.utils.logger_config import get_logger
 

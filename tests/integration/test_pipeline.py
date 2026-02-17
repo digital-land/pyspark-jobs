@@ -10,7 +10,7 @@ import os
 
 import pytest
 
-from jobs.pipeline import PipelineConfig, EntityPipeline, IssuePipeline
+from jobs.pipeline import EntityPipeline, IssuePipeline, PipelineConfig
 
 # -- Test data ----------------------------------------------------------------
 

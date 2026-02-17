@@ -1,8 +1,9 @@
-import logging
 import json
-import boto3
-import pkgutil
+import logging
 import os
+import pkgutil
+
+import boto3
 
 from jobs.utils.logger_config import log_execution_time
 

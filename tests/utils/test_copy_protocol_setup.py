@@ -142,7 +142,8 @@ def show_s3_bucket_setup():
     print("\n🔧 S3 Bucket Setup for COPY Protocol")
     print("=" * 40)
 
-    print("""
+    print(
+        """
 For maximum performance with large datasets, you can configure the COPY protocol:
 
 1. **Create/Configure S3 Bucket:**
@@ -169,7 +170,8 @@ For maximum performance with large datasets, you can configure the COPY protocol
 
 💡 **Current Default:** The system now defaults to optimized JDBC for reliability.
    COPY protocol is available but requires manual configuration.
-""")
+"""
+    )
 
 
 def main():

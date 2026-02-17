@@ -1,8 +1,9 @@
 """Fact resource transformer for selecting and ordering fact resource columns."""
 
+from datetime import datetime
+
 from pyspark.sql.functions import lit
 from pyspark.sql.types import TimestampType
-from datetime import datetime
 
 from jobs.utils.logger_config import get_logger
 

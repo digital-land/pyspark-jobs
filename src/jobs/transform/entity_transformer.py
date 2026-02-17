@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pyspark.sql.functions import (
     col,
     desc,
@@ -12,9 +14,8 @@ from pyspark.sql.functions import (
     to_json,
     when,
 )
-from pyspark.sql.window import Window
 from pyspark.sql.types import TimestampType
-from datetime import datetime
+from pyspark.sql.window import Window
 
 from jobs.utils.df_utils import show_df
 from jobs.utils.geometry_utils import calculate_centroid
