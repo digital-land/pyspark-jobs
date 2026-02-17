@@ -1,9 +1,8 @@
 """Unit tests for s3_dataset_typology module."""
 
-import csv
 import os
 import sys
-from unittest.mock import Mock, mock_open, patch
+from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
 
 # Add src to path
@@ -426,8 +425,6 @@ extra - field,geography,Extra Field Dataset,Normal dataset,live,collection,extra
             line.encode("utf - 8") for line in csv_content.split("\n")
         ]
         mock_urlopen.return_value.__enter__.return_value = mock_response
-
-        datasets = load_datasets()
 
         # Test various edge cases
         assert get_dataset_typology("dataset - with - commas,in - name") == "geography"
