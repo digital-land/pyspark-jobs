@@ -81,24 +81,6 @@ def parse_s3_path(s3_path: str) -> Tuple[str, str]:
     return bucket, prefix
 
 
-# TODO duplicate fuinctions across files so have commented out one for now we may want to remove
-# def validate_s3_path(s3_path: str) -> bool:
-#     """
-#     Validate S3 path format.
-
-#     Args:
-#         s3_path (str): S3 path to validate
-
-#     Returns:
-#         bool: True if valid, False otherwise
-#     """
-#     try:
-#         parse_s3_path(s3_path)
-#         return True
-#     except S3UtilsError:
-#         return False
-
-
 def validate_s3_path(s3_path):
     """Validate S3 path format."""
     if not s3_path or not isinstance(s3_path, str):
