@@ -3,8 +3,6 @@ import os
 import sys
 import time
 
-import pytest
-
 # !/usr/bin/env python3
 """
 Standalone logging test script to diagnose logging configuration issues.
@@ -55,11 +53,6 @@ def test_import_logger_config():
     """Test importing the logger_config module."""
     print("\n=== Testing Logger Config Import ===")
     try:
-        from jobs.utils.logger_config import (
-            get_logger,
-            log_execution_time,
-            setup_logging,
-        )
 
         print("✅ Successfully imported logger_config module")
         return True
@@ -164,7 +157,6 @@ def test_execution_time_decorator():
         # Clear any existing handlers
 
         from jobs.utils.logger_config import (
-            get_logger,
             log_execution_time,
             setup_logging,
         )

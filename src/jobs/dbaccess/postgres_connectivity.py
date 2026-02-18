@@ -16,10 +16,8 @@
 # ================================================================================
 
 import json
-import os
 import time
 from datetime import datetime
-from pathlib import Path
 
 ENTITY_TABLE_NAME = "entity"
 
@@ -33,7 +31,6 @@ logger = get_logger(__name__)
 # Optional import for direct database connections (table creation)
 try:
     import pg8000
-    from pg8000.exceptions import DatabaseError
 except ImportError:
     pg8000 = None
     DatabaseError = Exception
@@ -161,9 +158,7 @@ def cleanup_old_staging_tables(conn_params, max_age_hours=24, max_retries=3):
     """
     import time
 
-    if pg8000:
-        from pg8000.exceptions import DatabaseError, InterfaceError
-    else:
+    if not pg8000:
         logger.warning("cleanup_old_staging_tables: pg8000 not available")
         return
 
@@ -181,9 +176,9 @@ def cleanup_old_staging_tables(conn_params, max_age_hours=24, max_retries=3):
 
             # Find old staging tables
             find_staging_query = f"""
-                SELECT tablename 
-                FROM pg_tables 
-                WHERE schemaname = 'public' 
+                SELECT tablename
+                FROM pg_tables
+                WHERE schemaname = 'public'
                   AND tablename LIKE '{dbtable_name}_staging_%'
                   AND tablename ~ '{dbtable_name}_staging_[a-f0-9]{{8}}_[0-9]{{8}}_[0-9]{{6}}$'
             """
@@ -299,10 +294,10 @@ def create_and_prepare_staging_table(conn_params, dataset_value, max_retries=3):
     import time
 
     if pg8000:
-        from pg8000.exceptions import DatabaseError, InterfaceError
+        from pg8000.exceptions import InterfaceError
     else:
         logger.warning("create_and_prepare_staging_table: pg8000 not available")
-        InterfaceError = DatabaseError = Exception
+        InterfaceError = Exception
 
     # Generate unique staging table name based on actual target table
     import hashlib
@@ -485,10 +480,10 @@ def commit_staging_to_production(
     import time
 
     if pg8000:
-        from pg8000.exceptions import DatabaseError, InterfaceError
+        from pg8000.exceptions import InterfaceError
     else:
         logger.warning("commit_staging_to_production: pg8000 not available")
-        InterfaceError = DatabaseError = Exception
+        InterfaceError = Exception
 
     conn = None
     cur = None
@@ -839,10 +834,10 @@ def create_table(conn_params, dataset_value, max_retries=5):
                             batch_start_time = time.time()
 
                             delete_batch_query = f"""
-                                DELETE FROM {dbtable_name} 
+                                DELETE FROM {dbtable_name}
                                 WHERE ctid IN (
-                                    SELECT ctid FROM {dbtable_name} 
-                                    WHERE dataset = %s 
+                                    SELECT ctid FROM {dbtable_name}
+                                    WHERE dataset = %s
                                     LIMIT {batch_size}
                                 );
                             """
@@ -1165,10 +1160,10 @@ def calculate_centroid_wkt(conn_params, target_table=None, max_retries=3):
             sql_update_pos = f"""
             UPDATE {table_name} t
             SET point = ST_PointOnSurface(
-                CASE 
-                    WHEN NOT ST_IsValid(t.geometry) 
-                    THEN ST_MakeValid(t.geometry) 
-                    ELSE t.geometry 
+                CASE
+                    WHEN NOT ST_IsValid(t.geometry)
+                    THEN ST_MakeValid(t.geometry)
+                    ELSE t.geometry
                 END
             )::geometry(Point, 4326)
             WHERE point IS NULL AND geometry IS NOT NULL;
