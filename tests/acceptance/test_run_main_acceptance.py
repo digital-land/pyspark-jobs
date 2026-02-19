@@ -24,7 +24,8 @@ def test_help_flag_returns_zero(cli_runner, run_main_cmd):
     assert "--dataset" in result.output
     assert "--collection" in result.output
     assert "--env" in result.output
-    assert "--use-jdbc" in result.output
+    assert "--collection-data-path" in result.output
+    assert "--database-url" in result.output
 
 
 def test_invalid_load_type_rejected(cli_runner, run_main_cmd):
@@ -120,13 +121,13 @@ def test_valid_args_calls_job(cli_runner, run_main_cmd, mocker):
     assert kwargs["dataset"] == "test-dataset"
     assert kwargs["collection"] == "test-dataset"
     assert kwargs["env"] == "local"
-    assert kwargs["use_jdbc"] is False
     assert kwargs["collection_data_path"] == "s3://local-collection-data/"
     assert kwargs["parquet_datasets_path"] == "s3://local-parquet-datasets/"
+    assert kwargs["database_url"] is None
 
 
-def test_use_jdbc_flag(cli_runner, run_main_cmd, mocker):
-    """The --use-jdbc flag should be passed through to the job function."""
+def test_database_url_passed_through(cli_runner, run_main_cmd, mocker):
+    """--database-url value should be forwarded to the job function."""
     mock_job = mocker.patch("jobs.job.assemble_and_load_entity")
     result = cli_runner.invoke(
         run_main_cmd,
@@ -139,11 +140,13 @@ def test_use_jdbc_flag(cli_runner, run_main_cmd, mocker):
             "test-dataset",
             "--env",
             "local",
-            "--use-jdbc",
+            "--database-url",
+            "postgresql://user:pass@host:5432/db",
         ],
     )
     assert result.exit_code == 0
-    assert mock_job.call_args.kwargs["use_jdbc"] is True
+    kwargs = mock_job.call_args.kwargs
+    assert kwargs["database_url"] == "postgresql://user:pass@host:5432/db"
 
 
 # --------------- E2E test ---------------
@@ -323,6 +326,16 @@ def test_e2e_full_load_pipeline(cli_runner, run_main_cmd, spark, tmp_path, mocke
         return_value={"objects_found": 0, "objects_deleted": 0, "errors": []},
     )
     mocker.patch("jobs.job.create_spark_session", return_value=spark)
+    mocker.patch(
+        "jobs.job.get_aws_secret",
+        return_value={
+            "database": "testdb",
+            "host": "localhost",
+            "port": 5432,
+            "user": "testuser",
+            "password": "testpass",
+        },
+    )
     mocker.patch.object(spark, "stop")  # prevent finally block killing shared session
     mock_pg = mocker.patch("jobs.pipeline.write_dataframe_to_postgres_jdbc")
     mocker.patch(

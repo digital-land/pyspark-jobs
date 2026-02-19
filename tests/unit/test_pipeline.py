@@ -18,6 +18,7 @@ def config(mocker):
         env="local",
         collection_data_path="/tmp/",
         parquet_datasets_path="/tmp/",
+        database_url="postgresql://user:pass@localhost:5432/testdb",
     )
 
 
@@ -114,11 +115,11 @@ class TestBasePipeline:
                 self.captured_kwargs = kwargs
 
         pipeline = CapturePipeline(config)
-        pipeline.run(collection="trees", use_jdbc=True)
+        pipeline.run(collection="trees", some_flag=True)
 
         assert pipeline.captured_kwargs == {
             "collection": "trees",
-            "use_jdbc": True,
+            "some_flag": True,
         }
 
     def test_run_preserves_custom_result_keys_from_execute(self, config):

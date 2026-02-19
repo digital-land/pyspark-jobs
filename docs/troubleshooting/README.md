@@ -2,26 +2,9 @@
 
 This directory contains troubleshooting guides and solutions for common issues encountered in the PySpark jobs project.
 
-## 📚 Available Guides
+## Guides
 
-### 🔐 **AWS Services Issues**
-- **[AWS Secrets Manager Troubleshooting](./TROUBLESHOOTING_SECRETS_MANAGER.md)**
-  - Resolving `DataNotFoundError: Unable to load data for endpoints`
-  - EMR-compatible secret retrieval strategies
-  - Environment variable fallback methods
-
-### 🗑️ **Deprecated Features**
-- **[COPY Protocol Removal](./COPY_PROTOCOL_REMOVAL.md)**
-  - Why COPY protocol was removed from PostgreSQL connectivity
-  - What replaced it and performance implications
-  - Migration guide and current best practices
-
-## 🎯 Quick Navigation
-
-| Problem Type | Start Here |
-|--------------|------------|
-| **Secrets Manager Errors** | [AWS Secrets Manager Troubleshooting](./TROUBLESHOOTING_SECRETS_MANAGER.md) |
-| **PostgreSQL COPY Issues** | [COPY Protocol Removal](./COPY_PROTOCOL_REMOVAL.md) |
+- **[AWS Secrets Manager Troubleshooting](./TROUBLESHOOTING_SECRETS_MANAGER.md)** — Resolving `DataNotFoundError`, EMR-compatible secret retrieval, environment variable fallbacks
 
 ## 🚨 Most Common Issues
 
@@ -31,19 +14,13 @@ botocore.exceptions.DataNotFoundError: Unable to load data for: endpoints
 ```
 **Quick Fix:** Use `get_secret_emr_compatible()` function with built-in fallbacks.
 
-### 2. **PostgreSQL COPY Protocol Errors**
-```
-ERROR: COPY to or from an external program is not supported
-```
-**Quick Fix:** This is expected with Aurora PostgreSQL. The system automatically uses optimized JDBC instead.
-
-### 3. **JDBC Driver Not Found**
+### 2. **JDBC Driver Not Found**
 ```
 java.lang.ClassNotFoundException: org.postgresql.Driver
 ```
 **Quick Fix:** Verify `--jars` parameter includes PostgreSQL JDBC driver in EMR configuration.
 
-### 4. **Import Errors in EMR**
+### 3. **Import Errors in EMR**
 ```
 ModuleNotFoundError: No module named 'jobs'
 ```
@@ -112,14 +89,11 @@ setup_logging(log_level="DEBUG", environment="development")
 
 ### Local Testing
 ```bash
-# Check environment setup
-./tests/utils/simple_test
-
 # Verify dependencies
-./tests/utils/test_runner --check-deps
-
-# Test database connectivity
 python -c "import pg8000; print('pg8000 available')"
+
+# Run tests
+make test
 ```
 
 ### EMR Debugging

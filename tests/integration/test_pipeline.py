@@ -216,9 +216,10 @@ class TestEntityPipeline:
             env="local",
             collection_data_path=f"{base}/",
             parquet_datasets_path=parquet_base,
+            database_url="postgresql://user:pass@localhost:5432/testdb",
         )
 
-        EntityPipeline(config).run(collection=collection, use_jdbc=False)
+        EntityPipeline(config).run(collection=collection)
 
         fact_resource_df = spark.read.parquet(
             os.path.join(parquet_base, "fact_resource")
@@ -284,9 +285,10 @@ class TestEntityPipeline:
             env="local",
             collection_data_path=f"{base}/",
             parquet_datasets_path=parquet_base,
+            database_url="postgresql://user:pass@localhost:5432/testdb",
         )
 
-        EntityPipeline(config).run(collection=collection, use_jdbc=False)
+        EntityPipeline(config).run(collection=collection)
 
         fact_df = spark.read.parquet(os.path.join(parquet_base, "fact"))
         expected_unique_facts = len({r["fact"] for r in TRANSFORMED_ROWS})
@@ -351,9 +353,10 @@ class TestEntityPipeline:
             env="local",
             collection_data_path=f"{base}/",
             parquet_datasets_path=parquet_base,
+            database_url="postgresql://user:pass@localhost:5432/testdb",
         )
 
-        EntityPipeline(config).run(collection=collection, use_jdbc=False)
+        EntityPipeline(config).run(collection=collection)
 
         entity_df = spark.read.parquet(os.path.join(parquet_base, "entity"))
         expected_unique_entities = len({r["entity"] for r in TRANSFORMED_ROWS})
@@ -418,9 +421,10 @@ class TestEntityPipeline:
             env="local",
             collection_data_path=f"{base}/",
             parquet_datasets_path=parquet_base,
+            database_url="postgresql://user:pass@localhost:5432/testdb",
         )
 
-        EntityPipeline(config).run(collection=collection, use_jdbc=False)
+        EntityPipeline(config).run(collection=collection)
 
         assert mock_pg.call_count == 1
 
@@ -450,6 +454,7 @@ class TestEntityPipeline:
             env="local",
             collection_data_path=f"{base}/",
             parquet_datasets_path=os.path.join(base, "parquet-output/"),
+            database_url="postgresql://user:pass@localhost:5432/testdb",
         )
 
         pipeline = EntityPipeline(config)
@@ -492,6 +497,7 @@ class TestIssuePipeline:
             env="local",
             collection_data_path=f"{base}/",
             parquet_datasets_path=parquet_base,
+            database_url="postgresql://user:pass@localhost:5432/testdb",
         )
 
         pipeline = IssuePipeline(config)
@@ -513,6 +519,7 @@ class TestIssuePipeline:
             env="local",
             collection_data_path=f"{base}/",
             parquet_datasets_path=os.path.join(base, "parquet-output/"),
+            database_url="postgresql://user:pass@localhost:5432/testdb",
         )
 
         pipeline = IssuePipeline(config)

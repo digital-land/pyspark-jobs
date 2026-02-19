@@ -47,6 +47,7 @@ class PipelineConfig:
     env: str
     collection_data_path: str
     parquet_datasets_path: str
+    database_url: str = ""
 
 
 class BasePipeline(ABC):
@@ -110,7 +111,7 @@ class EntityPipeline(BasePipeline):
     - individual dataset data to S3 (CSV, JSON, GeoJSON consumer formats)
     """
 
-    def execute(self, collection, use_jdbc=False):
+    def execute(self, collection):
         spark = self.config.spark
         dataset = self.config.dataset
         env = self.config.env
@@ -355,15 +356,14 @@ class EntityPipeline(BasePipeline):
         dataset = self.config.dataset
         env = self.config.env
 
-        if "json" in entity_df.columns:
-            entity_df = entity_df.drop("json")
-
         if entity_df is not None and not entity_df.rdd.isEmpty():
             show_df(entity_df, 5, env)
             entity_pg_df = entity_df.drop("processed_timestamp", "year", "month", "day")
             logger.info("EntityPipeline: Writing entity data to Postgres")
             show_df(entity_pg_df, 5, env)
-            write_dataframe_to_postgres_jdbc(entity_pg_df, "entity", dataset, env)
+            write_dataframe_to_postgres_jdbc(
+                entity_pg_df, "entity", dataset, self.config.database_url
+            )
         else:
             logger.info("EntityPipeline: entity_df is empty, skipping Postgres write")
 

@@ -73,12 +73,12 @@ export LOG_CONSOLE=true
 
 **Development Format** (includes line numbers):
 ```
-[2023-12-07 10:30:45] INFO - jobs.main_collection_data:123 - create_spark_session() - Spark session created
+[2023-12-07 10:30:45] INFO - jobs.job:123 - run() - Processing started
 ```
 
 **Production Format** (cleaner, no line numbers):
 ```
-[2023-12-07 10:30:45] INFO - jobs.main_collection_data - Spark session created
+[2023-12-07 10:30:45] INFO - jobs.job - Processing started
 ```
 
 ## Usage Examples
@@ -183,7 +183,7 @@ logger.info("Script started")
 
 ## Integration with Existing Code
 
-### Updating main_collection_data.py
+### Migrating from Manual Logging
 
 **Before:**
 ```python
@@ -204,17 +204,11 @@ from jobs.utils.logger_config import setup_logging, get_logger, log_execution_ti
 
 setup_logging(
     log_level=os.getenv("LOG_LEVEL", "INFO"),
-    enable_file=True,
-    log_file="logs/emr_transform_job.log",
-    enable_s3=True,
-    s3_bucket="arn:aws:s3:::development-emr-serverless-pyspark-jobs-logs",
-    s3_key_prefix="pyspark-jobs",
     environment=os.getenv("ENVIRONMENT", "development")
 )
 
 logger = get_logger(__name__)
 
-# Add execution time tracking to key functions
 @log_execution_time
 def main(args):
     # ... function code
@@ -266,19 +260,11 @@ setup_logging(
 ## File Structure
 
 ```
-logs/
-├── emr_transform_job.log      # Main ETL job logs
-├── emr_transform_job.log.1    # Rotated log files
-├── emr_transform_job.log.2
-└── ...
-
-src/utils/
-├── logger_config.py           # Main logging module
-└── ...
+src/jobs/utils/
+└── logger_config.py           # Main logging module
 
 examples/
-├── logging_usage_example.py   # Usage examples
-└── ...
+└── logging_usage_example.py   # Usage examples
 ```
 
 ## Troubleshooting

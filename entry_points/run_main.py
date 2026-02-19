@@ -61,12 +61,6 @@ logger = get_logger(__name__)
     help="Environment (e.g., development, staging, production, local)",
 )
 @click.option(
-    "--use-jdbc",
-    is_flag=True,
-    default=False,
-    help="Use JDBC import instead of Aurora S3 import (default: S3 import)",
-)
-@click.option(
     "--collection-data-path",
     required=False,
     type=str,
@@ -80,14 +74,21 @@ logger = get_logger(__name__)
     default=None,
     help="Output path for parquet datasets (default: s3://{env}-parquet-datasets/)",
 )
+@click.option(
+    "--database-url",
+    required=False,
+    type=str,
+    default=None,
+    help="PostgreSQL database URL (default: resolved from AWS Secrets Manager)",
+)
 def run(
     load_type,
     dataset,
     collection,
     env,
-    use_jdbc,
     collection_data_path,
     parquet_datasets_path,
+    database_url,
 ):
     """ETL Process for Collection Data with Enhanced Import Options."""
     job.assemble_and_load_entity(
@@ -97,7 +98,7 @@ def run(
         load_type=load_type,
         dataset=dataset,
         collection=collection,
-        use_jdbc=use_jdbc,
+        database_url=database_url,
     )
 
 

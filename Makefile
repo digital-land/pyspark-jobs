@@ -108,10 +108,10 @@ build: check-env ## Build the package
 	python setup.py sdist bdist_wheel
 
 package: ## Create AWS deployment package
-	./build_aws_package.sh
+	./bin/build_aws_package.sh
 
 upload-s3: package ## Build and upload package to S3
-	./build_aws_package.sh --upload
+	./bin/build_aws_package.sh --upload
 
 # -- Clean -------------------------------------------------------------------
 clean-cache: ## Clean Python cache files

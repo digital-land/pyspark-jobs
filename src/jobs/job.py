@@ -7,7 +7,9 @@ Pipeline implementations live in jobs.pipeline.
 
 import logging
 
+from jobs.dbaccess.postgres_connectivity import get_aws_secret
 from jobs.pipeline import EntityPipeline, IssuePipeline, PipelineConfig
+from jobs.utils.db_url import build_database_url
 from jobs.utils.logger_config import initialize_logging
 from jobs.utils.s3_utils import validate_s3_path
 from jobs.utils.spark_session import create_spark_session
@@ -22,7 +24,7 @@ def assemble_and_load_entity(
     load_type,
     dataset,
     collection,
-    use_jdbc=False,
+    database_url=None,
 ):
     """
     Orchestrate the ETL pipelines for entity and issue data.
@@ -59,16 +61,25 @@ def assemble_and_load_entity(
         if load_type != "full":
             raise ValueError(f"Invalid load type: {load_type}")
 
+        # Resolve database URL: use provided URL or fall back to Secrets Manager
+        if database_url is None:
+            logger.info("No database_url provided, resolving from AWS Secrets Manager")
+            conn_params = get_aws_secret(env)
+            database_url = build_database_url(conn_params)
+        else:
+            logger.info("Using provided database_url")
+
         config = PipelineConfig(
             spark=spark,
             dataset=dataset,
             env=env,
             collection_data_path=collection_data_path,
             parquet_datasets_path=parquet_datasets_path,
+            database_url=database_url,
         )
 
         entity_pipeline = EntityPipeline(config)
-        entity_pipeline.run(collection=collection, use_jdbc=use_jdbc)
+        entity_pipeline.run(collection=collection)
 
         issue_pipeline = IssuePipeline(config)
         issue_pipeline.run(collection=collection)

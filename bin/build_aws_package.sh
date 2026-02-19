@@ -3,13 +3,13 @@
 # Build AWS Package Script for PySpark Jobs
 # This script creates all necessary files for AWS EMR Serverless deployment
 # 
-# Usage: ./build_aws_package.sh [--upload]
+# Usage: ./bin/build_aws_package.sh [--upload]
 #   --upload: Optional flag to automatically upload to S3
 
 set -e  # Exit on any error
 
 # Configuration
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="$PROJECT_DIR/build_output"
 S3_BUCKET="development-emr-serverless-pyspark-jobs-codepackage"
 PYTHON_VERSION="python3"
