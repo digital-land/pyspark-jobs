@@ -20,7 +20,6 @@ def test_help_flag_returns_zero(cli_runner, run_main_cmd):
     """Running with --help should succeed and display usage info."""
     result = cli_runner.invoke(run_main_cmd, ["--help"])
     assert result.exit_code == 0
-    assert "--load_type" in result.output
     assert "--dataset" in result.output
     assert "--collection" in result.output
     assert "--env" in result.output
@@ -28,32 +27,11 @@ def test_help_flag_returns_zero(cli_runner, run_main_cmd):
     assert "--database-url" in result.output
 
 
-def test_invalid_load_type_rejected(cli_runner, run_main_cmd):
-    """An invalid load_type should be rejected by click's Choice validation."""
-    result = cli_runner.invoke(
-        run_main_cmd,
-        [
-            "--load_type",
-            "invalid",
-            "--dataset",
-            "test-dataset",
-            "--collection",
-            "test-dataset",
-            "--env",
-            "local",
-        ],
-    )
-    assert result.exit_code != 0
-    assert "Invalid value" in result.output
-
-
 def test_invalid_env_rejected(cli_runner, run_main_cmd):
     """An invalid env value should be rejected by click's Choice validation."""
     result = cli_runner.invoke(
         run_main_cmd,
         [
-            "--load_type",
-            "full",
             "--dataset",
             "test-dataset",
             "--collection",
@@ -71,8 +49,6 @@ def test_missing_data_set_rejected(cli_runner, run_main_cmd):
     result = cli_runner.invoke(
         run_main_cmd,
         [
-            "--load_type",
-            "full",
             "--collection",
             "test-dataset",
             "--env",
@@ -87,8 +63,6 @@ def test_missing_collection_rejected(cli_runner, run_main_cmd):
     result = cli_runner.invoke(
         run_main_cmd,
         [
-            "--load_type",
-            "full",
             "--dataset",
             "test-dataset",
             "--env",
@@ -104,8 +78,6 @@ def test_valid_args_calls_job(cli_runner, run_main_cmd, mocker):
     result = cli_runner.invoke(
         run_main_cmd,
         [
-            "--load_type",
-            "full",
             "--dataset",
             "test-dataset",
             "--collection",
@@ -117,7 +89,6 @@ def test_valid_args_calls_job(cli_runner, run_main_cmd, mocker):
     assert result.exit_code == 0, f"CLI failed with valid arguments:\n{result.output}"
     mock_job.assert_called_once()
     kwargs = mock_job.call_args.kwargs
-    assert kwargs["load_type"] == "full"
     assert kwargs["dataset"] == "test-dataset"
     assert kwargs["collection"] == "test-dataset"
     assert kwargs["env"] == "local"
@@ -132,8 +103,6 @@ def test_database_url_passed_through(cli_runner, run_main_cmd, mocker):
     result = cli_runner.invoke(
         run_main_cmd,
         [
-            "--load_type",
-            "full",
             "--dataset",
             "test-dataset",
             "--collection",
@@ -358,8 +327,6 @@ def test_e2e_full_load_pipeline(cli_runner, run_main_cmd, spark, tmp_path, mocke
     result = cli_runner.invoke(
         run_main_cmd,
         [
-            "--load_type",
-            "full",
             "--dataset",
             dataset,
             "--collection",

@@ -8,8 +8,8 @@ in EMR Serverless job submissions. The actual job logic resides in the packaged 
 which is included via the `--py-files` parameter.
 
 How it works:
-- Imports the `main()` function from the packaged job module (e.g., jobs.main_collection_data).
-- Calls `main()` to execute the PySpark job logic.
+- Imports `assemble_and_load_entity` from `jobs.job` and calls it with the CLI arguments.
+- Executes the full ETL pipeline (EntityPipeline + IssuePipeline).
 - Keeps the entry script lightweight and decoupled from the job logic for modularity and reuse.
 
 Usage:
@@ -34,12 +34,6 @@ logger = get_logger(__name__)
 
 
 @click.command()
-@click.option(
-    "--load_type",
-    required=True,
-    type=click.Choice(["full", "delta", "sample"], case_sensitive=False),
-    help="Type of load operation (e.g., full, delta, sample)",
-)
 @click.option(
     "--dataset",
     required=True,
@@ -82,7 +76,6 @@ logger = get_logger(__name__)
     help="PostgreSQL database URL (default: resolved from AWS Secrets Manager)",
 )
 def run(
-    load_type,
     dataset,
     collection,
     env,
@@ -90,12 +83,11 @@ def run(
     parquet_datasets_path,
     database_url,
 ):
-    """ETL Process for Collection Data with Enhanced Import Options."""
+    """ETL Process for Collection Data."""
     job.assemble_and_load_entity(
         collection_data_path=collection_data_path or f"s3://{env}-collection-data/",
         parquet_datasets_path=parquet_datasets_path or f"s3://{env}-parquet-datasets/",
         env=env,
-        load_type=load_type,
         dataset=dataset,
         collection=collection,
         database_url=database_url,

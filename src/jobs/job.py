@@ -21,7 +21,6 @@ def assemble_and_load_entity(
     collection_data_path,
     parquet_datasets_path,
     env,
-    load_type,
     dataset,
     collection,
     database_url=None,
@@ -34,13 +33,6 @@ def assemble_and_load_entity(
     """
     initialize_logging(env)
 
-    # Validate load_type
-    allowed_load_types = ["full", "delta", "sample"]
-    if load_type not in allowed_load_types:
-        raise ValueError(
-            f"Invalid load_type: {load_type}. Must be one of {allowed_load_types}"
-        )
-
     # Validate environment
     allowed_envs = ["development", "staging", "production", "local"]
     if env not in allowed_envs:
@@ -48,18 +40,13 @@ def assemble_and_load_entity(
 
     validate_s3_path(collection_data_path)
 
-    logger.info(
-        f"Starting ETL pipelines for dataset {dataset}, " f"load_type {load_type}"
-    )
+    logger.info(f"Starting ETL pipelines for dataset {dataset}")
 
     spark = None
     try:
         spark = create_spark_session()
         if spark is None:
             raise RuntimeError("Failed to create Spark session")
-
-        if load_type != "full":
-            raise ValueError(f"Invalid load type: {load_type}")
 
         # Resolve database URL: use provided URL or fall back to Secrets Manager
         if database_url is None:
