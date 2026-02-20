@@ -224,7 +224,7 @@ class EntityPipeline(BasePipeline):
             temp_output_path
         )
 
-        s3_rename_and_move(env, dataset, "csv", bucket_name=f"{env}-collection-data")
+        s3_rename_and_move(dataset, "csv", f"{env}-collection-data")
 
         # Write JSON output to S3
         json_buffer = '{"entities":['
