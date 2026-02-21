@@ -198,6 +198,21 @@ def quick_setup(
     return get_logger(__name__)
 
 
+def initialize_logging(env):
+    try:
+        setup_logging(
+            log_level=os.getenv("LOG_LEVEL", "INFO"),
+            log_file=os.getenv("LOG_FILE") if os.getenv("LOG_FILE") else None,
+            environment=env,
+        )
+    except AttributeError as e:
+        print(f"Error: Missing required argument attribute: {e}")
+        raise
+    except Exception as e:
+        print(f"Error initializing logging: {e}")
+        raise
+
+
 if __name__ == "__main__":
     # Example usage and testing
     print("Testing simplified logging configuration...")

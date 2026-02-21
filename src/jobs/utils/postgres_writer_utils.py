@@ -1,15 +1,8 @@
 from pyspark.sql.functions import col, lit, to_json
 
-from jobs.dbaccess.postgres_connectivity import (
-    ENTITY_TABLE_NAME,
-    calculate_centroid_wkt,
-    commit_staging_to_production,
-    create_and_prepare_staging_table,
-    get_aws_secret,
-    write_to_postgres,
-)
+from jobs.utils.db_url import parse_database_url
 from jobs.utils.df_utils import show_df
-from jobs.utils.logger_config import get_logger, log_execution_time
+from jobs.utils.logger_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -79,9 +72,13 @@ def _ensure_required_columns(df, required_cols, defaults=None, logger=None):
         if c in existing:
             df = df.withColumn(c, col(c).cast(DateType()))
 
-    # If json/geojson are structs, serialise to JSON strings for JDBC; later cast to JSONB in SQL
+    # If json/geojson are structs/arrays/maps, serialise to JSON strings for JDBC
+    from pyspark.sql.types import ArrayType, MapType, StructType
+
     for c in ["json", "geojson"]:
-        if c in existing:
+        if c in existing and isinstance(
+            df.schema[c].dataType, (StructType, ArrayType, MapType)
+        ):
             df = df.withColumn(c, to_json(col(c)))
 
     # Ensure text-like fields are strings
@@ -92,10 +89,16 @@ def _ensure_required_columns(df, required_cols, defaults=None, logger=None):
     return df
 
 
-def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
+def write_dataframe_to_postgres_jdbc(df, table_name, data_set, database_url):
     """
     Write DataFrame to PostgreSQL using staging table and atomic transaction with retry logic.
     JDBC write and transaction block are retried on transient failures.
+
+    Args:
+        df: Spark DataFrame to write
+        table_name: Target table name
+        data_set: Dataset identifier
+        database_url: PostgreSQL connection URL (postgresql://user:pass@host:port/dbname)
     """
     import hashlib
     import time
@@ -105,9 +108,9 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, env):
     from pyspark.sql.types import LongType
 
     logger.info("write_dataframe_to_postgres_jdbc: Show df:")
-    show_df(df, 5, env)
+    show_df(df, 5, "local")
 
-    conn_params = get_aws_secret(env)
+    conn_params = parse_database_url(database_url)
     row_count = df.count()
     logger.info(
         f"write_dataframe_to_postgres_jdbc: Writing {row_count:,} rows for {data_set}"

@@ -1,94 +1,31 @@
 # Database Documentation
 
-This directory contains all documentation related to database connectivity, configuration, and performance optimization for PostgreSQL and Aurora PostgreSQL.
+## Guides
 
-## 📚 Available Guides
+- [Database Connectivity](./DATABASE_CONNECTIVITY.md) — Why we use pg8000 instead of psycopg2-binary for EMR compatibility
+- [PostgreSQL JDBC Configuration](./POSTGRESQL_JDBC_CONFIGURATION.md) — Setting up JDBC drivers for EMR Serverless
 
-### 🚀 **Performance & Optimization**
-- **[Staging Table Pattern](./STAGING_TABLE_PATTERN.md)** ⭐ **NEW**
-  - Reduce lock contention by 96% for high-load tables
-  - Write to temp table first, then atomic commit
-  - Perfect for entity table under constant query load
-  - **[Quick Reference](./STAGING_TABLE_QUICK_REFERENCE.md)** - TL;DR version
-
-- **[CSV S3 Import Guide](./CSV_S3_IMPORT_GUIDE.md)**
-  - Aurora S3 import with automatic CSV staging and cleanup
-  - Up to 80% faster than JDBC for large datasets
-  - Simple one-flag control with automatic fallback
-  
-- **[PostgreSQL Performance Optimization](./POSTGRESQL_PERFORMANCE_OPTIMIZATION.md)** 
-  - Complete guide with 3-10x speedup techniques
-  - Optimized JDBC, COPY protocol, async batching
-  - Automatic performance recommendations
-  
-- **[Aurora PostgreSQL Optimization](./AURORA_POSTGRESQL_OPTIMIZATION.md)**
-  - AWS Aurora-specific optimizations
-  - Aurora vs standard PostgreSQL differences
-  - S3 import capabilities and setup
-
-### 🔧 **Connectivity & Configuration**
-- **[Table Name Configuration](./TABLE_NAME_CONFIG.md)** ⚠️ **TEMPORARY CONFIG**
-  - Single-line change to switch between `pyspark_entity` and `entity` tables
-  - Easy revert when infra issue resolved
-  - Centralized configuration for all database operations
-
-- **[Database Connectivity](./DATABASE_CONNECTIVITY.md)**
-  - Why we use pg8000 instead of psycopg2-binary
-  - EMR Serverless compatibility requirements
-  - Cross-platform deployment considerations
-
-- **[PostgreSQL JDBC Configuration](./POSTGRESQL_JDBC_CONFIGURATION.md)**
-  - Setting up JDBC drivers for EMR Serverless 7.9.0
-  - Maven Central vs S3-hosted JARs
-  - Production deployment strategies
-
-### 🔍 **Troubleshooting & Legacy**
-- **[Fix psycopg2 Issues](./FIX_PSYCOPG2.md)**
-  - Historical context and migration away from psycopg2-binary
-  - Platform compatibility solutions (deprecated)
-  - Why pg8000 is the current solution
-
-## 🎯 Quick Navigation
-
-| Need | Start Here |
-|------|------------|
-| **⚠️ Change Table Name** | [Table Name Configuration](./TABLE_NAME_CONFIG.md) |
-| **🔥 Reduce Lock Contention** | [Staging Table Quick Reference](./STAGING_TABLE_QUICK_REFERENCE.md) |
-| **⚡ Faster Aurora Imports** | [CSV S3 Import Guide](./CSV_S3_IMPORT_GUIDE.md) |
-| **Performance Issues** | [PostgreSQL Performance Optimization](./POSTGRESQL_PERFORMANCE_OPTIMIZATION.md) |
-| **Aurora Setup** | [Aurora PostgreSQL Optimization](./AURORA_POSTGRESQL_OPTIMIZATION.md) |
-| **Connection Problems** | [Database Connectivity](./DATABASE_CONNECTIVITY.md) |
-| **JDBC Driver Issues** | [PostgreSQL JDBC Configuration](./POSTGRESQL_JDBC_CONFIGURATION.md) |
-| **psycopg2 Errors** | [Fix psycopg2 Issues](./FIX_PSYCOPG2.md) |
-
-## 🔧 Database Architecture Overview
+## Database Architecture
 
 ```
 PySpark Application
-├── Python Layer (pg8000)     # Direct database operations
+├── Python Layer (pg8000)     # DDL, transactions, atomic swap
 │   └── Pure Python driver    # EMR compatible, no binaries
 │
-└── Java/Spark Layer (JDBC)   # DataFrame operations  
+└── Java/Spark Layer (JDBC)   # Bulk DataFrame writes via staging tables
     └── PostgreSQL JDBC driver # Loaded via --jars parameter
 ```
 
-## 📊 Performance Summary
+## Write Pattern
 
-| Method | Use Case | Performance Gain | Setup Required |
-|--------|----------|------------------|----------------|
-| **🔥 Staging Table** | High-load tables | 96% less blocking | None (auto-enabled) |
-| **🆕 CSV S3 Import** | Aurora + any dataset | 50-80% faster | Aurora IAM role |
-| **Optimized JDBC** | Most datasets | 3-5x faster | None |
-| **Aurora S3 Import** | Aurora + large datasets | 5-8x faster | IAM role setup |
-| **Async Batches** | Memory-fit datasets | 4-8x faster | None |
+All database writes use the staging table pattern in `postgres_writer_utils.py`:
 
-## 🚨 Common Issues
+1. CREATE a temporary staging table matching the target schema
+2. JDBC bulk write the DataFrame into the staging table
+3. Atomic swap: DELETE old dataset rows + INSERT from staging + DROP staging
 
-1. **Connection Timeouts** → Check VPC/security group configuration
-2. **JDBC Driver Not Found** → Verify --jars parameter in EMR configuration  
-3. **psycopg2 Import Errors** → Use pg8000 instead (see [Database Connectivity](./DATABASE_CONNECTIVITY.md))
-4. **Slow Performance** → Implement optimizations from [Performance Guide](./POSTGRESQL_PERFORMANCE_OPTIMIZATION.md)
+This minimises lock contention on the target table.
 
 ---
 
-[← Back to Main Documentation](../README.md)
+[Back to docs](../README.md)

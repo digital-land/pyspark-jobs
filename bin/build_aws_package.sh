@@ -3,13 +3,13 @@
 # Build AWS Package Script for PySpark Jobs
 # This script creates all necessary files for AWS EMR Serverless deployment
 # 
-# Usage: ./build_aws_package.sh [--upload]
+# Usage: ./bin/build_aws_package.sh [--upload]
 #   --upload: Optional flag to automatically upload to S3
 
 set -e  # Exit on any error
 
 # Configuration
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="$PROJECT_DIR/build_output"
 S3_BUCKET="development-emr-serverless-pyspark-jobs-codepackage"
 PYTHON_VERSION="python3"
@@ -317,11 +317,11 @@ copy_entry_scripts() {
     print_status "Copying entry scripts..."
     
     # Copy the main entry script
-    if [[ -f "$PROJECT_DIR/run_main.py" ]]; then
-        cp "$PROJECT_DIR/run_main.py" "$BUILD_DIR/entry_script/"
-        print_success "Entry script copied: run_main.py"
+    if [[ -f "$PROJECT_DIR/entry_points/run_main.py" ]]; then
+        cp "$PROJECT_DIR/entry_points/run_main.py" "$BUILD_DIR/entry_script/"
+        print_success "Entry script copied: entry_points/run_main.py"
     else
-        print_error "Entry script not found: run_main.py"
+        print_error "Entry script not found: entry_points/run_main.py"
         exit 1
     fi
     

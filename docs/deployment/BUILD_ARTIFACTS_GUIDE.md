@@ -96,7 +96,7 @@ cp dist/*.whl build_output/whl_pkg/
 
 ```bash
 # Build and test locally
-./build_aws_package.sh
+./bin/build_aws_package.sh
 
 # Install for local testing
 pip install dist/pyspark_jobs-0.1.0-py3-none-any.whl
@@ -112,7 +112,7 @@ wheel show dist/pyspark_jobs-0.1.0-py3-none-any.whl
 
 ```bash
 # Build deployment artifacts
-./build_aws_package.sh
+./bin/build_aws_package.sh
 
 # Upload to S3
 cd build_output && ./upload_to_s3.sh

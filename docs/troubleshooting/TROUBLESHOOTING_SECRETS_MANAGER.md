@@ -56,7 +56,7 @@ botocore>=1.34.0,<2.0.0
 Use the enhanced build script that verifies dependencies:
 
 ```bash
-./build_aws_package.sh --docker  # For Linux compatibility
+./bin/build_aws_package.sh --docker  # For Linux compatibility
 ```
 
 The build script now checks for:
@@ -100,7 +100,7 @@ python examples/environment_variable_secrets_example.py
 #### EMR Testing
 1. Build and deploy the updated package:
    ```bash
-   ./build_aws_package.sh --upload
+   ./bin/build_aws_package.sh --upload
    ```
 
 2. Submit EMR job with the new package
@@ -157,8 +157,7 @@ If these solutions don't resolve your issue:
 
 ## Related Files
 
-- `src/jobs/utils/aws_secrets_manager.py` - Enhanced secret retrieval with fallbacks
-- `src/jobs/dbaccess/postgres_connectivity.py` - PostgreSQL integration using EMR-compatible method
-- `examples/environment_variable_secrets_example.py` - Testing environment variable fallback
-- `requirements-emr.txt` - Updated dependency versions
-- `build_aws_package.sh` - Enhanced build verification
+- `src/jobs/utils/aws_secrets_manager.py` - Secret retrieval with fallbacks
+- `src/jobs/dbaccess/postgres_connectivity.py` - PostgreSQL connection logic
+- `examples/environment_variable_secrets_example.py` - Environment variable fallback example
+- `bin/build_aws_package.sh` - Build script with dependency verification
