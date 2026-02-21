@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 
 import boto3
+from cloudpathlib import AnyPath, S3Path
 from pyspark.sql import SparkSession
 
 from jobs.config.metadata import load_metadata
@@ -119,15 +120,12 @@ class EntityPipeline(BasePipeline):
         parquet_path = self.config.parquet_datasets_path
 
         # -- Extract ----------------------------------------------------------
-        organisation_path = (
-            collection_data_path + "organisation-collection/dataset/organisation.csv"
+        base = AnyPath(collection_data_path)
+        organisation_path = str(
+            base / "organisation-collection" / "dataset" / "organisation.csv"
         )
         transformed_path = (
-            collection_data_path
-            + collection
-            + "-collection/transformed/"
-            + dataset
-            + "/*.csv"
+            str(base / f"{collection}-collection" / "transformed" / dataset) + "/*.csv"
         )
 
         logger.info(
@@ -179,13 +177,15 @@ class EntityPipeline(BasePipeline):
         logger.info("EntityPipeline: entity transform completed")
 
         # -- Load: parquet ----------------------------------------------------
+        parquet_base = AnyPath(parquet_path)
         for table_name, df in [
             ("fact_resource", fact_resource_df),
             ("fact", fact_df),
             ("entity", entity_df),
         ]:
-            output_path = parquet_path + f"{table_name}/"
-            cleanup_dataset_data(output_path, dataset)
+            output_path = str(parquet_base / table_name)
+            if isinstance(parquet_base, S3Path):
+                cleanup_dataset_data(output_path, dataset)
             write_parquet(df, output_path)
             logger.info(f"EntityPipeline: Wrote {table_name} parquet")
 
@@ -201,7 +201,10 @@ class EntityPipeline(BasePipeline):
         env = self.config.env
         collection_data_path = self.config.collection_data_path
 
-        temp_output_path = f"{collection_data_path}dataset/temp/{dataset}/"
+        base = AnyPath(collection_data_path)
+        _is_s3 = isinstance(base, S3Path)
+        temp_output_path = str(base / "dataset" / "temp" / dataset)
+
         temp_df = flatten_json_column(entity_df)
 
         # For CSVs and JSONs in the consumer layer '-' should be used
@@ -212,15 +215,24 @@ class EntityPipeline(BasePipeline):
         # Align fields with spec
         temp_df = ensure_schema_fields(temp_df, dataset)
 
-        # Write CSV output to S3
-        cleanup_temp_path(env, dataset)
+        if _is_s3:
+            cleanup_temp_path(env, dataset)
+
         temp_df.coalesce(1).write.mode("overwrite").option("header", "true").csv(
             temp_output_path
         )
 
-        s3_rename_and_move(dataset, "csv", f"{env}-collection-data")
+        if _is_s3:
+            s3_rename_and_move(dataset, "csv", f"{env}-collection-data")
+            s3_client = boto3.client("s3")
+            self._write_json_s3(s3_client, temp_df, dataset, env)
+            self._write_geojson_s3(s3_client, temp_df, dataset, env)
+        else:
+            self._write_json_local(temp_df, dataset, base)
+            self._write_geojson_local(temp_df, dataset, base)
 
-        # Write JSON output to S3
+    def _write_json_s3(self, s3_client, temp_df, dataset, env):
+        """Write entity JSON to S3."""
         json_buffer = '{"entities":['
         first = True
         for row in temp_df.toLocalIterator():
@@ -236,9 +248,7 @@ class EntityPipeline(BasePipeline):
             json_buffer += json.dumps(row_dict)
         json_buffer += "]}"
 
-        s3_client = boto3.client("s3")
         target_key = f"dataset/{dataset}.json"
-
         try:
             s3_client.head_object(Bucket=f"{env}-collection-data", Key=target_key)
             s3_client.delete_object(Bucket=f"{env}-collection-data", Key=target_key)
@@ -252,7 +262,8 @@ class EntityPipeline(BasePipeline):
         )
         logger.info(f"EntityPipeline: JSON file written to {target_key}")
 
-        # Write GeoJSON
+    def _write_geojson_s3(self, s3_client, temp_df, dataset, env):
+        """Write entity GeoJSON to S3 using multipart upload."""
         row_count = temp_df.count()
         target_key_geojson = f"dataset/{dataset}.geojson"
 
@@ -333,9 +344,7 @@ class EntityPipeline(BasePipeline):
                 UploadId=mpu["UploadId"],
                 MultipartUpload={"Parts": parts},
             )
-            logger.info(
-                f"EntityPipeline: GeoJSON file written to " f"{target_key_geojson}"
-            )
+            logger.info(f"EntityPipeline: GeoJSON file written to {target_key_geojson}")
         except Exception as e:
             logger.error(f"Error during GeoJSON multipart upload: {e}")
             s3_client.abort_multipart_upload(
@@ -344,6 +353,65 @@ class EntityPipeline(BasePipeline):
                 UploadId=mpu["UploadId"],
             )
             raise
+
+    def _write_json_local(self, temp_df, dataset, base):
+        """Write entity JSON to local filesystem."""
+        json_buffer = '{"entities":['
+        first = True
+        for row in temp_df.toLocalIterator():
+            if not first:
+                json_buffer += ","
+            first = False
+            row_dict = row.asDict()
+            for key, value in row_dict.items():
+                if isinstance(value, (date, datetime)):
+                    row_dict[key] = value.isoformat() if value else ""
+                elif value is None:
+                    row_dict[key] = ""
+            json_buffer += json.dumps(row_dict)
+        json_buffer += "]}"
+
+        output_file = base / "dataset" / f"{dataset}.json"
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(str(output_file), "w") as f:
+            f.write(json_buffer)
+        logger.info(f"EntityPipeline: JSON file written to {output_file}")
+
+    def _write_geojson_local(self, temp_df, dataset, base):
+        """Write entity GeoJSON to local filesystem."""
+        header = '{"type":"FeatureCollection","name":"' + dataset + '","features":['
+        buffer = header
+        first_row = True
+        for row in temp_df.toLocalIterator():
+            row_dict = row.asDict()
+            geometry_wkt = row_dict.pop("geometry", None)
+            row_dict.pop("point", None)
+
+            for key, value in row_dict.items():
+                if isinstance(value, (date, datetime)):
+                    row_dict[key] = value.isoformat() if value else ""
+                elif value is None:
+                    row_dict[key] = ""
+
+            geojson_geom = wkt_to_geojson(geometry_wkt) if geometry_wkt else None
+            feature = {
+                "type": "Feature",
+                "properties": row_dict,
+                "geometry": geojson_geom,
+            }
+
+            if not first_row:
+                buffer += ","
+            first_row = False
+            buffer += json.dumps(feature)
+
+        buffer += "]}"
+
+        output_file = base / "dataset" / f"{dataset}.geojson"
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(str(output_file), "w") as f:
+            f.write(buffer)
+        logger.info(f"EntityPipeline: GeoJSON file written to {output_file}")
 
     def _write_postgres(self, entity_df):
         """Write entity data to Postgres via JDBC."""
@@ -376,12 +444,9 @@ class IssuePipeline(BasePipeline):
         collection_data_path = self.config.collection_data_path
 
         # -- Extract ----------------------------------------------------------
+        base = AnyPath(collection_data_path)
         issue_path = (
-            f"{collection_data_path}"
-            + collection
-            + "-collection/issue/"
-            + dataset
-            + "/*.csv"
+            str(base / f"{collection}-collection" / "issue" / dataset) + "/*.csv"
         )
 
         logger.info(f"IssuePipeline: Reading issue data from {issue_path}")
@@ -398,7 +463,9 @@ class IssuePipeline(BasePipeline):
         logger.info("IssuePipeline: issue transform completed")
 
         # -- Load -------------------------------------------------------------
-        issue_output_path = self.config.parquet_datasets_path + "issue/"
-        cleanup_dataset_data(issue_output_path, dataset)
+        parquet_base = AnyPath(self.config.parquet_datasets_path)
+        issue_output_path = str(parquet_base / "issue")
+        if isinstance(parquet_base, S3Path):
+            cleanup_dataset_data(issue_output_path, dataset)
         write_parquet(issue_df, issue_output_path)
         logger.info("IssuePipeline: Wrote issue parquet")

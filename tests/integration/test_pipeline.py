@@ -9,9 +9,7 @@ Postgres is mocked.
 import csv
 import os
 
-import boto3
 import pytest
-from moto import mock_aws
 
 from jobs.pipeline import EntityPipeline, IssuePipeline, PipelineConfig
 
@@ -143,27 +141,6 @@ ORGANISATION_ROWS = [
 ]
 
 
-# -- Fixtures -----------------------------------------------------------------
-
-
-@pytest.fixture()
-def s3_mock(monkeypatch):
-    """Activate moto S3 and create the local-collection-data bucket.
-
-    Allows _write_consumer_formats (cleanup_temp_path, s3_rename_and_move,
-    and boto3 S3 calls) to execute real logic against the moto fake backend
-    instead of being blanket-mocked.
-    """
-    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
-    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
-    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
-    with mock_aws():
-        boto3.client("s3", region_name="us-east-1").create_bucket(
-            Bucket="local-collection-data"
-        )
-        yield
-
-
 # -- Helpers ------------------------------------------------------------------
 
 
@@ -180,7 +157,7 @@ def _write_csv(path, fieldnames, rows):
 
 class TestEntityPipeline:
     def test_execute_writes_correct_fact_resource_row_count(
-        self, spark, tmp_path, mocker, s3_mock
+        self, spark, tmp_path, mocker
     ):
         """execute() preserves all input rows in fact_resource parquet."""
         dataset = "test-dataset"
@@ -202,14 +179,6 @@ class TestEntityPipeline:
             ORGANISATION_ROWS,
         )
 
-        mocker.patch(
-            "jobs.pipeline.cleanup_dataset_data",
-            return_value={
-                "objects_found": 0,
-                "objects_deleted": 0,
-                "errors": [],
-            },
-        )
         mocker.patch(
             "jobs.transform.entity_transformer.get_dataset_typology",
             return_value="geography",
@@ -247,9 +216,7 @@ class TestEntityPipeline:
         )
         assert fact_resource_df.count() == len(TRANSFORMED_ROWS)
 
-    def test_execute_writes_correct_fact_row_count(
-        self, spark, tmp_path, mocker, s3_mock
-    ):
+    def test_execute_writes_correct_fact_row_count(self, spark, tmp_path, mocker):
         """execute() deduplicates facts to one row per unique fact."""
         dataset = "test-dataset"
         collection = "test-dataset"
@@ -270,14 +237,6 @@ class TestEntityPipeline:
             ORGANISATION_ROWS,
         )
 
-        mocker.patch(
-            "jobs.pipeline.cleanup_dataset_data",
-            return_value={
-                "objects_found": 0,
-                "objects_deleted": 0,
-                "errors": [],
-            },
-        )
         mocker.patch(
             "jobs.transform.entity_transformer.get_dataset_typology",
             return_value="geography",
@@ -314,9 +273,7 @@ class TestEntityPipeline:
         expected_unique_facts = len({r["fact"] for r in TRANSFORMED_ROWS})
         assert fact_df.count() == expected_unique_facts
 
-    def test_execute_writes_correct_entity_row_count(
-        self, spark, tmp_path, mocker, s3_mock
-    ):
+    def test_execute_writes_correct_entity_row_count(self, spark, tmp_path, mocker):
         """execute() pivots EAV to one row per unique entity."""
         dataset = "test-dataset"
         collection = "test-dataset"
@@ -337,14 +294,6 @@ class TestEntityPipeline:
             ORGANISATION_ROWS,
         )
 
-        mocker.patch(
-            "jobs.pipeline.cleanup_dataset_data",
-            return_value={
-                "objects_found": 0,
-                "objects_deleted": 0,
-                "errors": [],
-            },
-        )
         mocker.patch(
             "jobs.transform.entity_transformer.get_dataset_typology",
             return_value="geography",
@@ -381,7 +330,7 @@ class TestEntityPipeline:
         expected_unique_entities = len({r["entity"] for r in TRANSFORMED_ROWS})
         assert entity_df.count() == expected_unique_entities
 
-    def test_execute_calls_postgres_write(self, spark, tmp_path, mocker, s3_mock):
+    def test_execute_calls_postgres_write(self, spark, tmp_path, mocker):
         """execute() writes entity data to Postgres."""
         dataset = "test-dataset"
         collection = "test-dataset"
@@ -402,14 +351,6 @@ class TestEntityPipeline:
             ORGANISATION_ROWS,
         )
 
-        mocker.patch(
-            "jobs.pipeline.cleanup_dataset_data",
-            return_value={
-                "objects_found": 0,
-                "objects_deleted": 0,
-                "errors": [],
-            },
-        )
         mocker.patch(
             "jobs.transform.entity_transformer.get_dataset_typology",
             return_value="geography",
@@ -496,15 +437,6 @@ class TestIssuePipeline:
             os.path.join(collection_dir, "issue", dataset, "issue.csv"),
             ISSUE_COLUMNS,
             ISSUE_ROWS,
-        )
-
-        mocker.patch(
-            "jobs.pipeline.cleanup_dataset_data",
-            return_value={
-                "objects_found": 0,
-                "objects_deleted": 0,
-                "errors": [],
-            },
         )
 
         config = PipelineConfig(

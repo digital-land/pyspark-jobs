@@ -7,6 +7,8 @@ Pipeline implementations live in jobs.pipeline.
 
 import logging
 
+from cloudpathlib import AnyPath, S3Path
+
 from jobs.dbaccess.postgres_connectivity import get_aws_secret
 from jobs.pipeline import EntityPipeline, IssuePipeline, PipelineConfig
 from jobs.utils.db_url import build_database_url
@@ -38,7 +40,10 @@ def assemble_and_load_entity(
     if env not in allowed_envs:
         raise ValueError(f"Invalid env: {env}. Must be one of {allowed_envs}")
 
-    validate_s3_path(collection_data_path)
+    if isinstance(AnyPath(collection_data_path), S3Path):
+        validate_s3_path(collection_data_path)
+    else:
+        logger.info(f"Local collection_data_path: {collection_data_path}")
 
     logger.info(f"Starting ETL pipelines for dataset {dataset}")
 

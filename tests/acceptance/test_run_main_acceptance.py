@@ -289,11 +289,6 @@ def test_e2e_full_load_pipeline(cli_runner, run_main_cmd, spark, tmp_path, mocke
     )
 
     # --- Mock infrastructure I/O ---
-    mocker.patch("jobs.job.validate_s3_path")
-    mocker.patch(
-        "jobs.pipeline.cleanup_dataset_data",
-        return_value={"objects_found": 0, "objects_deleted": 0, "errors": []},
-    )
     mocker.patch("jobs.job.create_spark_session", return_value=spark)
     mocker.patch(
         "jobs.job.get_aws_secret",
@@ -312,7 +307,7 @@ def test_e2e_full_load_pipeline(cli_runner, run_main_cmd, spark, tmp_path, mocke
         return_value="geography",
     )
 
-    # Mock consumer format section (CSV/JSON/GeoJSON writes use s3:// paths)
+    # Mock consumer format section (flatten/schema alignment use external HTTP)
     mock_consumer_df = mocker.MagicMock()
     mock_consumer_df.columns = []
     mock_consumer_df.count.return_value = 0
@@ -320,9 +315,6 @@ def test_e2e_full_load_pipeline(cli_runner, run_main_cmd, spark, tmp_path, mocke
     mock_consumer_df.repartition.return_value.toLocalIterator.return_value = iter([])
     mocker.patch("jobs.pipeline.flatten_json_column", return_value=mock_consumer_df)
     mocker.patch("jobs.pipeline.ensure_schema_fields", return_value=mock_consumer_df)
-    mocker.patch("jobs.pipeline.cleanup_temp_path")
-    mocker.patch("jobs.pipeline.s3_rename_and_move")
-    mocker.patch("jobs.pipeline.boto3")
 
     result = cli_runner.invoke(
         run_main_cmd,
