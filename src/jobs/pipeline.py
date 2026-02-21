@@ -23,7 +23,7 @@ from jobs.transform.entity_transformer import EntityTransformer
 from jobs.transform.fact_resource_transformer import FactResourceTransformer
 from jobs.transform.fact_transformer import FactTransformer
 from jobs.transform.issue_transformer import IssueTransformer
-from jobs.utils.df_utils import count_df, show_df
+from jobs.utils.df_utils import count_df, normalise_column_names, show_df
 from jobs.utils.flatten_csv import flatten_json_column
 from jobs.utils.postgres_writer_utils import write_dataframe_to_postgres_jdbc
 from jobs.utils.s3_utils import cleanup_dataset_data
@@ -150,13 +150,7 @@ class EntityPipeline(BasePipeline):
         fields = json_data.get("transformed", [])
         logger.info(f"EntityPipeline: Transformed fields from schema: {fields}")
 
-        # Rename hyphens to underscores in column names
-        for col_name in transformed_df.columns:
-            if "-" in col_name:
-                transformed_df = transformed_df.withColumnRenamed(
-                    col_name, col_name.replace("-", "_")
-                )
-
+        transformed_df = normalise_column_names(transformed_df)
         logger.info(f"EntityPipeline: Columns after renaming: {transformed_df.columns}")
 
         if set(fields) == set(transformed_df.columns):
@@ -395,6 +389,9 @@ class IssuePipeline(BasePipeline):
         issue_df.cache()
         issue_df.printSchema()
         show_df(issue_df, 5, env)
+
+        issue_df = normalise_column_names(issue_df)
+        logger.info(f"IssuePipeline: Columns after renaming: {issue_df.columns}")
 
         # -- Transform --------------------------------------------------------
         issue_df = IssueTransformer().transform(issue_df, dataset)
