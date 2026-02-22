@@ -20,6 +20,7 @@ from typing import Tuple
 
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
+from cloudpathlib import S3Path
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -114,11 +115,9 @@ def cleanup_dataset_data(output_path: str, dataset_name: str) -> dict:
     cleanup_summary = {"objects_found": 0, "objects_deleted": 0, "errors": []}
 
     try:
-        # Parse S3 path to get bucket and prefix
-        bucket, prefix = parse_s3_path(output_path)
-
-        # Construct the full prefix for this dataset's partitioned data
-        dataset_prefix = f"{prefix}dataset={dataset_name}/"
+        dataset_s3_path = S3Path(output_path) / f"dataset={dataset_name}"
+        bucket = dataset_s3_path.bucket
+        dataset_prefix = dataset_s3_path.key + "/"
 
         s3_client = boto3.client("s3")
 

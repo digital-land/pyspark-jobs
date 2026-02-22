@@ -1,14 +1,10 @@
 """S3 Writer utilities for data transformation and writing."""
 
 import re
+from typing import List, Optional
 
 import boto3
-from pyspark.sql.functions import (
-    dayofmonth,
-    lit,
-    month,
-    year,
-)
+from pyspark.sql.functions import lit
 
 from jobs.utils.logger_config import get_logger, log_execution_time
 
@@ -18,27 +14,30 @@ df_entity = None
 
 
 @log_execution_time
-def write_parquet(df, output_path):
-    """Write DataFrame in Parquet format with date partitioning.
+def write_parquet(df, output_path: str, partition_by: Optional[List[str]] = None):
+    """Write DataFrame in Parquet format.
 
-    Derives year/month/day partition columns from processed_timestamp.
+    Args:
+        df: PySpark DataFrame to write.
+        output_path: Destination path (local or s3://).
+        partition_by: Columns to partition by. If None, writes without partitioning.
     """
     logger.info(f"write_parquet: Writing data to {output_path}")
-
-    df = df.withColumn("year", year("processed_timestamp"))
-    df = df.withColumn("month", month("processed_timestamp"))
-    df = df.withColumn("day", dayofmonth("processed_timestamp"))
 
     row_count = df.count()
     optimal_partitions = max(1, min(200, row_count // 1000000))
 
-    df.coalesce(optimal_partitions).write.partitionBy(
-        "dataset", "year", "month", "day"
-    ).mode("append").option("maxRecordsPerFile", 1000000).option(
-        "compression", "snappy"
-    ).parquet(
-        output_path
+    writer = (
+        df.coalesce(optimal_partitions)
+        .write.mode("append")
+        .option("maxRecordsPerFile", 1000000)
+        .option("compression", "snappy")
     )
+
+    if partition_by:
+        writer.partitionBy(*partition_by).parquet(output_path)
+    else:
+        writer.parquet(output_path)
 
     logger.info(f"write_parquet: Successfully wrote {row_count} rows")
 

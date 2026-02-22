@@ -186,7 +186,7 @@ class EntityPipeline(BasePipeline):
             output_path = str(parquet_base / table_name)
             if isinstance(parquet_base, S3Path):
                 cleanup_dataset_data(output_path, dataset)
-            write_parquet(df, output_path)
+            write_parquet(df, output_path, partition_by=["dataset"])
             logger.info(f"EntityPipeline: Wrote {table_name} parquet")
 
         # -- Load: consumer formats (CSV/JSON/GeoJSON) ------------------------
@@ -420,7 +420,7 @@ class EntityPipeline(BasePipeline):
 
         if entity_df is not None and not entity_df.rdd.isEmpty():
             show_df(entity_df, 5, env)
-            entity_pg_df = entity_df.drop("processed_timestamp", "year", "month", "day")
+            entity_pg_df = entity_df.drop("processed_timestamp")
             logger.info("EntityPipeline: Writing entity data to Postgres")
             show_df(entity_pg_df, 5, env)
             write_dataframe_to_postgres_jdbc(
@@ -467,5 +467,5 @@ class IssuePipeline(BasePipeline):
         issue_output_path = str(parquet_base / "issue")
         if isinstance(parquet_base, S3Path):
             cleanup_dataset_data(issue_output_path, dataset)
-        write_parquet(issue_df, issue_output_path)
+        write_parquet(issue_df, issue_output_path, partition_by=["dataset"])
         logger.info("IssuePipeline: Wrote issue parquet")
