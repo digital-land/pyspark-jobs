@@ -5,6 +5,7 @@
 - [PostgreSQL JDBC Configuration](./database/POSTGRESQL_JDBC_CONFIGURATION.md) — Setting up JDBC drivers for EMR Serverless
 
 ## Architecture
+- [Adding Jobs and Pipelines](./architecture/ADDING_JOBS_AND_PIPELINES.md) — How to add new pipelines, jobs, and entry points
 - [JDBC Dependency Architecture](./architecture/JDBC_DEPENDENCY_ARCHITECTURE.md) — Why JDBC drivers aren't in Python dependencies
 - [Logging Configuration](./architecture/LOGGING.md) — Logging setup and usage
 
