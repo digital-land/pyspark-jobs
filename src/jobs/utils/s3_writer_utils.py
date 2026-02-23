@@ -55,6 +55,14 @@ def cleanup_temp_path(env, dataset_name):
             logger.info(f"Deleted {len(objects)} objects from {prefix}")
 
 
+def resolve_geometry(
+    geometry_wkt: Optional[str], point_wkt: Optional[str]
+) -> Optional[dict]:
+    """Convert geometry WKT to GeoJSON, falling back to point WKT if geometry is absent."""
+    wkt = geometry_wkt or point_wkt
+    return wkt_to_geojson(wkt) if wkt else None
+
+
 def wkt_to_geojson(wkt_string):
     """Convert WKT geometry string to GeoJSON geometry object."""
     if not wkt_string:

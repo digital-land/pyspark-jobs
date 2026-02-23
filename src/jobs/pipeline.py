@@ -31,8 +31,8 @@ from jobs.utils.s3_utils import cleanup_dataset_data
 from jobs.utils.s3_writer_utils import (
     cleanup_temp_path,
     ensure_schema_fields,
+    resolve_geometry,
     s3_rename_and_move,
-    wkt_to_geojson,
     write_parquet,
 )
 
@@ -296,7 +296,7 @@ class EntityPipeline(BasePipeline):
             ):
                 row_dict = rows.asDict()
                 geometry_wkt = row_dict.pop("geometry", None)
-                row_dict.pop("point", None)
+                point_wkt = row_dict.pop("point", None)
 
                 for key, value in row_dict.items():
                     if isinstance(value, (date, datetime)):
@@ -304,7 +304,7 @@ class EntityPipeline(BasePipeline):
                     elif value is None:
                         row_dict[key] = ""
 
-                geojson_geom = wkt_to_geojson(geometry_wkt) if geometry_wkt else None
+                geojson_geom = resolve_geometry(geometry_wkt, point_wkt)
                 feature = {
                     "type": "Feature",
                     "properties": row_dict,
@@ -385,7 +385,7 @@ class EntityPipeline(BasePipeline):
         for row in temp_df.toLocalIterator():
             row_dict = row.asDict()
             geometry_wkt = row_dict.pop("geometry", None)
-            row_dict.pop("point", None)
+            point_wkt = row_dict.pop("point", None)
 
             for key, value in row_dict.items():
                 if isinstance(value, (date, datetime)):
@@ -393,7 +393,7 @@ class EntityPipeline(BasePipeline):
                 elif value is None:
                     row_dict[key] = ""
 
-            geojson_geom = wkt_to_geojson(geometry_wkt) if geometry_wkt else None
+            geojson_geom = resolve_geometry(geometry_wkt, point_wkt)
             feature = {
                 "type": "Feature",
                 "properties": row_dict,
