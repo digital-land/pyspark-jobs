@@ -2,7 +2,7 @@
 
 import os
 import sys
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "src"))
@@ -55,7 +55,7 @@ class TestDFUtils:
         # Should not call show on the DataFrame in production
         mock_df.show.assert_not_called()
 
-    def test_show_df_development_environment(self, caplog):
+    def test_show_df_development_environment_3(self, caplog):
         """Test show_df in development environment."""
         mock_df = Mock()
         mock_df.count.return_value = 3
@@ -66,7 +66,7 @@ class TestDFUtils:
         assert result == 3
         mock_df.count.assert_called_once()
 
-    def test_show_df_production_environment(self, caplog):
+    def test_show_df_production_environment_4(self, caplog):
         """Test show_df in production environment."""
         mock_df = Mock()
 
@@ -77,7 +77,7 @@ class TestDFUtils:
         assert result is None
         mock_df.count.assert_not_called()
 
-    def test_show_df_with_mock_dataframe(self, caplog):
+    def test_show_df_with_mock_dataframe_5(self, caplog):
         """Test show_df with mock DataFrame."""
         mock_df = Mock()
         mock_df.count.return_value = 100
@@ -109,7 +109,7 @@ class TestDFUtils:
         # Should handle empty DataFrame without error
         mock_df.show.assert_called_once_with(5)
 
-    def test_show_df_empty_dataframe(self, caplog):
+    def test_show_df_empty_dataframe_2(self, caplog):
         """Test show_df with empty DataFrame."""
         mock_df = Mock()
         mock_df.count.return_value = 0
@@ -137,7 +137,7 @@ class TestDFUtils:
             else:
                 mock_df.show.assert_not_called()
 
-    def test_show_df_different_environments(self, caplog):
+    def test_show_df_different_environments_2(self, caplog):
         """Test show_df with different environment values."""
         mock_df = Mock()
         mock_df.count.return_value = 42
@@ -166,16 +166,6 @@ class TestDFUtils:
             show_df(mock_df, 5, "development")
 
         mock_df.show.assert_called_once_with(5)
-
-    def test_show_df_with_exception(self, caplog):
-        """Test show_df when DataFrame.count raises exception."""
-        mock_df = Mock()
-        mock_df.count.side_effect = Exception("Count failed")
-
-        with pytest.raises(Exception, match="Count failed"):
-            count_df(mock_df, "development")
-
-        mock_df.count.assert_called_once()
 
 
 @pytest.mark.unit

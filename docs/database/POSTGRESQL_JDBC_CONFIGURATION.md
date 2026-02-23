@@ -52,22 +52,12 @@ aws s3 cp postgresql-42.7.4.jar s3://your-bucket/jars/
 ```
 
 **Option B: Include in Build Package**
-See [JDBC Dependency Architecture](JDBC_DEPENDENCY_ARCHITECTURE.md) for detailed implementation of bundling JARs in your deployment package.
+Bundle the JAR in your `build_output/jars/` directory via the build script.
 
 ## Configuration Details
 
 ### Spark Session Configuration
-The Spark session in `main_collection_data.py` is configured to support JDBC connections:
-
-```python
-spark_session = SparkSession.builder \
-    .appName(app_name) \
-    .config("spark.sql.adaptive.enabled", "true") \
-    .config("spark.sql.adaptive.coalescePartitions.enabled", "true") \
-    .getOrCreate()
-```
-
-The JDBC driver is made available through the `--jars` parameter rather than the Spark session configuration, which is the recommended approach for EMR Serverless.
+The Spark session in `src/jobs/job.py` is configured to support JDBC connections. The JDBC driver is made available through the `--jars` parameter rather than the Spark session configuration, which is the recommended approach for EMR Serverless.
 
 ### JDBC Connection Configuration
 The PostgreSQL connection uses these properties:
@@ -107,8 +97,6 @@ After implementing this fix:
 3. Verify RDS security groups allow connections from EMR subnet
 
 ## Related Files
-- `src/jobs/main_collection_data.py` - Spark session configuration
+- `src/jobs/job.py` - Spark session configuration
 - `src/jobs/dbaccess/postgres_connectivity.py` - PostgreSQL connection logic
-- `dags/emr_sl_transport_access_node_collection_test.py` - EMR job configuration
-- `build_aws_package.sh` - Deployment configuration
-- `docs/JDBC_DEPENDENCY_ARCHITECTURE.md` - Detailed explanation of JAR vs Python dependency architecture
+- `bin/build_aws_package.sh` - Deployment configuration

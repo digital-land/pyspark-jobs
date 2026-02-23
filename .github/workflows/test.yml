@@ -3,13 +3,15 @@ run-name: Test - ${{ github.head_ref || github.ref_name }} by @${{ github.actor 
 
 on:
   push:
-    branches: [main]
+    branches-ignore: [main]
   workflow_dispatch:
   workflow_call:
 
 jobs:
   lint:
     runs-on: ubuntu-latest
+    env:
+      ENVIRONMENT: test
     steps:
       - uses: actions/checkout@v4
         with:

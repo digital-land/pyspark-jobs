@@ -337,6 +337,7 @@ dependencies.tar.gz
 # Configuration files with potentially sensitive data
 *config*.json
 *config*.yaml
+!.pre-commit-config.yaml
 *config*.yml
 application.properties
 spark-defaults.conf

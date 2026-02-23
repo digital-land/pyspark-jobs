@@ -71,7 +71,7 @@ def create_connection(**conn_params):
 While `pg8000` is pure Python (vs. C-compiled `psycopg2`), the performance difference is minimal for our use cases:
 
 - **ETL Operations**: Network I/O is the bottleneck, not driver overhead
-- **Bulk Inserts**: We use COPY protocol which is efficient in both drivers
+- **Bulk Inserts**: JDBC bulk writes are handled by Spark, not the Python driver
 - **Query Execution**: PostgreSQL does the heavy lifting, not the Python driver
 
 ## Local Development

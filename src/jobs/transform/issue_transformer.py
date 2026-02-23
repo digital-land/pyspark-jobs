@@ -1,6 +1,9 @@
 """Issue transformer for adding date columns and selecting issue fields."""
 
+from datetime import datetime
+
 from pyspark.sql.functions import lit
+from pyspark.sql.types import TimestampType
 
 from jobs.utils.logger_config import get_logger
 
@@ -11,7 +14,7 @@ class IssueTransformer:
     """Transform issue records by adding date columns and selecting fields."""
 
     @staticmethod
-    def transform(df):
+    def transform(df, dataset):
         """
         Transform issue data.
 
@@ -47,6 +50,12 @@ class IssueTransformer:
             logger.info(
                 f"IssueTransformer: Transformation complete, columns: {transf_df.columns}"
             )
+
+            transf_df = transf_df.withColumn(
+                "processed_timestamp",
+                lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()),
+            )
+
             return transf_df
 
         except Exception as e:

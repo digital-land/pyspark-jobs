@@ -1,290 +1,133 @@
 # Makefile for PySpark Jobs Development
-# This file provides common development tasks and workflows
+#
+# ENVIRONMENT controls venv behaviour:
+#   local (default) — requires an active virtual environment
+#   anything else    — runs commands directly (CI, Docker, etc.)
+#
+# MIN_PYTHON_VERSION can be overridden: make check-env MIN_PYTHON_VERSION=3.10
 
-.PHONY: help init init-dev init-prod init-emr clean test test-unit test-integration test-acceptance lint format type-check security docs build package upload-s3 install-hooks pre-commit run-notebook clean-cache clean-logs clean-build clean-all
+.PHONY: help check-env init clean test test-unit test-integration test-acceptance lint format security pre-commit build package upload-s3 clean-cache clean-logs clean-build clean-all
 
-# Default target
 .DEFAULT_GOAL := help
 
 # Variables
-PYTHON := python3
-VENV_DIR := pyspark-jobs-venv
-VENV_ACTIVATE := $(VENV_DIR)/bin/activate
-PROJECT_DIR := $(shell pwd)
 SRC_DIR := src
 TESTS_DIR := tests
-DOCS_DIR := docs
+VENV_DIR := .venv
+ENVIRONMENT ?= local
+MIN_PYTHON_VERSION ?= 3.9
 
-# Colors for output
+# Colors
 BLUE := \033[0;34m
 GREEN := \033[0;32m
 YELLOW := \033[1;33m
 RED := \033[0;31m
 NC := \033[0m
 
-# Auto set ENV to local if not specified
-ENVIRONMENT ?= local
+# -- Environment gate --------------------------------------------------------
+# Targets that need Python depend on check-env.
+# ENVIRONMENT=local  → error unless a virtual environment is active
+# Anything else      → pass through (CI, Docker, etc.)
+# Also verifies the Python version meets the minimum requirement.
+check-env:
+	@if [ "$(ENVIRONMENT)" = "local" ] && [ -z "$$VIRTUAL_ENV" ]; then \
+		echo "$(RED)No active virtual environment.$(NC)"; \
+		echo "Create one with:"; \
+		echo "  python3 -m venv $(VENV_DIR) && source $(VENV_DIR)/bin/activate"; \
+		exit 1; \
+	fi
+	@python3 -c "\
+	import sys; \
+	req = tuple(int(x) for x in '$(MIN_PYTHON_VERSION)'.split('.')); \
+	cur = sys.version_info[:2]; \
+	sys.exit(0) if cur >= req else (\
+	    print(f'\033[0;31mPython {sys.version} does not meet minimum {\"$(MIN_PYTHON_VERSION)\"}.\033[0m'), \
+	    sys.exit(1) \
+	)" 2>&1
 
-# If ENV is local then check for VENV
-
-# Help target
+# -- Help --------------------------------------------------------------------
 help: ## Show this help message
 	@echo "PySpark Jobs Development Makefile"
 	@echo ""
 	@echo "Available targets:"
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  $(BLUE)%-20s$(NC) %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-# Virtual Environment Setup
-init: init-local ## Default: Initialize local testing environment
-	@if [ "$(ENVIRONMENT)" = "local" ] && command -v pre-commit >/dev/null 2>&1 ; then \
-		pre-commit install ; \
+# -- Initialisation ----------------------------------------------------------
+init: check-env ## Install dependencies
+	@echo "$(BLUE)Initialising (ENVIRONMENT=$(ENVIRONMENT))...$(NC)"
+	pip install --upgrade pip setuptools wheel
+	pip install -r requirements-local.txt
+	pip install -e .
+	@if [ "$(ENVIRONMENT)" = "local" ] && command -v pre-commit >/dev/null 2>&1; then \
+		pre-commit install; \
 	fi
+	@echo "$(GREEN)Environment ready!$(NC)"
 
-init-local: ## Initialize local testing environment (lightweight)
-	@echo "$(BLUE)Setting up local testing environment...$(NC)"
-	./setup_venv.sh --type local
-	@echo "$(GREEN)Local testing environment ready!$(NC)"
+# -- Testing -----------------------------------------------------------------
+test: check-env ## Run all tests with coverage
+	pytest tests/ --cov=src --cov-report=html --cov-report=term-missing
 
-check-venv: ## Check if virtual environment is set up
-	@if [ "$(ENVIRONMENT)" = "local" ] ; then \
-		if [ -z "$(VIRTUAL_ENV)" ] ; then \
-			echo "$(RED)Error: Virtual environment is not activated in local environment. Run make init to activate or create it"; \
-			exit 1; \
-		fi ; \
-	fi
+test-unit: check-env ## Run unit tests only
+	pytest tests/unit/ -v
 
-# Testing
-test: ## Run all tests with coverage
-	@echo "$(BLUE)Running all tests with coverage...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && pytest tests/ --cov=src --cov-report=html --cov-report=term-missing; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+test-integration: check-env ## Run integration tests
+	pytest tests/integration/ -v
 
-test-unit: ## Run unit tests only
-	@echo "$(BLUE)Running unit tests...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && pytest tests/unit/ -v; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+test-acceptance: check-env ## Run acceptance tests
+	pytest tests/acceptance/ -v
 
-test-integration: ## Run integration tests
-	@echo "$(BLUE)Running integration tests...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && pytest tests/integration/ -v; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+test-coverage: check-env ## Run tests with HTML coverage report
+	pytest tests/ --cov=src --cov-report=html
 
-test-acceptance: ## Run acceptance tests
-	@echo "$(BLUE)Running acceptance tests...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		if [ -d tests/acceptance/ ]; then \
-			. $(VENV_ACTIVATE) && pytest tests/acceptance/ -v; \
-		else \
-			echo "$(YELLOW)No acceptance tests found. Acceptance tests require full infrastructure.$(NC)"; \
-		fi; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+test-quick: check-env ## Run quick tests (unit tests only, no coverage)
+	pytest tests/unit/ -v --tb=short
 
-test-coverage: ## Run tests with HTML coverage report
-	@echo "$(BLUE)Running tests with HTML coverage report...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && pytest tests/ --cov=src --cov-report=html; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+test-parallel: check-env ## Run tests in parallel
+	pytest tests/ -n auto --cov=src
 
-test-quick: ## Run quick tests (unit tests only, no coverage)
-	@echo "$(BLUE)Running quick tests...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && pytest tests/unit/ -v --tb=short; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+# -- Code Quality ------------------------------------------------------------
+lint: check-env ## Run all linting checks
+	black --check src/ tests/ 2>&1 || (echo "$(YELLOW)Black formatting issues found. Run 'make format' to fix.$(NC)" && exit 1)
+	flake8 src/ tests/
+	@echo "$(GREEN)All linting checks passed!$(NC)"
 
-test-parallel: ## Run tests in parallel
-	@echo "$(BLUE)Running tests in parallel...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && pytest tests/ -n auto --cov=src; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+format: check-env ## Format code with black and isort
+	black src/ tests/
+	isort src/ tests/
+	@echo "$(GREEN)Code formatting complete!$(NC)"
 
-# Code Quality
-lint: ## Run all linting checks
-	@echo "$(BLUE)Running linting checks...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && \
-		echo "$(BLUE)Running Black...$(NC)" && \
-		black --check src/ tests/ 2>&1 || (echo "$(YELLOW)Black formatting issues found. Run 'make format' to fix.$(NC)" && exit 1) && \
-		echo "$(BLUE)Running Flake8...$(NC)" && \
-		flake8 src/ tests/ && \
-		echo "$(GREEN)All linting checks passed!$(NC)"; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
+security: check-env ## Run security scanning
+	bandit -r $(SRC_DIR)
+	safety check
 
-format: ## Format code with black and isort
-	@echo "$(BLUE)Formatting code...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && \
-		echo "$(BLUE)Running Black formatter...$(NC)" && \
-		black src/ tests/ && \
-		echo "$(BLUE)Running isort...$(NC)" && \
-		isort src/ tests/ && \
-		echo "$(GREEN)Code formatting complete!$(NC)"; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
-
-# TODO: implement type checking
-# type-check: ## Run type checking with mypy
-# 	@echo "$(BLUE)Running type checks...$(NC)"
-# 	@if [ -f $(VENV_ACTIVATE) ]; then \
-# 		. $(VENV_ACTIVATE) && mypy $(SRC_DIR); \
-# 	else \
-# 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-# 		exit 1; \
-# 	fi
-
-security: ## Run security scanning
-	@echo "$(BLUE)Running security scans...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && \
-		bandit -r $(SRC_DIR) && \
-		safety check; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
-
-pre-commit: check-venv ## Run pre-commit on all files
+pre-commit: check-env ## Run pre-commit on all files
 	pre-commit run --all-files
 
-# Documentation
-docs: ## Generate documentation
-	@echo "$(BLUE)Generating documentation...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && sphinx-build -b html $(DOCS_DIR) $(DOCS_DIR)/_build/html; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
-
-# TODO: do we really need this? I haven't seen any notebooks in the repo
-# Development Tools
-run-notebook: ## Start Jupyter Lab for development
-	@echo "$(BLUE)Starting Jupyter Lab...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && jupyter lab --notebook-dir=.; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
-
-# Build and Package
-build: check-venv ## Build the package
-	@echo "$(BLUE)Building package...$(NC)"
+# -- Build and Package -------------------------------------------------------
+build: check-env ## Build the package
 	python setup.py sdist bdist_wheel
 
 package: ## Create AWS deployment package
-	@echo "$(BLUE)Creating AWS deployment package...$(NC)"
-	./build_aws_package.sh
+	./bin/build_aws_package.sh
 
 upload-s3: package ## Build and upload package to S3
-	@echo "$(BLUE)Building and uploading package to S3...$(NC)"
-	./build_aws_package.sh --upload
+	./bin/build_aws_package.sh --upload
 
-# Clean targets
+# -- Clean -------------------------------------------------------------------
 clean-cache: ## Clean Python cache files
-	@echo "$(BLUE)Cleaning Python cache files...$(NC)"
 	find . -type f -name "*.pyc" -delete
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 
 clean-logs: ## Clean log files
-	@echo "$(BLUE)Cleaning log files...$(NC)"
 	rm -rf logs/*.log
 	rm -rf tests/logs/*.log
 
 clean-build: ## Clean build artifacts
-	@echo "$(BLUE)Cleaning build artifacts...$(NC)"
-	rm -rf build/
-	rm -rf dist/
-	rm -rf build_output/
-	rm -rf *.egg-info/
-	rm -rf .pytest_cache/
-	rm -rf htmlcov/
-	rm -rf .coverage
-	rm -rf .mypy_cache/
-	rm -rf .tox/
+	rm -rf build/ dist/ build_output/ *.egg-info/
+	rm -rf .pytest_cache/ htmlcov/ .coverage .mypy_cache/ .tox/
 
 clean: clean-cache clean-logs ## Clean cache and log files
 
 clean-all: clean clean-build ## Clean all generated files and artifacts
-	@echo "$(BLUE)Cleaning virtual environment...$(NC)"
 	rm -rf $(VENV_DIR)
-
-# TBD do we need these?
-# Database targets (if applicable)
-# db-upgrade: ## Upgrade database schema
-# 	@echo "$(BLUE)Upgrading database schema...$(NC)"
-# 	@if [ -f $(VENV_ACTIVATE) ]; then \
-# 		. $(VENV_ACTIVATE) && alembic upgrade head; \
-# 	else \
-# 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-# 		exit 1; \
-# 	fi
-
-# db-downgrade: ## Downgrade database schema
-# 	@echo "$(BLUE)Downgrading database schema...$(NC)"
-# 	@if [ -f $(VENV_ACTIVATE) ]; then \
-# 		. $(VENV_ACTIVATE) && alembic downgrade -1; \
-# 	else \
-# 		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-# 		exit 1; \
-# 	fi
-
-# Utility targets
-install-deps: check-venv ## Install/update dependencies
-	@echo "$(BLUE)Installing/updating dependencies...$(NC)"
-	pip install --upgrade pip setuptools wheel
-	pip install -r requirements-dev.txt
-	pip install -e .
-
-freeze: ## Freeze current dependencies
-	@echo "$(BLUE)Freezing current dependencies...$(NC)"
-	@if [ -f $(VENV_ACTIVATE) ]; then \
-		. $(VENV_ACTIVATE) && pip freeze > requirements-frozen.txt; \
-		echo "$(GREEN)Dependencies frozen to requirements-frozen.txt$(NC)"; \
-	else \
-		echo "$(RED)Virtual environment not found. Run 'make init' first.$(NC)"; \
-		exit 1; \
-	fi
-
-# TODO: remove these as the CI/CD should use the same tagets as development
-# CI/CD targets)
-ci-test: ## Run tests for CI environment
-	@echo "$(BLUE)Running CI tests...$(NC)"
-	pytest $(TESTS_DIR) -v --junitxml=test-results.xml --cov=$(SRC_DIR) --cov-report=xml
-
-ci-lint: ## Run linting for CI environment
-	@echo "$(BLUE)Running CI linting...$(NC)"
-	flake8 $(SRC_DIR) $(TESTS_DIR) --format=junit-xml --output-file=lint-results.xml
-
-ci-security: ## Run security checks for CI environment
-	@echo "$(BLUE)Running CI security checks...$(NC)"
-	bandit -r $(SRC_DIR) -f json -o security-results.json
