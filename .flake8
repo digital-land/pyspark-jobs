@@ -1,6 +1,6 @@
 [flake8]
 max-line-length = 180
-ignore = W291, E203, W503, E501, F401, F841, F821, F402, F811
+ignore = E203, W503, E501
 per-file-ignores =
     examples/*:F401,F821,F841,E501,E402
     *reconciliation*:F401,F821,F841,E501,E402,E226

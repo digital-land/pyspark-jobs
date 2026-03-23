@@ -1,27 +1,12 @@
 """S3 Writer utilities for data transformation and writing."""
 
-import json
 import re
-from datetime import date as date_type
-from datetime import datetime as datetime_type
+from typing import List, Optional
 
 import boto3
-from pyspark.sql.functions import (
-    col,
-    dayofmonth,
-    lit,
-    month,
-    to_date,
-    year,
-)
-from pyspark.sql.types import TimestampType
+from pyspark.sql.functions import lit
 
-from jobs.transform.entity_transformer import EntityTransformer
-from jobs.utils.df_utils import count_df, show_df
-from jobs.utils.flatten_csv import flatten_json_column
-from jobs.utils.geometry_utils import calculate_centroid
 from jobs.utils.logger_config import get_logger, log_execution_time
-from jobs.utils.s3_utils import cleanup_dataset_data, read_csv_from_s3
 
 logger = get_logger(__name__)
 
@@ -29,100 +14,32 @@ df_entity = None
 
 
 @log_execution_time
-def transform_data_entity_format(df, data_set, spark, env=None):
-    """Transform Entity-Attribute-Value (EAV) format data into entity records."""
-    transformer = EntityTransformer()
-    return transformer.transform(df, data_set, spark, env)
+def write_parquet(df, output_path: str, partition_by: Optional[List[str]] = None):
+    """Write DataFrame in Parquet format.
 
+    Args:
+        df: PySpark DataFrame to write.
+        output_path: Destination path (local or s3://).
+        partition_by: Columns to partition by. If None, writes without partitioning.
+    """
+    logger.info(f"write_parquet: Writing data to {output_path}")
 
-@log_execution_time
-def normalise_dataframe_schema(df, schema_name, data_set, spark, env=None):
-    """Normalize dataframe schema based on table type."""
-    try:
-        from jobs.main_collection_data import load_metadata
+    row_count = df.count()
+    optimal_partitions = max(1, min(200, row_count // 1000000))
 
-        dataset_json_transformed_path = "config/transformed_source.json"
-        logger.info(
-            f"normalise_dataframe_schema: Transforming data for table: {schema_name}"
-        )
-        json_data = load_metadata(dataset_json_transformed_path)
-        show_df(df, 5, env)
+    writer = (
+        df.coalesce(optimal_partitions)
+        .write.mode("append")
+        .option("maxRecordsPerFile", 1000000)
+        .option("compression", "snappy")
+    )
 
-        # Extract the list of fields
-        if schema_name in ["fact", "fact_res", "entity"]:
-            fields = json_data.get("schema_fact_res_fact_entity", [])
-        elif schema_name == "issue":
-            fields = json_data.get("schema_issue", [])
-        else:
-            fields = []
+    if partition_by:
+        writer.partitionBy(*partition_by).parquet(output_path)
+    else:
+        writer.parquet(output_path)
 
-        logger.info(f"normalise_dataframe_schema: Fields for {schema_name}: {fields}")
-
-        # Replace hyphens with underscores in column names
-        for column in df.columns:
-            if "-" in column:
-                df = df.withColumnRenamed(column, column.replace("-", "_"))
-
-        logger.info(f"normalise_dataframe_schema: Columns after renaming: {df.columns}")
-        show_df(df, 5, env)
-
-        if schema_name == "entity":
-            return transform_data_entity_format(df, data_set, spark, env)
-        else:
-            raise ValueError(f"Unknown table name: {schema_name}")
-
-    except Exception as e:
-        logger.error(f"Error transforming data: {e}")
-        raise
-
-
-@log_execution_time
-def write_parquet_to_s3(df, output_path, dataset_name, table_name, env=None):
-    """Write DataFrame to S3 in Parquet format with partitioning."""
-    try:
-        from datetime import datetime
-
-        logger.info(f"write_parquet_to_s3: Writing data to S3 at {output_path}")
-
-        cleanup_summary = cleanup_dataset_data(output_path, dataset_name)
-        logger.info(
-            f"write_parquet_to_s3: Cleaned up {cleanup_summary['objects_deleted']} objects"
-        )
-
-        df = df.withColumn("dataset", lit(dataset_name))
-        df = df.withColumn("entry_date_parsed", to_date("entry_date", "yyyy-MM-dd"))
-        df = (
-            df.withColumn("year", year("entry_date_parsed"))
-            .withColumn("month", month("entry_date_parsed"))
-            .withColumn("day", dayofmonth("entry_date_parsed"))
-        )
-        df = df.drop("entry_date_parsed")
-
-        row_count = df.count()
-        optimal_partitions = max(1, min(200, row_count // 1000000))
-
-        df = df.withColumn(
-            "processed_timestamp",
-            lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()),
-        )
-
-        if table_name == "entity":
-            global df_entity
-            df_entity = df
-
-        df.coalesce(optimal_partitions).write.partitionBy(
-            "dataset", "year", "month", "day"
-        ).mode("append").option("maxRecordsPerFile", 1000000).option(
-            "compression", "snappy"
-        ).parquet(
-            output_path
-        )
-
-        logger.info(f"write_parquet_to_s3: Successfully wrote {row_count} rows")
-
-    except Exception as e:
-        logger.error(f"write_parquet_to_s3: Failed to write to S3: {e}", exc_info=True)
-        raise
+    logger.info(f"write_parquet: Successfully wrote {row_count} rows")
 
 
 def cleanup_temp_path(env, dataset_name):
@@ -136,6 +53,14 @@ def cleanup_temp_path(env, dataset_name):
             objects = [{"Key": obj["Key"]} for obj in page["Contents"]]
             s3_client.delete_objects(Bucket=bucket_name, Delete={"Objects": objects})
             logger.info(f"Deleted {len(objects)} objects from {prefix}")
+
+
+def resolve_geometry(
+    geometry_wkt: Optional[str], point_wkt: Optional[str]
+) -> Optional[dict]:
+    """Convert geometry WKT to GeoJSON, falling back to point WKT if geometry is absent."""
+    wkt = geometry_wkt or point_wkt
+    return wkt_to_geojson(wkt) if wkt else None
 
 
 def wkt_to_geojson(wkt_string):
@@ -196,7 +121,7 @@ def wkt_to_geojson(wkt_string):
     return None
 
 
-def s3_rename_and_move(env, dataset_name, file_type, bucket_name):
+def s3_rename_and_move(dataset_name, file_type, bucket_name):
     """Rename and move files in S3."""
     s3_client = boto3.client("s3")
     unique_data_filename = f"{dataset_name}.{file_type}"
@@ -226,198 +151,6 @@ def s3_rename_and_move(env, dataset_name, file_type, bucket_name):
         )
         s3_client.delete_object(Bucket=bucket_name, Key=data_file)
         logger.info(f"Renamed: {data_file} -> {target_key}")
-
-
-@log_execution_time
-def write_entity_formats_to_s3(df, output_path, dataset_name, table_name, spark, env):
-    """Write DataFrame to S3 in CSV, JSON, and GeoJSON formats."""
-    try:
-        count = count_df(df, env)
-        logger.info(
-            f"write_entity_formats_to_s3: Input DataFrame contains {count} records"
-        )
-
-        path_bake = f"s3://{env}-collection-data/{dataset_name}-collection/dataset/{dataset_name}.csv"
-        df_bake = read_csv_from_s3(spark, path_bake)
-        df_bake = df_bake.select("entity", "json")
-
-        df = df.join(df_bake, df["entity"] == df_bake["entity"], how="left").select(
-            df["*"], df_bake["json"]
-        )
-
-        temp_output_path = f"s3://{env}-collection-data/dataset/temp/{dataset_name}/"
-
-        df = normalise_dataframe_schema(df, table_name, dataset_name, spark, env)
-        show_df(df, 5, env)
-
-        cleanup_summary = cleanup_dataset_data(output_path, dataset_name)
-        logger.info(
-            f"write_entity_formats_to_s3: Cleaned up {cleanup_summary['objects_deleted']} objects"
-        )
-
-        df = df.withColumn("dataset", lit(dataset_name))
-        row_count = df.count()
-
-        df = calculate_centroid(df)
-        temp_df = df
-        temp_df = flatten_json_column(temp_df)
-
-        for column in temp_df.columns:
-            if "_" in column:
-                temp_df = temp_df.withColumnRenamed(column, column.replace("_", "-"))
-
-        temp_df = ensure_schema_fields(temp_df, dataset_name)
-
-        cleanup_temp_path(env, dataset_name)
-        temp_df.coalesce(1).write.mode("overwrite").option("header", "true").csv(
-            temp_output_path
-        )
-
-        s3_rename_and_move(
-            env, dataset_name, "csv", bucket_name=f"{env}-collection-data"
-        )
-
-        # Write JSON
-        json_buffer = '{"entities":['
-        first = True
-        for row in temp_df.toLocalIterator():
-            if not first:
-                json_buffer += ","
-            first = False
-            row_dict = row.asDict()
-            for key, value in row_dict.items():
-                if isinstance(value, (date_type, datetime_type)):
-                    row_dict[key] = value.isoformat() if value else ""
-                elif value is None:
-                    row_dict[key] = ""
-            json_buffer += json.dumps(row_dict)
-        json_buffer += "]}"
-
-        s3_client = boto3.client("s3")
-        target_key = f"dataset/{dataset_name}.json"
-
-        try:
-            s3_client.head_object(Bucket=f"{env}-collection-data", Key=target_key)
-            s3_client.delete_object(Bucket=f"{env}-collection-data", Key=target_key)
-        except s3_client.exceptions.ClientError:
-            pass
-
-        s3_client.put_object(
-            Bucket=f"{env}-collection-data", Key=target_key, Body=json_buffer
-        )
-        logger.info(f"write_entity_formats_to_s3: JSON file written to {target_key}")
-
-        # Write GeoJSON
-        target_key_geojson = f"dataset/{dataset_name}.geojson"
-
-        try:
-            s3_client.head_object(
-                Bucket=f"{env}-collection-data", Key=target_key_geojson
-            )
-            s3_client.delete_object(
-                Bucket=f"{env}-collection-data", Key=target_key_geojson
-            )
-        except s3_client.exceptions.ClientError:
-            pass
-
-        mpu = s3_client.create_multipart_upload(
-            Bucket=f"{env}-collection-data", Key=target_key_geojson
-        )
-        parts = []
-        part_num = 1
-
-        try:
-            from datetime import date, datetime
-
-            header = (
-                '{"type":"FeatureCollection","name":"' + dataset_name + '","features":['
-            )
-            buffer = header
-
-            batch_size = 10000
-            num_partitions = max(1, row_count // batch_size)
-
-            first_row = True
-            for partition_id, rows in enumerate(
-                temp_df.repartition(num_partitions).toLocalIterator()
-            ):
-                row_dict = rows.asDict()
-                geometry_wkt = row_dict.pop("geometry", None)
-                row_dict.pop("point", None)
-
-                for key, value in row_dict.items():
-                    if isinstance(value, (date, datetime)):
-                        row_dict[key] = value.isoformat() if value else ""
-                    elif value is None:
-                        row_dict[key] = ""
-
-                geojson_geom = wkt_to_geojson(geometry_wkt) if geometry_wkt else None
-                feature = {
-                    "type": "Feature",
-                    "properties": row_dict,
-                    "geometry": geojson_geom,
-                }
-
-                if not first_row:
-                    buffer += ","
-                first_row = False
-                buffer += json.dumps(feature)
-
-                if len(buffer.encode("utf-8")) > 5 * 1024 * 1024:
-                    part = s3_client.upload_part(
-                        Bucket=f"{env}-collection-data",
-                        Key=target_key_geojson,
-                        PartNumber=part_num,
-                        UploadId=mpu["UploadId"],
-                        Body=buffer,
-                    )
-                    parts.append({"PartNumber": part_num, "ETag": part["ETag"]})
-                    part_num += 1
-                    buffer = ""
-
-            buffer += "]}"
-            part = s3_client.upload_part(
-                Bucket=f"{env}-collection-data",
-                Key=target_key_geojson,
-                PartNumber=part_num,
-                UploadId=mpu["UploadId"],
-                Body=buffer,
-            )
-            parts.append({"PartNumber": part_num, "ETag": part["ETag"]})
-
-            s3_client.complete_multipart_upload(
-                Bucket=f"{env}-collection-data",
-                Key=target_key_geojson,
-                UploadId=mpu["UploadId"],
-                MultipartUpload={"Parts": parts},
-            )
-            logger.info(
-                f"write_entity_formats_to_s3: GeoJSON file written to {target_key_geojson}"
-            )
-        except Exception as e:
-            logger.error(f"Error during GeoJSON multipart upload: {e}")
-            s3_client.abort_multipart_upload(
-                Bucket=f"{env}-collection-data",
-                Key=target_key_geojson,
-                UploadId=mpu["UploadId"],
-            )
-            raise
-
-        if "json" in df.columns:
-            df = df.drop("json")
-
-        return df
-    except Exception as e:
-        logger.error(
-            f"write_entity_formats_to_s3: Failed to write to S3: {e}", exc_info=True
-        )
-        raise
-    finally:
-        if "temp_df" in locals() and temp_df is not None:
-            try:
-                temp_df.unpersist()
-            except Exception:
-                pass
 
 
 def ensure_schema_fields(df, dataset_name):

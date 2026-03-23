@@ -119,7 +119,7 @@ def get_secret_json(
         logger.info("Successfully parsed JSON secret")
         return secret_dict
 
-    except json.JSONDecodeError as e:
+    except json.JSONDecodeError:
         error_msg = "Secret is not valid JSON"
         logger.error(error_msg)
         raise SecretsManagerError(error_msg)
@@ -290,7 +290,7 @@ def get_secret_with_fallback(
     # Try AWS Secrets Manager
     try:
         return get_secret(secret_name, region_name)
-    except SecretsManagerError as e:
+    except SecretsManagerError:
         if env_var_name:
             error_msg = (
                 "Failed to retrieve secret and environment variable fallback is not set"

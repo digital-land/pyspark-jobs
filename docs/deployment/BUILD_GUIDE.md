@@ -6,12 +6,12 @@ This guide explains how to build and deploy your PySpark jobs to AWS EMR Serverl
 
 ### Build Only
 ```bash
-./build_aws_package.sh
+./bin/build_aws_package.sh
 ```
 
 ### Build and Upload to S3
 ```bash
-./build_aws_package.sh --upload
+./bin/build_aws_package.sh --upload
 ```
 
 ## What the Build Script Does
@@ -118,8 +118,8 @@ The build script can be integrated into your CI/CD pipeline:
 
 ```bash
 # In your CI/CD script
-./build_aws_package.sh --upload
+./bin/build_aws_package.sh --upload
 
 # Or for just building (manual upload later)
-./build_aws_package.sh
+./bin/build_aws_package.sh
 ```

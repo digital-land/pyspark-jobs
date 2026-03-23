@@ -1,0 +1,29 @@
+{
+  "transformed": [
+    "end_date",
+    "entity",
+    "fact",
+    "field",
+    "entry_date",
+    "entry_number",
+    "priority",
+    "reference_entity",
+    "resource",
+    "start_date",
+    "value"
+  ],
+  "issue": [
+    "end_date",
+    "entity",
+    "entry_date",
+    "entry_number",
+    "field",
+    "issue_type",
+    "line_number",
+    "dataset",
+    "resource",
+    "start_date",
+    "value",
+    "message"
+  ]
+}

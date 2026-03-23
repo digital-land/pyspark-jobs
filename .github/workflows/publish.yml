@@ -52,7 +52,7 @@ jobs:
 
       - name: Build artifacts
         run: |
-          bash build_aws_package.sh
+          bash bin/build_aws_package.sh
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

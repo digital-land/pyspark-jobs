@@ -5,6 +5,11 @@ This directory contains documentation about system architecture, design decision
 ## 📚 Available Guides
 
 ### 🏗️ **System Architecture**
+- **[Adding Jobs and Pipelines](./ADDING_JOBS_AND_PIPELINES.md)**
+  - How to add new pipelines, jobs, and entry points
+  - End-to-end wiring: entry point → job → pipeline → transformer
+  - Code examples and testing patterns
+
 - **[JDBC Dependency Architecture](./JDBC_DEPENDENCY_ARCHITECTURE.md)**
   - Why JDBC drivers aren't included in Python dependencies package
   - Separation of Java vs Python runtime environments
