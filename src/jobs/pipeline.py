@@ -26,7 +26,11 @@ from jobs.transform.fact_transformer import FactTransformer
 from jobs.transform.issue_transformer import IssueTransformer
 from jobs.utils.df_utils import count_df, normalise_column_names, show_df
 from jobs.utils.flatten_csv import flatten_json_column
-from jobs.utils.postgres_writer_utils import write_dataframe_to_postgres_jdbc
+from jobs.utils.postgres_writer_utils import (
+    SUBDIVIDED_DATASETS,
+    write_dataframe_to_postgres_jdbc,
+    write_entity_subdivided_to_postgres,
+)
 from jobs.utils.s3_utils import cleanup_dataset_data
 from jobs.utils.s3_writer_utils import (
     cleanup_temp_path,
@@ -426,6 +430,14 @@ class EntityPipeline(BasePipeline):
             write_dataframe_to_postgres_jdbc(
                 entity_pg_df, "entity", dataset, self.config.database_url
             )
+
+            if dataset in SUBDIVIDED_DATASETS:
+                logger.info(
+                    f"EntityPipeline: {dataset} requires subdivided geometries, writing to entity_subdivided"
+                )
+                write_entity_subdivided_to_postgres(
+                    entity_pg_df, dataset, self.config.database_url
+                )
         else:
             logger.info("EntityPipeline: entity_df is empty, skipping Postgres write")
 

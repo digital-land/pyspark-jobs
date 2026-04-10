@@ -118,3 +118,43 @@ def clean_entity_table(db_conn):
     )
     db_conn.commit()
     cur.close()
+
+
+@pytest.fixture()
+def clean_entity_subdivided_table(db_conn):
+    """Create the entity_subdivided table before each test and truncate after."""
+    cur = db_conn.cursor()
+    cur.execute("CREATE EXTENSION IF NOT EXISTS postgis;")
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS entity_subdivided (
+            entity BIGINT,
+            dataset TEXT,
+            geometry_subdivided GEOMETRY(MULTIPOLYGON, 4326)
+        );
+        """
+    )
+    db_conn.commit()
+    cur.close()
+
+    yield
+
+    cur = db_conn.cursor()
+    cur.execute("TRUNCATE TABLE entity_subdivided;")
+    # Drop any leftover staging tables
+    cur.execute(
+        """
+        DO $$
+        DECLARE t TEXT;
+        BEGIN
+            FOR t IN SELECT tablename FROM pg_tables
+                     WHERE schemaname = 'public'
+                       AND tablename LIKE 'entity_subdivided_staging_%'
+            LOOP
+                EXECUTE 'DROP TABLE IF EXISTS ' || t;
+            END LOOP;
+        END $$;
+        """
+    )
+    db_conn.commit()
+    cur.close()

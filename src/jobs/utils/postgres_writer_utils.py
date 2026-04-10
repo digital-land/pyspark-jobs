@@ -1,10 +1,16 @@
-from pyspark.sql.functions import col, lit, to_json
+from pyspark.sql.functions import col, explode, expr, lit, to_json
 
 from jobs.utils.db_url import parse_database_url
 from jobs.utils.df_utils import show_df
 from jobs.utils.logger_config import get_logger
 
 logger = get_logger(__name__)
+
+# Datasets that require geometry to be subdivided and written to entity_subdivided.
+# Add dataset names here to include them in the subdivided write.
+SUBDIVIDED_DATASETS = [
+    "flood-risk-zones",
+]
 
 
 def _ensure_required_columns(df, required_cols, defaults=None, logger=None):
@@ -301,3 +307,183 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, database_url):
         conn.close()
     except Exception as e:
         logger.warning(f"Cleanup drop staging table failed or not needed: {e}")
+
+
+def write_entity_subdivided_to_postgres(entity_df, dataset, database_url):
+    """
+    Subdivide complex geometries in Spark and write to entity_subdivided table
+    using a staging table and atomic swap, mirroring the entity write pattern.
+
+    Args:
+        entity_df: Spark DataFrame with entity data (must have entity, dataset, geometry columns)
+        dataset: Dataset identifier
+        database_url: PostgreSQL connection URL
+    """
+    import hashlib
+    import time
+    from datetime import datetime
+
+    import pg8000
+    from sedona.spark import SedonaContext
+
+    SedonaContext.create(entity_df.sparkSession)
+
+    logger.info(
+        f"write_entity_subdivided_to_postgres: Subdividing geometries for {dataset}"
+    )
+
+    # Build subdivided DataFrame: one row per subdivided geometry fragment.
+    # ST_SubDivide(geom, 256) matches the PostGIS default max_vertices of 256.
+    # ST_AsText produces WKT; stringtype=unspecified in JDBC causes PostgreSQL
+    # to implicitly cast it back to geometry on insert.
+    subdivided_df = (
+        entity_df.filter(col("geometry").isNotNull())
+        .select(
+            col("entity"),
+            col("dataset"),
+            expr("ST_MakeValid(ST_GeomFromWKT(geometry))").alias("geom"),
+        )
+        .filter(expr("ST_IsValid(geom)"))
+        .withColumn("geom_parts", expr("ST_SubDivide(geom, 256)"))
+        .select("entity", "dataset", explode("geom_parts").alias("geom_part"))
+        .withColumn("geometry_subdivided", expr("ST_AsText(ST_Multi(geom_part))"))
+        .select("entity", "dataset", "geometry_subdivided")
+    )
+
+    conn_params = parse_database_url(database_url)
+    row_count = subdivided_df.count()
+    logger.info(
+        f"write_entity_subdivided_to_postgres: {row_count:,} subdivided rows for {dataset}"
+    )
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dataset_hash = hashlib.md5(dataset.encode()).hexdigest()[:8]
+    staging_table = f"entity_subdivided_staging_{dataset_hash}_{timestamp}"
+
+    # Step 1: Create staging table
+    try:
+        conn_params["timeout"] = 1800
+        conn = pg8000.connect(**conn_params)
+        cur = conn.cursor()
+        cur.execute(
+            f"""
+            CREATE TABLE {staging_table} (
+                entity BIGINT,
+                dataset TEXT,
+                geometry_subdivided GEOMETRY(MULTIPOLYGON, 4326)
+            );
+            """
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        logger.info(
+            f"write_entity_subdivided_to_postgres: Created staging table {staging_table}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to create entity_subdivided staging table: {e}")
+        raise
+
+    # Step 2: JDBC bulk write to staging
+    url = f"jdbc:postgresql://{conn_params['host']}:{conn_params['port']}/{conn_params['database']}"
+    num_partitions = max(1, min(20, row_count // 50000))
+
+    max_attempts = 3
+    attempt = 0
+    while attempt < max_attempts:
+        try:
+            subdivided_df.repartition(num_partitions).write.jdbc(
+                url=url,
+                table=staging_table,
+                mode="append",
+                properties={
+                    "user": conn_params["user"],
+                    "password": conn_params["password"],
+                    "driver": "org.postgresql.Driver",
+                    "stringtype": "unspecified",
+                    "batchsize": "5000",
+                    "reWriteBatchedInserts": "true",
+                    "numPartitions": str(num_partitions),
+                },
+            )
+            logger.info(
+                f"write_entity_subdivided_to_postgres: JDBC write successful on attempt {attempt + 1}"
+            )
+            break
+        except Exception as e:
+            attempt += 1
+            logger.warning(
+                f"Entity subdivided JDBC write failed (attempt {attempt}): {e}"
+            )
+            if attempt < max_attempts:
+                sleep_time = 5 * attempt
+                logger.info(f"Retrying JDBC write in {sleep_time}s...")
+                time.sleep(sleep_time)
+            else:
+                logger.error("Max retries reached for entity_subdivided JDBC write.")
+                raise
+
+    # Step 3: Atomic swap
+    attempt = 0
+    while attempt < max_attempts:
+        try:
+            conn_params["timeout"] = 1800
+            conn = pg8000.connect(**conn_params)
+            cur = conn.cursor()
+            cur.execute("SET statement_timeout = '1800000';")
+            cur.execute("BEGIN;")
+
+            cur.execute("DELETE FROM entity_subdivided WHERE dataset = %s;", (dataset,))
+            deleted = cur.rowcount
+
+            cur.execute(
+                f"""
+                INSERT INTO entity_subdivided (entity, dataset, geometry_subdivided)
+                SELECT entity, dataset::text, geometry_subdivided
+                FROM {staging_table};
+                """
+            )
+            inserted = cur.rowcount
+
+            cur.execute(f"DROP TABLE {staging_table};")
+            cur.execute("COMMIT;")
+            logger.info(
+                f"write_entity_subdivided_to_postgres: Atomic commit successful on attempt {attempt + 1}"
+                f" - Deleted {deleted:,}, Inserted {inserted:,} rows"
+            )
+            break
+        except Exception as e:
+            try:
+                cur.execute("ROLLBACK;")
+            except Exception:
+                pass
+            attempt += 1
+            logger.warning(
+                f"Entity subdivided atomic commit failed (attempt {attempt}): {e}"
+            )
+            if attempt < max_attempts:
+                sleep_time = 5 * attempt
+                logger.info(f"Retrying atomic commit in {sleep_time}s...")
+                time.sleep(sleep_time)
+            else:
+                logger.error("Max retries reached for entity_subdivided atomic commit.")
+                raise
+        finally:
+            try:
+                cur.close()
+                conn.close()
+            except Exception:
+                pass
+
+    # Step 4: Safety cleanup
+    try:
+        conn = pg8000.connect(**conn_params)
+        cur = conn.cursor()
+        cur.execute(f"DROP TABLE IF EXISTS {staging_table};")
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        logger.warning(
+            f"Cleanup drop entity_subdivided staging table failed or not needed: {e}"
+        )
