@@ -31,4 +31,4 @@ def filter_old_resources(df: DataFrame, old_resources_df: DataFrame) -> DataFram
             f"filter_old_resources: Filtering out {len(gone_hashes)} resources with status 410"
         )
 
-    return df.filter(~col("resource").isin(gone_hashes))
+    return df.filter(col("resource").isNull() | ~col("resource").isin(gone_hashes))
