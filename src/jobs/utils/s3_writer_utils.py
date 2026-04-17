@@ -34,13 +34,23 @@ def write_delta(
     Raises:
         ValueError: If a Delta table exists at output_path with a different schema.
     """
+    from cloudpathlib import AnyPath
     from delta.tables import DeltaTable
 
     spark = df.sparkSession
 
     logger.info(f"write_delta: Writing dataset '{dataset}' to {output_path}")
 
-    if DeltaTable.isDeltaTable(spark, output_path):
+    path = AnyPath(output_path)
+    is_delta = DeltaTable.isDeltaTable(spark, output_path)
+
+    if path.exists() and any(path.iterdir()) and not is_delta:
+        raise ValueError(
+            f"write_delta: {output_path} contains existing files but is not a Delta table. "
+            f"Remove the existing data before writing."
+        )
+
+    if is_delta:
         existing_schema = DeltaTable.forPath(spark, output_path).toDF().schema
         if df.schema != existing_schema:
             raise ValueError(
