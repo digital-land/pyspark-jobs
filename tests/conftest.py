@@ -21,7 +21,16 @@ def spark():
         .config(
             "spark.jars.packages",
             "org.apache.sedona:sedona-spark-shaded-3.5_2.12:1.8.1,"
-            "org.postgresql:postgresql:42.7.4",
+            "org.postgresql:postgresql:42.7.4,"
+            "io.delta:delta-spark_2.12:3.2.0",
+        )
+        .config(
+            "spark.sql.extensions",
+            "io.delta.sql.DeltaSparkSessionExtension",
+        )
+        .config(
+            "spark.sql.catalog.spark_catalog",
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
         )
         .getOrCreate()
     )

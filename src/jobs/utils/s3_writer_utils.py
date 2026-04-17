@@ -14,32 +14,58 @@ df_entity = None
 
 
 @log_execution_time
-def write_parquet(df, output_path: str, partition_by: Optional[List[str]] = None):
-    """Write DataFrame in Parquet format.
+def write_delta(
+    df,
+    output_path: str,
+    dataset: str,
+    partition_by: Optional[List[str]] = None,
+):
+    """Write DataFrame as a Delta Lake table, atomically replacing the dataset partition.
+
+    If a Delta table already exists at output_path, the incoming DataFrame schema must
+    match exactly. Schema migrations must be handled separately before writing.
 
     Args:
         df: PySpark DataFrame to write.
         output_path: Destination path (local or s3://).
+        dataset: Dataset identifier used to scope the partition replacement.
         partition_by: Columns to partition by. If None, writes without partitioning.
+
+    Raises:
+        ValueError: If a Delta table exists at output_path with a different schema.
     """
-    logger.info(f"write_parquet: Writing data to {output_path}")
+    from delta.tables import DeltaTable
+
+    spark = df.sparkSession
+
+    logger.info(f"write_delta: Writing dataset '{dataset}' to {output_path}")
+
+    if DeltaTable.isDeltaTable(spark, output_path):
+        existing_schema = DeltaTable.forPath(spark, output_path).toDF().schema
+        if df.schema != existing_schema:
+            raise ValueError(
+                f"write_delta: Schema mismatch for Delta table at {output_path}. "
+                f"Run a schema migration before writing.\n"
+                f"  Existing : {existing_schema.simpleString()}\n"
+                f"  Incoming : {df.schema.simpleString()}"
+            )
 
     row_count = df.count()
     optimal_partitions = max(1, min(200, row_count // 1000000))
 
     writer = (
         df.coalesce(optimal_partitions)
-        .write.mode("append")
-        .option("maxRecordsPerFile", 1000000)
-        .option("compression", "snappy")
+        .write.format("delta")
+        .mode("overwrite")
+        .option("replaceWhere", f"dataset = '{dataset}'")
     )
 
     if partition_by:
-        writer.partitionBy(*partition_by).parquet(output_path)
-    else:
-        writer.parquet(output_path)
+        writer = writer.partitionBy(*partition_by)
 
-    logger.info(f"write_parquet: Successfully wrote {row_count} rows")
+    writer.save(output_path)
+
+    logger.info(f"write_delta: Successfully wrote {row_count:,} rows for '{dataset}'")
 
 
 def cleanup_temp_path(env, dataset_name):

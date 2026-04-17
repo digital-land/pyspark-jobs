@@ -24,6 +24,8 @@ from jobs.transform.entity_transformer import EntityTransformer
 from jobs.transform.fact_resource_transformer import FactResourceTransformer
 from jobs.transform.fact_transformer import FactTransformer
 from jobs.transform.issue_transformer import IssueTransformer
+from jobs.read import read_old_resources
+from jobs.transform.filter import filter_old_resources
 from jobs.utils.df_utils import count_df, normalise_column_names, show_df
 from jobs.utils.flatten_csv import flatten_json_column
 from jobs.utils.postgres_writer_utils import (
@@ -31,13 +33,12 @@ from jobs.utils.postgres_writer_utils import (
     write_dataframe_to_postgres_jdbc,
     write_entity_subdivided_to_postgres,
 )
-from jobs.utils.s3_utils import cleanup_dataset_data
 from jobs.utils.s3_writer_utils import (
     cleanup_temp_path,
     ensure_schema_fields,
     resolve_geometry,
     s3_rename_and_move,
-    write_parquet,
+    write_delta,
 )
 
 logger = logging.getLogger(__name__)
@@ -188,10 +189,8 @@ class EntityPipeline(BasePipeline):
             ("entity", entity_df),
         ]:
             output_path = str(parquet_base / table_name)
-            if isinstance(parquet_base, S3Path):
-                cleanup_dataset_data(output_path, dataset)
-            write_parquet(df, output_path, partition_by=["dataset"])
-            logger.info(f"EntityPipeline: Wrote {table_name} parquet")
+            write_delta(df, output_path, dataset, partition_by=["dataset"])
+            logger.info(f"EntityPipeline: Wrote {table_name} Delta table")
 
         # -- Load: consumer formats (CSV/JSON/GeoJSON) ------------------------
         self._write_consumer_formats(entity_df)
@@ -470,6 +469,27 @@ class IssuePipeline(BasePipeline):
         issue_df = normalise_column_names(issue_df)
         logger.info(f"IssuePipeline: Columns after renaming: {issue_df.columns}")
 
+        # -- Filter old resources ---------------------------------------------
+        old_resource_path = (
+            base
+            / "config"
+            / "collection"
+            / f"{collection}-collection"
+            / "old-resource.csv"
+        )
+        try:
+            if old_resource_path.exists():
+                old_resources_df = read_old_resources(spark, str(old_resource_path))
+                issue_df = filter_old_resources(issue_df, old_resources_df)
+            else:
+                logger.info(
+                    f"IssuePipeline: No old-resource.csv found at {old_resource_path}, skipping filter"
+                )
+        except Exception as e:
+            logger.warning(
+                f"IssuePipeline: Could not read old-resource.csv, skipping filter: {e}"
+            )
+
         # -- Transform --------------------------------------------------------
         issue_df = IssueTransformer().transform(issue_df, dataset)
         logger.info("IssuePipeline: issue transform completed")
@@ -477,7 +497,5 @@ class IssuePipeline(BasePipeline):
         # -- Load -------------------------------------------------------------
         parquet_base = AnyPath(self.config.parquet_datasets_path)
         issue_output_path = str(parquet_base / "issue")
-        if isinstance(parquet_base, S3Path):
-            cleanup_dataset_data(issue_output_path, dataset)
-        write_parquet(issue_df, issue_output_path, partition_by=["dataset"])
-        logger.info("IssuePipeline: Wrote issue parquet")
+        write_delta(issue_df, issue_output_path, dataset, partition_by=["dataset"])
+        logger.info("IssuePipeline: Wrote issue Delta table")

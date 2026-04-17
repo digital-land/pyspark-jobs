@@ -342,18 +342,20 @@ def test_e2e_full_load_pipeline(cli_runner, run_main_cmd, spark, tmp_path, mocke
     expected_unique_entities = len({r["entity"] for r in TRANSFORMED_ROWS})
 
     # Fact resource: no rows removed, same count as transformed input
-    fact_resource_df = spark.read.parquet(os.path.join(parquet_base, "fact_resource"))
+    fact_resource_df = spark.read.format("delta").load(
+        os.path.join(parquet_base, "fact_resource")
+    )
     assert fact_resource_df.count() == expected_input_rows
 
     # Fact: one row per unique fact value after deduplication
-    fact_df = spark.read.parquet(os.path.join(parquet_base, "fact"))
+    fact_df = spark.read.format("delta").load(os.path.join(parquet_base, "fact"))
     assert fact_df.count() == expected_unique_facts
 
     # Entity: one row per unique entity (pivoted from EAV to wide format)
-    entity_df = spark.read.parquet(os.path.join(parquet_base, "entity"))
+    entity_df = spark.read.format("delta").load(os.path.join(parquet_base, "entity"))
     assert entity_df.count() == expected_unique_entities
 
-    issue_df = spark.read.parquet(os.path.join(parquet_base, "issue"))
+    issue_df = spark.read.format("delta").load(os.path.join(parquet_base, "issue"))
     assert issue_df.count() > 0
 
     # Entity written to Postgres

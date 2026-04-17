@@ -2,9 +2,10 @@
 
 from datetime import datetime
 
-from pyspark.sql.functions import lit
+from pyspark.sql.functions import col, lit
 from pyspark.sql.types import TimestampType
 
+from jobs.config.schema import get_schema
 from jobs.utils.logger_config import get_logger
 
 logger = get_logger(__name__)
@@ -19,7 +20,7 @@ class IssueTransformer:
         Transform issue data.
 
         Adds empty date columns (start_date, entry_date, end_date) and
-        selects the standard issue columns.
+        enforces the issue schema, adding missing fields as typed nulls.
         """
         try:
             logger.info("IssueTransformer: Transforming data for Issue table")
@@ -31,21 +32,11 @@ class IssueTransformer:
                 .withColumn("end_date", lit("").cast("string"))
             )
 
-            # Select required columns in correct order
-            transf_df = transf_df.select(
-                "end_date",
-                "entity",
-                "entry_date",
-                "entry_number",
-                "field",
-                "issue_type",
-                "line_number",
-                "dataset",
-                "resource",
-                "start_date",
-                "value",
-                "message",
-            )
+            # Remove rows with no resource — these cannot be attributed to a source file
+            transf_df = transf_df.filter(col("resource").isNotNull())
+
+            # Enforce schema: adds missing fields as typed nulls, selects in order
+            transf_df = get_schema("issue").enforce(transf_df)
 
             logger.info(
                 f"IssueTransformer: Transformation complete, columns: {transf_df.columns}"
