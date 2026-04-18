@@ -163,19 +163,17 @@ build_dependencies() {
     # Upgrade pip to avoid warnings
     pip install --quiet --upgrade pip
     
-    # Install only the external dependencies (not pre-installed in EMR Serverless)
-    print_status "Installing external dependencies..."
+    # Install dependencies targeting manylinux2014_x86_64 + Python 3.9 (EMR Serverless 7.x).
+    # --platform with --only-binary=:all: forces Linux wheels regardless of build OS,
+    # ensuring compiled extensions (e.g. pydantic-core) load correctly on Amazon Linux 2.
+    print_status "Installing EMR dependencies (manylinux2014_x86_64, Python 3.9)..."
     
-    # Install EMR-specific dependencies (excluding PySpark which is pre-installed)
-    print_status "Installing EMR dependencies (excluding PySpark)..."
-    print_warning "Note: Dependencies will be packaged for current platform. For Linux compatibility,"
-    print_warning "consider building this package in a Linux environment or Docker container."
-    print_warning "To use Docker for Linux-compatible build, run: ./build_aws_package.sh --docker"
-    
-    # Install dependencies from requirements.txt (EMR-specific dependencies only)
-    print_status "Installing EMR dependencies..."
-    
-    pip install --quiet -r "$PROJECT_DIR/requirements.txt" || {
+    pip install --quiet \
+        --platform manylinux2014_x86_64 \
+        --python-version 39 \
+        --implementation cp \
+        --only-binary=:all: \
+        -r "$PROJECT_DIR/requirements.txt" || {
         print_error "Failed to install EMR dependencies."
         exit 1
     }
@@ -207,7 +205,7 @@ build_dependencies() {
     print_success "✅ AWS SDK packages correctly excluded (using EMR native versions)"
     
     # Check for required custom dependencies
-    required_deps=("pg8000")
+    required_deps=("pg8000" "pydantic")
     missing_deps=()
     
     for dep in "${required_deps[@]}"; do
