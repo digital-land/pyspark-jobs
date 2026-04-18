@@ -173,13 +173,14 @@ build_dependencies() {
         --python-version 39 \
         --implementation cp \
         --only-binary=:all: \
+        --target "$PROJECT_DIR/deps_target" \
         -r "$PROJECT_DIR/requirements.txt" || {
         print_error "Failed to install EMR dependencies."
         exit 1
     }
-    
+
     # Create dependencies archive
-    cd temp_venv/lib/python*/site-packages/
+    cd "$PROJECT_DIR/deps_target"
     
     # Verify dependencies and ensure AWS SDK packages are NOT included
     print_status "Verifying dependencies..."
@@ -224,10 +225,10 @@ build_dependencies() {
     
     zip -r "$BUILD_DIR/dependencies/dependencies.zip" .
     
-    # Deactivate and cleanup
+    # Cleanup
     cd "$PROJECT_DIR"
     deactivate
-    rm -rf temp_venv/
+    rm -rf temp_venv/ deps_target/
     
     print_success "Dependencies archive created: dependencies.zip"
 }
