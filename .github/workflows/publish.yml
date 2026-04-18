@@ -109,7 +109,7 @@ jobs:
         run: |
           echo "🚀 Publishing PySpark jobs to $ENVIRONMENT environment..."
           aws s3 cp build_output/whl_pkg/ s3://$AWS_S3_BUCKET/pkg/whl_pkg/ --recursive
-          aws s3 cp build_output/dependencies/dependencies.zip s3://$AWS_S3_BUCKET/pkg/dependencies/
+          aws s3 cp build_output/dependencies/environment.tar.gz s3://$AWS_S3_BUCKET/pkg/dependencies/
           aws s3 cp build_output/entry_script/run_main.py s3://$AWS_S3_BUCKET/pkg/entry_script/
           echo "✅ Publish completed to S3 bucket: $AWS_S3_BUCKET"
 

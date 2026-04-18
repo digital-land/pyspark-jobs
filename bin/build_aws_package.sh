@@ -144,154 +144,120 @@ build_wheel() {
     rm -rf build_venv/
 }
 
-# Create dependencies archive
+# Create Python virtual environment archive for --archives submission
 build_dependencies() {
-    print_status "Creating dependencies archive..."
-    
+    print_status "Creating Python environment archive..."
+
     cd "$PROJECT_DIR"
-    
+
     # Check if Docker is available for Linux-compatible builds
     if command_exists docker && [[ "$1" == "--docker" ]]; then
         build_dependencies_docker
         return
     fi
-    
-    # Create temporary virtual environment
-    $PYTHON_VERSION -m venv temp_venv
-    source temp_venv/bin/activate
-    
-    # Upgrade pip to avoid warnings
+
+    # Build a full venv so compiled extensions (.so files) are on the real filesystem
+    # when extracted by EMR Serverless. This is the AWS-recommended approach for packages
+    # with native extensions (e.g. pydantic-core). Submitted via --archives, not --py-files.
+    $PYTHON_VERSION -m venv environment
+    source environment/bin/activate
+
     pip install --quiet --upgrade pip
-    
-    # Install dependencies targeting manylinux2014_x86_64 + Python 3.9 (EMR Serverless 7.x).
-    # --platform with --only-binary=:all: forces Linux wheels regardless of build OS,
-    # ensuring compiled extensions (e.g. pydantic-core) load correctly on Amazon Linux 2.
-    print_status "Installing EMR dependencies (manylinux2014_x86_64, Python 3.9)..."
-    
-    pip install --quiet \
-        --platform manylinux2014_x86_64 \
-        --python-version 39 \
-        --implementation cp \
-        --only-binary=:all: \
-        --target "$PROJECT_DIR/deps_target" \
-        -r "$PROJECT_DIR/requirements.txt" || {
+
+    print_status "Installing EMR dependencies into venv..."
+    pip install --quiet -r "$PROJECT_DIR/requirements.txt" || {
         print_error "Failed to install EMR dependencies."
         exit 1
     }
 
-    # Install delta-spark Python bindings without pyspark (pyspark is pre-installed on EMR).
-    # --no-deps avoids pulling in pyspark and its conflicting transitive dependencies.
-    pip install --quiet \
-        --platform manylinux2014_x86_64 \
-        --python-version 39 \
-        --implementation cp \
-        --only-binary=:all: \
-        --no-deps \
-        --target "$PROJECT_DIR/deps_target" \
-        "delta-spark>=3.2.0,<4.0.0" || {
+    # Install delta-spark Python bindings without pyspark (pre-installed on EMR).
+    pip install --quiet --no-deps "delta-spark>=3.2.0,<4.0.0" || {
         print_error "Failed to install delta-spark Python bindings."
         exit 1
     }
 
-    # Create dependencies archive
-    cd "$PROJECT_DIR/deps_target"
-    
+    deactivate
+
     # Verify dependencies and ensure AWS SDK packages are NOT included
     print_status "Verifying dependencies..."
-    
-    # Check that AWS SDK packages are NOT included (they should use native EMR versions)
+    SITE_PACKAGES=$(ls -d "$PROJECT_DIR/environment/lib/python"*/site-packages)
+
     aws_packages=("boto3" "botocore")
     found_aws_packages=()
-    
     for pkg in "${aws_packages[@]}"; do
-        if [[ -d "$pkg" || -d "${pkg}"* ]]; then
+        if [[ -d "$SITE_PACKAGES/$pkg" ]]; then
             found_aws_packages+=("$pkg")
         fi
     done
-    
     if [[ ${#found_aws_packages[@]} -gt 0 ]]; then
-        print_error "AWS SDK packages found in dependencies: ${found_aws_packages[*]}"
-        print_error "These packages should NOT be included as they are pre-installed in EMR Serverless."
-        print_error "This can cause the 'DataNotFoundError: Unable to load data for: endpoints' error."
-        print_error "This should not happen with the current filtering logic."
+        print_error "AWS SDK packages found in environment: ${found_aws_packages[*]}"
+        print_error "These are pre-installed on EMR Serverless and must not be bundled."
         exit 1
     fi
-    
-    print_success "✅ AWS SDK packages correctly excluded (using EMR native versions)"
-    
-    # Check for required custom dependencies
-    required_deps=("pg8000" "pydantic")
+    print_success "✅ AWS SDK packages correctly excluded"
+
+    required_deps=("pg8000" "pydantic" "pydantic_core")
     missing_deps=()
-    
     for dep in "${required_deps[@]}"; do
-        if [[ ! -d "$dep" && ! -d "${dep}"* ]]; then
+        if [[ ! -d "$SITE_PACKAGES/$dep" ]]; then
             missing_deps+=("$dep")
         fi
     done
-    
     if [[ ${#missing_deps[@]} -gt 0 ]]; then
-        print_error "Required dependencies missing: ${missing_deps[*]}"
-        print_error "Please check requirements.txt"
+        print_error "Required dependencies missing from environment: ${missing_deps[*]}"
         exit 1
     fi
-    
-    print_success "✅ All required custom dependencies present"
-    
-    zip -r "$BUILD_DIR/dependencies/dependencies.zip" .
-    
+    print_success "✅ All required dependencies present (including pydantic_core)"
+
+    tar -czf "$BUILD_DIR/dependencies/environment.tar.gz" environment/
+
     # Cleanup
     cd "$PROJECT_DIR"
-    deactivate
-    rm -rf temp_venv/ deps_target/
-    
-    print_success "Dependencies archive created: dependencies.zip"
+    rm -rf environment/
+
+    print_success "Environment archive created: environment.tar.gz"
 }
 
-# Create dependencies using Docker for Linux compatibility
+# Create environment archive using Docker for Linux compatibility
 build_dependencies_docker() {
-    print_status "Creating dependencies using Docker for Linux compatibility..."
-    
-    # Create a temporary Dockerfile for dependency building
+    print_status "Creating Python environment archive using Docker..."
+
     cat > temp_dockerfile << 'EOF'
 FROM python:3.9-slim
-RUN apt-get update && apt-get install -y zip && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y tar && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY requirements.txt /build/
-RUN pip install --no-cache-dir --target /build/deps -r requirements.txt && \
-    cd /build/deps && \
-    zip -r /build/dependencies.zip .
+RUN python -m venv environment && \
+    environment/bin/pip install --quiet --upgrade pip && \
+    environment/bin/pip install --quiet -r requirements.txt && \
+    environment/bin/pip install --quiet --no-deps "delta-spark>=3.2.0,<4.0.0" && \
+    tar -czf environment.tar.gz environment/
 EOF
-    
-    # Build dependencies in Docker container
-    print_status "Building dependencies in Docker container..."
+
     docker build -f temp_dockerfile -t pyspark-deps-builder . || {
-        print_error "Failed to build Docker image for dependencies"
+        print_error "Failed to build Docker image"
         rm -f temp_dockerfile
         exit 1
     }
-    
-    # Extract the dependencies.zip from the built image
+
     docker create --name temp-deps-container pyspark-deps-builder || {
         print_error "Failed to create temporary container"
         rm -f temp_dockerfile
         exit 1
     }
-    
-    docker cp temp-deps-container:/build/dependencies.zip "$BUILD_DIR/dependencies/" || {
-        print_error "Failed to copy dependencies from Docker container"
+
+    docker cp temp-deps-container:/build/environment.tar.gz "$BUILD_DIR/dependencies/" || {
+        print_error "Failed to copy environment archive from Docker container"
         docker rm temp-deps-container
         rm -f temp_dockerfile
         exit 1
     }
-    
-    # Clean up temporary container
+
     docker rm temp-deps-container
-    
-    # Clean up
     docker rmi pyspark-deps-builder >/dev/null 2>&1 || true
     rm -f temp_dockerfile
-    
-    print_success "Dependencies archive created using Docker: dependencies.zip"
+
+    print_success "Environment archive created using Docker: environment.tar.gz"
 }
 
 # Download JDBC drivers (optional)
