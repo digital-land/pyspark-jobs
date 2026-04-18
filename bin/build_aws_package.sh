@@ -179,6 +179,20 @@ build_dependencies() {
         exit 1
     }
 
+    # Install delta-spark Python bindings without pyspark (pyspark is pre-installed on EMR).
+    # --no-deps avoids pulling in pyspark and its conflicting transitive dependencies.
+    pip install --quiet \
+        --platform manylinux2014_x86_64 \
+        --python-version 39 \
+        --implementation cp \
+        --only-binary=:all: \
+        --no-deps \
+        --target "$PROJECT_DIR/deps_target" \
+        "delta-spark>=3.2.0,<4.0.0" || {
+        print_error "Failed to install delta-spark Python bindings."
+        exit 1
+    }
+
     # Create dependencies archive
     cd "$PROJECT_DIR/deps_target"
     
