@@ -214,7 +214,7 @@ build_dependencies() {
     fi
     print_success "✅ All required dependencies present (including pydantic_core)"
 
-    venv-pack -o "$BUILD_DIR/dependencies/environment.tar.gz" -p "$PROJECT_DIR/environment"
+    "$PROJECT_DIR/environment/bin/venv-pack" -p "$PROJECT_DIR/environment" -o "$BUILD_DIR/dependencies/environment.tar.gz"
 
     # Cleanup
     cd "$PROJECT_DIR"
