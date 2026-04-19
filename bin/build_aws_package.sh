@@ -209,7 +209,10 @@ build_dependencies() {
     fi
     print_success "✅ All required dependencies present (including pydantic_core)"
 
-    tar -czf "$BUILD_DIR/dependencies/environment.tar.gz" environment/
+    # Archive from inside the venv directory so contents are at the archive root.
+    # Spark extracts --archives with the alias as the directory name, so the paths
+    # become ./environment/bin/python and ./environment/lib/... as expected.
+    tar -czf "$BUILD_DIR/dependencies/environment.tar.gz" -C "$PROJECT_DIR/environment" .
 
     # Cleanup
     cd "$PROJECT_DIR"
@@ -231,7 +234,7 @@ RUN python -m venv environment && \
     environment/bin/pip install --quiet --upgrade pip && \
     environment/bin/pip install --quiet -r requirements.txt && \
     environment/bin/pip install --quiet --no-deps "delta-spark>=3.2.0,<4.0.0" && \
-    tar -czf environment.tar.gz environment/
+    tar -czf environment.tar.gz -C environment .
 EOF
 
     docker build -f temp_dockerfile -t pyspark-deps-builder . || {
