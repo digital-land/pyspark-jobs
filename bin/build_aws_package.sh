@@ -176,6 +176,11 @@ build_dependencies() {
         exit 1
     }
 
+    # venv-pack creates a relocatable venv archive — it patches absolute paths,
+    # symlinks, and pyvenv.cfg so the venv works when extracted at any location
+    # on EMR Serverless. Plain tar of a venv retains hardcoded build paths and breaks.
+    pip install --quiet venv-pack
+
     deactivate
 
     # Verify dependencies and ensure AWS SDK packages are NOT included
@@ -209,10 +214,7 @@ build_dependencies() {
     fi
     print_success "✅ All required dependencies present (including pydantic_core)"
 
-    # Archive from inside the venv directory so contents are at the archive root.
-    # Spark extracts --archives with the alias as the directory name, so the paths
-    # become ./environment/bin/python and ./environment/lib/... as expected.
-    tar -czf "$BUILD_DIR/dependencies/environment.tar.gz" -C "$PROJECT_DIR/environment" .
+    venv-pack -o "$BUILD_DIR/dependencies/environment.tar.gz" -p "$PROJECT_DIR/environment"
 
     # Cleanup
     cd "$PROJECT_DIR"
@@ -234,7 +236,8 @@ RUN python -m venv environment && \
     environment/bin/pip install --quiet --upgrade pip && \
     environment/bin/pip install --quiet -r requirements.txt && \
     environment/bin/pip install --quiet --no-deps "delta-spark>=3.2.0,<4.0.0" && \
-    tar -czf environment.tar.gz -C environment .
+    environment/bin/pip install --quiet venv-pack && \
+    environment/bin/venv-pack -o environment.tar.gz
 EOF
 
     docker build -f temp_dockerfile -t pyspark-deps-builder . || {
