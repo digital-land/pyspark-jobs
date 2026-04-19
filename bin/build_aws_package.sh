@@ -159,7 +159,7 @@ build_dependencies() {
     # Build a full venv so compiled extensions (.so files) are on the real filesystem
     # when extracted by EMR Serverless. This is the AWS-recommended approach for packages
     # with native extensions (e.g. pydantic-core). Submitted via --archives, not --py-files.
-    $PYTHON_VERSION -m venv environment
+    $PYTHON_VERSION -m venv --copies environment
     source environment/bin/activate
 
     pip install --quiet --upgrade pip
@@ -232,7 +232,7 @@ FROM python:3.9-slim
 RUN apt-get update && apt-get install -y tar && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY requirements.txt /build/
-RUN python -m venv environment && \
+RUN python -m venv --copies environment && \
     environment/bin/pip install --quiet --upgrade pip && \
     environment/bin/pip install --quiet -r requirements.txt && \
     environment/bin/pip install --quiet --no-deps "delta-spark>=3.2.0,<4.0.0" && \
