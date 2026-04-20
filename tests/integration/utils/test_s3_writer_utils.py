@@ -4,6 +4,7 @@ import os
 
 import pytest
 from pyspark.sql import Row
+from pyspark.sql.types import IntegerType, StringType, StructField, StructType
 
 from jobs.utils.s3_writer_utils import write_delta
 
@@ -67,6 +68,34 @@ def test_write_delta_raises_on_schema_mismatch(spark, tmp_path):
     df_v2 = spark.createDataFrame([Row(dataset="ds-a", value="x", extra="y")])
     with pytest.raises(ValueError, match="Schema mismatch"):
         write_delta(df_v2, output, dataset="ds-a", partition_by=["dataset"])
+
+
+def test_write_delta_same_schema_twice_succeeds(spark, tmp_path):
+    """Writing the same schema twice does not raise a schema mismatch error."""
+    output = str(tmp_path / "output")
+
+    schema = StructType(
+        [
+            StructField("dataset", StringType(), True),
+            StructField("end_date", StringType(), True),
+            StructField("entry_date", StringType(), True),
+            StructField("entry_number", StringType(), True),
+            StructField("fact", StringType(), True),
+            StructField("priority", IntegerType(), True),
+            StructField("resource", StringType(), True),
+            StructField("start_date", StringType(), True),
+        ]
+    )
+    rows = [("ds-a", None, None, "1", "fact-1", 1, "res-1", None)]
+
+    df_v1 = spark.createDataFrame(rows, schema=schema)
+    write_delta(df_v1, output, dataset="ds-a", partition_by=["dataset"])
+
+    df_v2 = spark.createDataFrame(rows, schema=schema)
+    write_delta(df_v2, output, dataset="ds-a", partition_by=["dataset"])
+
+    result = _read_delta(spark, output)
+    assert result.count() == 1
 
 
 def test_write_delta_raises_on_non_delta_existing_files(spark, tmp_path):
