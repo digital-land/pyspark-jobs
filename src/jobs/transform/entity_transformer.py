@@ -17,6 +17,7 @@ from pyspark.sql.functions import (
 from pyspark.sql.types import TimestampType
 from pyspark.sql.window import Window
 
+from jobs.config.schema import get_schema
 from jobs.utils.df_utils import show_df
 from jobs.utils.geometry_utils import calculate_centroid
 from jobs.utils.logger_config import get_logger, log_execution_time
@@ -340,22 +341,7 @@ class EntityTransformer:
         """
         Final projection and safety deduplication.
 
-        Selects only the standard entity columns in the correct order
-        and ensures no duplicate entities in the output.
+        Enforces the entity schema (adding missing columns as typed nulls,
+        selecting in the correct order) and ensures no duplicate entities.
         """
-        return df.select(
-            "dataset",
-            "end_date",
-            "entity",
-            "entry_date",
-            "geometry",
-            "json",
-            "name",
-            "organisation_entity",
-            "point",
-            "prefix",
-            "quality",
-            "reference",
-            "start_date",
-            "typology",
-        ).dropDuplicates(["entity"])
+        return get_schema("entity").enforce(df).dropDuplicates(["entity"])

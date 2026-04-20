@@ -5,6 +5,7 @@ from datetime import datetime
 from pyspark.sql.functions import lit
 from pyspark.sql.types import TimestampType
 
+from jobs.config.schema import get_schema
 from jobs.utils.logger_config import get_logger
 
 logger = get_logger(__name__)
@@ -25,19 +26,8 @@ class FactResourceTransformer:
                 "FactResourceTransformer: Transforming data for Fact Resource table"
             )
 
-            # Select required columns in correct order
-            df = df.select(
-                "end_date",
-                "fact",
-                "entry_date",
-                "entry_number",
-                "priority",
-                "resource",
-                "start_date",
-            )
-
-            # add dataset column
             df = df.withColumn("dataset", lit(dataset))
+            df = get_schema("fact_resource").enforce(df)
 
             df = df.withColumn(
                 "processed_timestamp",

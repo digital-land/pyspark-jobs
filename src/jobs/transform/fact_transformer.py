@@ -6,6 +6,7 @@ from pyspark.sql.functions import lit, row_number
 from pyspark.sql.types import TimestampType
 from pyspark.sql.window import Window
 
+from jobs.config.schema import get_schema
 from jobs.utils.logger_config import get_logger
 
 logger = get_logger(__name__)
@@ -43,20 +44,8 @@ class FactTransformer:
                 "row_num"
             )
 
-            # Select and order columns
-            transf_df = transf_df.select(
-                "end_date",
-                "entity",
-                "fact",
-                "field",
-                "entry_date",
-                "priority",
-                "reference_entity",
-                "start_date",
-                "value",
-            )
-
             transf_df = transf_df.withColumn("dataset", lit(dataset))
+            transf_df = get_schema("fact").enforce(transf_df)
 
             transf_df = transf_df.withColumn(
                 "processed_timestamp",

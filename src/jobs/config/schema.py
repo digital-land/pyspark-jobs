@@ -69,6 +69,68 @@ def get_schema(name: str) -> DatasetSchema:
 
 register(
     DatasetSchema(
+        name="entity",
+        fields=[
+            FieldSchema(field="dataset", name="Dataset", datatype="string"),
+            FieldSchema(field="end_date", name="End Date", datatype="date"),
+            FieldSchema(field="entity", name="Entity", datatype="bigint"),
+            FieldSchema(field="entry_date", name="Entry Date", datatype="date"),
+            FieldSchema(field="geometry", name="Geometry", datatype="string"),
+            FieldSchema(field="json", name="JSON", datatype="string"),
+            FieldSchema(field="name", name="Name", datatype="string"),
+            FieldSchema(
+                field="organisation_entity",
+                name="Organisation Entity",
+                datatype="bigint",
+            ),
+            FieldSchema(field="point", name="Point", datatype="string"),
+            FieldSchema(field="prefix", name="Prefix", datatype="string"),
+            FieldSchema(field="quality", name="Quality", datatype="string"),
+            FieldSchema(field="reference", name="Reference", datatype="string"),
+            FieldSchema(field="start_date", name="Start Date", datatype="date"),
+            FieldSchema(field="typology", name="Typology", datatype="string"),
+        ],
+    )
+)
+
+register(
+    DatasetSchema(
+        name="fact",
+        fields=[
+            FieldSchema(field="dataset", name="Dataset", datatype="string"),
+            FieldSchema(field="end_date", name="End Date", datatype="string"),
+            FieldSchema(field="entity", name="Entity", datatype="bigint"),
+            FieldSchema(field="entry_date", name="Entry Date", datatype="string"),
+            FieldSchema(field="fact", name="Fact", datatype="string"),
+            FieldSchema(field="field", name="Field", datatype="string"),
+            FieldSchema(field="priority", name="Priority", datatype="integer"),
+            FieldSchema(
+                field="reference_entity", name="Reference Entity", datatype="bigint"
+            ),
+            FieldSchema(field="start_date", name="Start Date", datatype="string"),
+            FieldSchema(field="value", name="Value", datatype="string"),
+        ],
+    )
+)
+
+register(
+    DatasetSchema(
+        name="fact_resource",
+        fields=[
+            FieldSchema(field="dataset", name="Dataset", datatype="string"),
+            FieldSchema(field="end_date", name="End Date", datatype="string"),
+            FieldSchema(field="entry_date", name="Entry Date", datatype="string"),
+            FieldSchema(field="entry_number", name="Entry Number", datatype="string"),
+            FieldSchema(field="fact", name="Fact", datatype="string"),
+            FieldSchema(field="priority", name="Priority", datatype="integer"),
+            FieldSchema(field="resource", name="Resource", datatype="string"),
+            FieldSchema(field="start_date", name="Start Date", datatype="string"),
+        ],
+    )
+)
+
+register(
+    DatasetSchema(
         name="issue",
         fields=[
             FieldSchema(field="end_date", name="End Date", datatype="string"),
