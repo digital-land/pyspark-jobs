@@ -52,7 +52,9 @@ def write_delta(
 
     if is_delta:
         existing_schema = DeltaTable.forPath(spark, output_path).toDF().schema
-        if df.schema != existing_schema:
+        existing_fields = {f.name: f.dataType for f in existing_schema.fields}
+        incoming_fields = {f.name: f.dataType for f in df.schema.fields}
+        if existing_fields != incoming_fields:
             raise ValueError(
                 f"write_delta: Schema mismatch for Delta table at {output_path}. "
                 f"Run a schema migration before writing.\n"
