@@ -8,12 +8,11 @@ logger = get_logger(__name__)
 
 def filter_old_resources(df: DataFrame, old_resources_df: DataFrame) -> DataFrame:
     """
-    Remove rows from df whose resource matches a gone (status 410) old resource,
-    and remove rows with a null resource.
+    Remove rows from df whose resource matches a gone (status 410) old resource.
 
     Args:
         df: DataFrame to filter (must contain a 'resource' column)
-        old_resources_df: DataFrame from read_old_resources (must contain 'resource'
+        old_resources_df: DataFrame from read_old_resources (must contain 'old_resource'
                           and 'status' columns)
 
     Returns:
@@ -22,7 +21,7 @@ def filter_old_resources(df: DataFrame, old_resources_df: DataFrame) -> DataFram
     gone_hashes = [
         row[0]
         for row in old_resources_df.filter(col("status") == "410")
-        .select("resource")
+        .select("old_resource")
         .collect()
     ]
 

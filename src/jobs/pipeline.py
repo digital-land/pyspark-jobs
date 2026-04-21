@@ -148,6 +148,27 @@ class EntityPipeline(BasePipeline):
         if transformed_df.rdd.isEmpty():
             raise ValueError("EntityPipeline: Transformed DataFrame is empty")
 
+        # -- Filter old resources ---------------------------------------------
+        old_resource_path = (
+            base
+            / "config"
+            / "collection"
+            / f"{collection}-collection"
+            / "old-resource.csv"
+        )
+        try:
+            if old_resource_path.exists():
+                old_resources_df = read_old_resources(spark, str(old_resource_path))
+                transformed_df = filter_old_resources(transformed_df, old_resources_df)
+            else:
+                logger.info(
+                    f"EntityPipeline: No old-resource.csv found at {old_resource_path}, skipping filter"
+                )
+        except Exception as e:
+            logger.warning(
+                f"EntityPipeline: Could not read old-resource.csv, skipping filter: {e}"
+            )
+
         # Validate schema against schemas.json
         json_data = load_metadata("schemas.json")
         fields = json_data.get("transformed", [])

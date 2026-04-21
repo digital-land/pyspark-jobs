@@ -12,7 +12,7 @@ def _build_issue_df(spark, rows):
 
 
 def _build_old_resources_df(spark, rows):
-    return spark.createDataFrame(rows, schema=["resource", "status"])
+    return spark.createDataFrame(rows, schema=["old_resource", "status"])
 
 
 def test_filter_removes_410_resources(spark):
