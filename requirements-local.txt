@@ -5,6 +5,7 @@
 -r requirements.txt
 
 # Dependencies pre-installed in EMR (needed locally)
+delta-spark>=3.2.0,<4.0.0
 pyspark>=3.3.0,<4.0.0
 boto3>=1.26.0
 botocore>=1.29.0

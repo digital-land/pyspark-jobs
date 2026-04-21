@@ -300,18 +300,16 @@ download_jdbc_drivers() {
 # Copy entry scripts
 copy_entry_scripts() {
     print_status "Copying entry scripts..."
-    
-    # Copy the main entry script
-    if [[ -f "$PROJECT_DIR/entry_points/run_main.py" ]]; then
-        cp "$PROJECT_DIR/entry_points/run_main.py" "$BUILD_DIR/entry_script/"
-        print_success "Entry script copied: entry_points/run_main.py"
-    else
-        print_error "Entry script not found: entry_points/run_main.py"
-        exit 1
-    fi
-    
-    # Copy any additional scripts if needed
-    # Add more entry scripts here if you have them
+
+    for script in run_main.py run_maintenance.py; do
+        if [[ -f "$PROJECT_DIR/entry_points/$script" ]]; then
+            cp "$PROJECT_DIR/entry_points/$script" "$BUILD_DIR/entry_script/"
+            print_success "Entry script copied: entry_points/$script"
+        else
+            print_error "Entry script not found: entry_points/$script"
+            exit 1
+        fi
+    done
 }
 
 # Generate deployment manifest
