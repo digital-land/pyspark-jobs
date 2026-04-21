@@ -131,6 +131,38 @@ register(
 
 register(
     DatasetSchema(
+        name="dataset_resource",
+        fields=[
+            FieldSchema(field="dataset", name="Dataset", datatype="string"),
+            FieldSchema(field="entry_date", name="Entry Date", datatype="string"),
+            FieldSchema(field="entity_count", name="Entity Count", datatype="integer"),
+            FieldSchema(field="entry_count", name="Entry Count", datatype="integer"),
+            FieldSchema(field="line_count", name="Line Count", datatype="integer"),
+            FieldSchema(field="mime_type", name="Mime Type", datatype="string"),
+            FieldSchema(field="internal_path", name="Internal Path", datatype="string"),
+            FieldSchema(
+                field="internal_mime_type", name="Internal Mime Type", datatype="string"
+            ),
+            FieldSchema(field="resource", name="Resource", datatype="string"),
+        ],
+    )
+)
+
+register(
+    DatasetSchema(
+        name="column_field",
+        fields=[
+            FieldSchema(field="dataset", name="Dataset", datatype="string"),
+            FieldSchema(field="entry_date", name="Entry Date", datatype="string"),
+            FieldSchema(field="field", name="Field", datatype="string"),
+            FieldSchema(field="resource", name="Resource", datatype="string"),
+            FieldSchema(field="column", name="Column", datatype="string"),
+        ],
+    )
+)
+
+register(
+    DatasetSchema(
         name="issue",
         fields=[
             FieldSchema(field="end_date", name="End Date", datatype="string"),

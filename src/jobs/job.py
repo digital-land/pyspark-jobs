@@ -11,7 +11,13 @@ from cloudpathlib import AnyPath, S3Path
 from delta.tables import DeltaTable
 
 from jobs.dbaccess.postgres_connectivity import get_aws_secret
-from jobs.pipeline import EntityPipeline, IssuePipeline, PipelineConfig
+from jobs.pipeline import (
+    ColumnFieldPipeline,
+    DatasetResourcePipeline,
+    EntityPipeline,
+    IssuePipeline,
+    PipelineConfig,
+)
 from jobs.utils.db_url import build_database_url
 from jobs.utils.logger_config import initialize_logging
 from jobs.utils.s3_utils import list_delta_table_paths, validate_s3_path
@@ -77,7 +83,18 @@ def assemble_and_load_entity(
         issue_pipeline = IssuePipeline(config)
         issue_pipeline.run(collection=collection)
 
-        report = [entity_pipeline.result, issue_pipeline.result]
+        dataset_resource_pipeline = DatasetResourcePipeline(config)
+        dataset_resource_pipeline.run(collection=collection)
+
+        column_field_pipeline = ColumnFieldPipeline(config)
+        column_field_pipeline.run(collection=collection)
+
+        report = [
+            entity_pipeline.result,
+            issue_pipeline.result,
+            dataset_resource_pipeline.result,
+            column_field_pipeline.result,
+        ]
         logger.info(f"Pipeline report: {report}")
 
     except (ValueError, AttributeError, KeyError) as e:

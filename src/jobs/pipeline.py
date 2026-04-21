@@ -20,6 +20,8 @@ from cloudpathlib import AnyPath, S3Path
 from pyspark.sql import SparkSession
 
 from jobs.config.metadata import load_metadata
+from jobs.transform.column_field_transformer import ColumnFieldTransformer
+from jobs.transform.dataset_resource_transformer import DatasetResourceTransformer
 from jobs.transform.entity_transformer import EntityTransformer
 from jobs.transform.fact_resource_transformer import FactResourceTransformer
 from jobs.transform.fact_transformer import FactTransformer
@@ -520,3 +522,75 @@ class IssuePipeline(BasePipeline):
         issue_output_path = str(parquet_base / "issue")
         write_delta(issue_df, issue_output_path, dataset, partition_by=["dataset"])
         logger.info("IssuePipeline: Wrote issue Delta table")
+
+
+class DatasetResourcePipeline(BasePipeline):
+    """
+    Pipeline for dataset resource data.
+
+    Reads dataset-resource CSVs from the var directory and writes to a Delta table.
+    """
+
+    def execute(self, collection):
+        spark = self.config.spark
+        dataset = self.config.dataset
+        env = self.config.env
+        collection_data_path = self.config.collection_data_path
+
+        base = AnyPath(collection_data_path)
+        dataset_resource_path = (
+            str(
+                base / f"{collection}-collection" / "var" / "dataset-resource" / dataset
+            )
+            + "/*.csv"
+        )
+
+        logger.info(
+            f"DatasetResourcePipeline: Reading data from {dataset_resource_path}"
+        )
+        df = spark.read.option("header", "true").csv(dataset_resource_path)
+        df.cache()
+        show_df(df, 5, env)
+
+        df = normalise_column_names(df)
+        df = DatasetResourceTransformer().transform(df, dataset)
+        logger.info("DatasetResourcePipeline: Transform complete")
+
+        parquet_base = AnyPath(self.config.parquet_datasets_path)
+        output_path = str(parquet_base / "dataset_resource")
+        write_delta(df, output_path, dataset, partition_by=["dataset"])
+        logger.info("DatasetResourcePipeline: Wrote dataset_resource Delta table")
+
+
+class ColumnFieldPipeline(BasePipeline):
+    """
+    Pipeline for column field log data.
+
+    Reads column-field CSVs from the var directory and writes to a Delta table.
+    """
+
+    def execute(self, collection):
+        spark = self.config.spark
+        dataset = self.config.dataset
+        env = self.config.env
+        collection_data_path = self.config.collection_data_path
+
+        base = AnyPath(collection_data_path)
+        column_field_path = (
+            str(base / f"{collection}-collection" / "var" / "column-field" / dataset)
+            + "/*.csv"
+        )
+
+        logger.info(f"ColumnFieldPipeline: Reading data from {column_field_path}")
+        df = spark.read.option("header", "true").csv(column_field_path)
+        df.cache()
+        show_df(df, 5, env)
+
+        df = normalise_column_names(df)
+        df = ColumnFieldTransformer().transform(df, dataset)
+        logger.info("ColumnFieldPipeline: Transform complete")
+
+        parquet_base = AnyPath(self.config.parquet_datasets_path)
+        output_path = str(parquet_base / "column_field")
+        write_delta(df, output_path, dataset, partition_by=["dataset"])
+        logger.info("ColumnFieldPipeline: Wrote column_field Delta table")
