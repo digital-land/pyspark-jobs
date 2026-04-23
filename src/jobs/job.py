@@ -11,6 +11,7 @@ from cloudpathlib import AnyPath, S3Path
 from delta.tables import DeltaTable
 
 from jobs.dbaccess.postgres_connectivity import get_aws_secret
+from jobs.config.schema import _REGISTRY
 from jobs.pipeline import (
     ColumnFieldPipeline,
     DatasetResourcePipeline,
@@ -110,6 +111,65 @@ def assemble_and_load_entity(
                 logger.info("Spark session stopped")
             except Exception as e:
                 logger.warning(f"Error stopping Spark session: {e}")
+
+
+def migrate_datasets(parquet_datasets_path: str, allow_destructive: bool = False):
+    """
+    Migrate all registered Delta tables to match their schemas in schema.py.
+
+    Safe changes (adding columns) are always applied. Destructive changes
+    (removing columns, type changes) require allow_destructive=True.
+    Skipped destructive changes are logged as warnings.
+
+    Args:
+        parquet_datasets_path: S3 path to the parquet datasets bucket.
+        allow_destructive: If True, applies column removals and type changes.
+    """
+    logger.info(
+        f"migrate_datasets: Starting migration for {parquet_datasets_path} "
+        f"(allow_destructive={allow_destructive})"
+    )
+
+    spark = None
+    try:
+        spark = create_spark_session()
+        if spark is None:
+            raise RuntimeError("Failed to create Spark session")
+
+        parquet_base = AnyPath(parquet_datasets_path)
+        results = []
+
+        for schema_name, schema in _REGISTRY.items():
+            table_path = str(parquet_base / schema_name)
+            logger.info(f"migrate_datasets: Checking {schema_name} at {table_path}")
+            summary = schema.migrate(
+                spark, table_path, allow_destructive=allow_destructive
+            )
+            summary["table"] = schema_name
+            results.append(summary)
+            logger.info(f"migrate_datasets: {schema_name} — {summary}")
+
+        pending = [r for r in results if r.get("skipped")]
+        if pending:
+            logger.warning(
+                "migrate_datasets: The following tables have destructive changes "
+                "pending — re-run with allow_destructive=True to apply:"
+            )
+            for r in pending:
+                logger.warning(f"  {r['table']}: {r['skipped']}")
+
+        logger.info("migrate_datasets: Complete")
+
+    except Exception as e:
+        logger.exception(f"migrate_datasets: Unexpected error — {e}")
+        raise
+    finally:
+        if spark is not None:
+            try:
+                spark.stop()
+                logger.info("migrate_datasets: Spark session stopped")
+            except Exception as e:
+                logger.warning(f"migrate_datasets: Error stopping Spark session — {e}")
 
 
 def maintain_datasets(parquet_datasets_path: str, retention_hours: float = 24):

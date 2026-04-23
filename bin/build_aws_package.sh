@@ -301,7 +301,7 @@ download_jdbc_drivers() {
 copy_entry_scripts() {
     print_status "Copying entry scripts..."
 
-    for script in run_main.py run_maintenance.py; do
+    for script in run_main.py run_maintenance.py run_migrate.py; do
         if [[ -f "$PROJECT_DIR/entry_points/$script" ]]; then
             cp "$PROJECT_DIR/entry_points/$script" "$BUILD_DIR/entry_script/"
             print_success "Entry script copied: entry_points/$script"

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import List, Optional
 
 from pydantic import BaseModel
-from pyspark.sql import DataFrame
-from pyspark.sql.functions import lit
+from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql.functions import col, lit
+
+logger = logging.getLogger(__name__)
 
 # Mapping from generic datatype strings to Spark-compatible type strings
 _SPARK_TYPE_MAP: dict[str, str] = {
@@ -32,6 +35,22 @@ class FieldSchema(BaseModel):
         return _SPARK_TYPE_MAP.get(self.datatype.lower(), self.datatype)
 
 
+class SchemaDiff(BaseModel):
+    """The difference between a registered schema and an existing Delta table schema."""
+
+    added: List[FieldSchema] = []
+    removed: List[str] = []
+    type_changed: List[tuple] = []  # list of (field_name, old_type, new_type)
+
+    @property
+    def is_empty(self) -> bool:
+        return not self.added and not self.removed and not self.type_changed
+
+    @property
+    def has_destructive_changes(self) -> bool:
+        return bool(self.removed or self.type_changed)
+
+
 class DatasetSchema(BaseModel):
     name: str
     fields: List[FieldSchema]
@@ -49,6 +68,105 @@ class DatasetSchema(BaseModel):
                     field_spec.field, lit(None).cast(field_spec.to_spark_type())
                 )
         return df.select([f.field for f in self.fields])
+
+    def diff(self, spark: SparkSession, table_path: str) -> SchemaDiff:
+        """
+        Compare this schema against an existing Delta table.
+
+        Returns a SchemaDiff describing what has changed. Ignores
+        processed_timestamp as it is managed by the transformers, not the schema.
+        """
+        from delta.tables import DeltaTable
+
+        if not DeltaTable.isDeltaTable(spark, table_path):
+            return SchemaDiff()
+
+        current = {
+            f.name: f.dataType.simpleString()
+            for f in DeltaTable.forPath(spark, table_path).toDF().schema.fields
+            if f.name != "processed_timestamp"
+        }
+        desired = {f.field: f.to_spark_type() for f in self.fields}
+
+        added = [f for f in self.fields if f.field not in current]
+        removed = [name for name in current if name not in desired]
+        type_changed = [
+            (name, current[name], desired[name])
+            for name in desired
+            if name in current and current[name] != desired[name]
+        ]
+
+        return SchemaDiff(added=added, removed=removed, type_changed=type_changed)
+
+    def migrate(
+        self, spark: SparkSession, table_path: str, allow_destructive: bool = False
+    ) -> dict:
+        """
+        Migrate an existing Delta table to match this schema.
+
+        Safe changes (adding columns) are always applied.
+        Destructive changes (removing columns, type changes) require
+        allow_destructive=True. When skipped, they are logged as warnings
+        so the operator knows what is pending.
+
+        Returns a summary dict of what was applied and what was skipped.
+        """
+        summary = {"added": [], "removed": [], "type_changed": [], "skipped": []}
+
+        diff = self.diff(spark, table_path)
+
+        if diff.is_empty:
+            logger.info(f"migrate: {self.name} — no changes needed")
+            return summary
+
+        # Always safe: add new columns
+        for field_spec in diff.added:
+            spark.sql(
+                f"ALTER TABLE delta.`{table_path}` "
+                f"ADD COLUMN (`{field_spec.field}` {field_spec.to_spark_type()})"
+            )
+            logger.info(f"migrate: {self.name} — added column '{field_spec.field}'")
+            summary["added"].append(field_spec.field)
+
+        if diff.has_destructive_changes:
+            if not allow_destructive:
+                skipped = [name for name in diff.removed] + [
+                    name for name, _, _ in diff.type_changed
+                ]
+                for name in skipped:
+                    logger.warning(
+                        f"migrate: {self.name} — skipping destructive change on "
+                        f"'{name}' (re-run with allow_destructive=True to apply)"
+                    )
+                summary["skipped"] = skipped
+                return summary
+
+            # Destructive: handle removes and type changes in a single rewrite
+            df = spark.read.format("delta").load(table_path)
+
+            for field_name, old_type, new_type in diff.type_changed:
+                logger.info(
+                    f"migrate: {self.name} — casting '{field_name}' "
+                    f"from {old_type} to {new_type}"
+                )
+                df = df.withColumn(field_name, col(field_name).cast(new_type))
+                summary["type_changed"].append(field_name)
+
+            # Select only desired columns plus processed_timestamp (drops removed ones)
+            keep = [f.field for f in self.fields]
+            if "processed_timestamp" in df.columns:
+                keep.append("processed_timestamp")
+            df = df.select(keep)
+
+            for name in diff.removed:
+                logger.info(f"migrate: {self.name} — removing column '{name}'")
+                summary["removed"].append(name)
+
+            df.write.format("delta").mode("overwrite").option(
+                "overwriteSchema", "true"
+            ).partitionBy("dataset").save(table_path)
+
+        return summary
 
 
 _REGISTRY: dict[str, DatasetSchema] = {}
