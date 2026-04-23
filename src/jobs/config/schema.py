@@ -4,6 +4,7 @@ import json
 import logging
 from typing import List, Optional
 
+from delta.tables import DeltaTable
 from pydantic import BaseModel
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, lit
@@ -76,8 +77,6 @@ class DatasetSchema(BaseModel):
         Returns a SchemaDiff describing what has changed. Ignores
         processed_timestamp as it is managed by the transformers, not the schema.
         """
-        from delta.tables import DeltaTable
-
         if not DeltaTable.isDeltaTable(spark, table_path):
             return SchemaDiff()
 
