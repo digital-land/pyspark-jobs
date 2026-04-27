@@ -1,11 +1,11 @@
 """
-Integration tests for EntityTransformer.
+Integration tests for transform_entity.
 
 These tests run the full transform pipeline on real Spark DataFrames
 with only external HTTP calls (typology lookup) mocked.
 """
 
-from jobs.transform.entity_transformer import EntityTransformer
+from jobs.transform.entity_transformer import transform_entity
 
 
 def _build_organisation_df(spark):
@@ -15,349 +15,108 @@ def _build_organisation_df(spark):
     )
 
 
-class TestEntityTransformer:
-    """Integration tests for EntityTransformer."""
+def _base_rows(entity, priority=None):
+    fields = [
+        ("name", "Place A"),
+        ("reference", "REF-A"),
+        ("prefix", "test"),
+        ("organisation", "local-authority:ABC"),
+        ("entry-date", "2024-03-01"),
+        ("start-date", "2024-01-01"),
+    ]
+    rows = []
+    for field, value in fields:
+        row = {
+            "entity": entity,
+            "field": field,
+            "value": value,
+            "entry_date": "2024-03-01",
+            "entry_number": "1",
+        }
+        if priority is not None:
+            row["priority"] = priority
+        rows.append(row)
+    return rows
 
-    def test_transform_point_preserved_when_geometry_absent(self, spark, mocker):
-        """When the transformed input contains a 'point' field but no 'geometry'
-        field, the output entity DataFrame should carry the point value through
-        and geometry should be null."""
-        mocker.patch(
-            "jobs.transform.entity_transformer.get_dataset_typology",
-            return_value="geography",
-        )
 
-        rows = [
-            {
-                "entity": "2001",
-                "field": "name",
-                "value": "Place A",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "1",
-            },
-            {
-                "entity": "2001",
-                "field": "reference",
-                "value": "REF-A",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "1",
-            },
-            {
-                "entity": "2001",
-                "field": "prefix",
-                "value": "test",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "1",
-            },
-            {
-                "entity": "2001",
-                "field": "organisation",
-                "value": "local-authority:ABC",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "1",
-            },
-            {
-                "entity": "2001",
-                "field": "entry-date",
-                "value": "2024-03-01",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "1",
-            },
-            {
-                "entity": "2001",
-                "field": "start-date",
-                "value": "2024-01-01",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "1",
-            },
-            {
-                "entity": "2001",
-                "field": "point",
-                "value": "POINT(-0.1234 51.5678)",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "1",
-            },
-        ]
+def test_transform_entity_point_preserved_when_geometry_absent(spark, mocker):
+    """When the input has a 'point' field but no 'geometry', point is preserved and geometry is null."""
+    mocker.patch(
+        "jobs.transform.entity_transformer.get_dataset_typology",
+        return_value="geography",
+    )
 
-        df = spark.createDataFrame(rows)
-        organisation_df = _build_organisation_df(spark)
+    rows = _base_rows("2001", priority="1") + [
+        {
+            "entity": "2001",
+            "field": "point",
+            "value": "POINT(-0.1234 51.5678)",
+            "entry_date": "2024-03-01",
+            "entry_number": "1",
+            "priority": "1",
+        }
+    ]
 
-        transformer = EntityTransformer()
-        result = transformer.transform(df, "test-dataset", organisation_df)
+    df = spark.createDataFrame(rows)
+    result = transform_entity(df, "test-dataset", _build_organisation_df(spark))
+    row = result.collect()[0]
 
-        result_row = result.collect()[0]
+    assert "point" in result.columns
+    assert row["point"] == "POINT(-0.1234 51.5678)"
+    assert row["geometry"] is None
+    assert row["quality"] == "same"
 
-        assert "point" in result.columns
-        assert result_row["point"] == "POINT(-0.1234 51.5678)"
-        assert result_row["geometry"] is None
-        assert result_row["quality"] == "same"
 
-    def test_transform_dataset_column_set(self, spark, mocker):
-        """The output entity DataFrame should have the dataset column
-        set to the dataset name passed to transform."""
-        mocker.patch(
-            "jobs.transform.entity_transformer.get_dataset_typology",
-            return_value="geography",
-        )
+def test_transform_entity_dataset_column_set(spark, mocker):
+    """The dataset column is set to the value passed to transform_entity."""
+    mocker.patch(
+        "jobs.transform.entity_transformer.get_dataset_typology",
+        return_value="geography",
+    )
 
-        rows = [
-            {
-                "entity": "2002",
-                "field": "name",
-                "value": "Place B",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "1",
-            },
-            {
-                "entity": "2002",
-                "field": "reference",
-                "value": "REF-B",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "1",
-            },
-            {
-                "entity": "2002",
-                "field": "prefix",
-                "value": "test",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "1",
-            },
-            {
-                "entity": "2002",
-                "field": "organisation",
-                "value": "local-authority:ABC",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "1",
-            },
-            {
-                "entity": "2002",
-                "field": "entry-date",
-                "value": "2024-03-01",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "1",
-            },
-            {
-                "entity": "2002",
-                "field": "start-date",
-                "value": "2024-01-01",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "1",
-            },
-        ]
+    df = spark.createDataFrame(_base_rows("2002", priority="1"))
+    result = transform_entity(df, "my-dataset", _build_organisation_df(spark))
+    row = result.collect()[0]
 
-        df = spark.createDataFrame(rows)
-        organisation_df = _build_organisation_df(spark)
+    assert "dataset" in result.columns
+    assert row["dataset"] == "my-dataset"
+    assert row["quality"] == "same"
 
-        transformer = EntityTransformer()
-        result = transformer.transform(df, "my-dataset", organisation_df)
 
-        result_row = result.collect()[0]
+def test_transform_entity_quality_same_when_priority_one(spark, mocker):
+    """priority=1 produces quality='same'."""
+    mocker.patch(
+        "jobs.transform.entity_transformer.get_dataset_typology",
+        return_value="geography",
+    )
 
-        assert "dataset" in result.columns
-        assert result_row["dataset"] == "my-dataset"
-        assert result_row["quality"] == "same"
+    df = spark.createDataFrame(_base_rows("3001", priority="1"))
+    result = transform_entity(df, "test-dataset", _build_organisation_df(spark))
 
-    def test_transform_quality_same_when_priority_one(self, spark, mocker):
-        """priority=1 should produce quality='same'."""
-        mocker.patch(
-            "jobs.transform.entity_transformer.get_dataset_typology",
-            return_value="geography",
-        )
+    assert result.collect()[0]["quality"] == "same"
 
-        rows = [
-            {
-                "entity": "3001",
-                "field": "name",
-                "value": "Place C",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "1",
-            },
-            {
-                "entity": "3001",
-                "field": "reference",
-                "value": "REF-C",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "1",
-            },
-            {
-                "entity": "3001",
-                "field": "prefix",
-                "value": "test",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "1",
-            },
-            {
-                "entity": "3001",
-                "field": "organisation",
-                "value": "local-authority:ABC",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "1",
-            },
-            {
-                "entity": "3001",
-                "field": "entry-date",
-                "value": "2024-03-01",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "1",
-            },
-            {
-                "entity": "3001",
-                "field": "start-date",
-                "value": "2024-01-01",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "1",
-            },
-        ]
 
-        df = spark.createDataFrame(rows)
-        organisation_df = _build_organisation_df(spark)
+def test_transform_entity_quality_authoritative_when_priority_two(spark, mocker):
+    """priority=2 produces quality='authoritative'."""
+    mocker.patch(
+        "jobs.transform.entity_transformer.get_dataset_typology",
+        return_value="geography",
+    )
 
-        result = EntityTransformer().transform(df, "test-dataset", organisation_df)
-        result_row = result.collect()[0]
+    df = spark.createDataFrame(_base_rows("3002", priority="2"))
+    result = transform_entity(df, "test-dataset", _build_organisation_df(spark))
 
-        assert result_row["quality"] == "same"
+    assert result.collect()[0]["quality"] == "authoritative"
 
-    def test_transform_quality_authoritative_when_priority_two(self, spark, mocker):
-        """priority=2 should produce quality='authoritative'."""
-        mocker.patch(
-            "jobs.transform.entity_transformer.get_dataset_typology",
-            return_value="geography",
-        )
 
-        rows = [
-            {
-                "entity": "3002",
-                "field": "name",
-                "value": "Place D",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "2",
-            },
-            {
-                "entity": "3002",
-                "field": "reference",
-                "value": "REF-D",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "2",
-            },
-            {
-                "entity": "3002",
-                "field": "prefix",
-                "value": "test",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "2",
-            },
-            {
-                "entity": "3002",
-                "field": "organisation",
-                "value": "local-authority:ABC",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "2",
-            },
-            {
-                "entity": "3002",
-                "field": "entry-date",
-                "value": "2024-03-01",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "2",
-            },
-            {
-                "entity": "3002",
-                "field": "start-date",
-                "value": "2024-01-01",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-                "priority": "2",
-            },
-        ]
+def test_transform_entity_quality_blank_when_no_priority(spark, mocker):
+    """When the input has no priority column, quality is blank."""
+    mocker.patch(
+        "jobs.transform.entity_transformer.get_dataset_typology",
+        return_value="geography",
+    )
 
-        df = spark.createDataFrame(rows)
-        organisation_df = _build_organisation_df(spark)
+    df = spark.createDataFrame(_base_rows("3003", priority=None))
+    result = transform_entity(df, "test-dataset", _build_organisation_df(spark))
 
-        result = EntityTransformer().transform(df, "test-dataset", organisation_df)
-        result_row = result.collect()[0]
-
-        assert result_row["quality"] == "authoritative"
-
-    def test_transform_quality_blank_when_no_priority(self, spark, mocker):
-        """When input has no priority column, quality should be blank."""
-        mocker.patch(
-            "jobs.transform.entity_transformer.get_dataset_typology",
-            return_value="geography",
-        )
-
-        rows = [
-            {
-                "entity": "3003",
-                "field": "name",
-                "value": "Place E",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-            },
-            {
-                "entity": "3003",
-                "field": "reference",
-                "value": "REF-E",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-            },
-            {
-                "entity": "3003",
-                "field": "prefix",
-                "value": "test",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-            },
-            {
-                "entity": "3003",
-                "field": "organisation",
-                "value": "local-authority:ABC",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-            },
-            {
-                "entity": "3003",
-                "field": "entry-date",
-                "value": "2024-03-01",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-            },
-            {
-                "entity": "3003",
-                "field": "start-date",
-                "value": "2024-01-01",
-                "entry_date": "2024-03-01",
-                "entry_number": "1",
-            },
-        ]
-
-        df = spark.createDataFrame(rows)
-        organisation_df = _build_organisation_df(spark)
-
-        result = EntityTransformer().transform(df, "test-dataset", organisation_df)
-        result_row = result.collect()[0]
-
-        assert result_row["quality"] == ""
+    assert result.collect()[0]["quality"] == ""

@@ -11,23 +11,16 @@ from jobs.utils.logger_config import get_logger
 logger = get_logger(__name__)
 
 
-class ColumnFieldTransformer:
-    """Transform column field records by selecting required columns."""
+def transform_column_field(df, dataset):
+    logger.info("transform_column_field: Transforming data for column_field table")
 
-    @staticmethod
-    def transform(df, dataset):
-        """Transform column field data."""
-        logger.info("ColumnFieldTransformer: Transforming data for column_field table")
+    df = df.withColumn("dataset", lit(dataset))
+    df = get_schema("column_field").enforce(df)
 
-        df = df.withColumn("dataset", lit(dataset))
-        df = get_schema("column_field").enforce(df)
+    df = df.withColumn(
+        "processed_timestamp",
+        lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()),
+    )
 
-        df = df.withColumn(
-            "processed_timestamp",
-            lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()),
-        )
-
-        logger.info(
-            f"ColumnFieldTransformer: Transformation complete, columns: {df.columns}"
-        )
-        return df
+    logger.info(f"transform_column_field: Complete, columns: {df.columns}")
+    return df

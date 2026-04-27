@@ -20,12 +20,12 @@ from cloudpathlib import AnyPath, S3Path
 from pyspark.sql import SparkSession
 
 from jobs.config.metadata import load_metadata
-from jobs.transform.column_field_transformer import ColumnFieldTransformer
-from jobs.transform.dataset_resource_transformer import DatasetResourceTransformer
-from jobs.transform.entity_transformer import EntityTransformer
-from jobs.transform.fact_resource_transformer import FactResourceTransformer
-from jobs.transform.fact_transformer import FactTransformer
-from jobs.transform.issue_transformer import IssueTransformer
+from jobs.transform.column_field_transformer import transform_column_field
+from jobs.transform.dataset_resource_transformer import transform_dataset_resource
+from jobs.transform.entity_transformer import transform_entity
+from jobs.transform.fact_resource_transformer import transform_fact_resource
+from jobs.transform.fact_transformer import transform_fact
+from jobs.transform.issue_transformer import transform_issue
 from jobs.read import read_old_resources
 from jobs.transform.filter import filter_old_resources
 from jobs.utils.df_utils import count_df, normalise_column_names, show_df
@@ -185,23 +185,21 @@ class EntityPipeline(BasePipeline):
             logger.warning("EntityPipeline: Some fields missing from transformed data")
 
         # -- Transform --------------------------------------------------------
-        fact_resource_df = FactResourceTransformer().transform(transformed_df, dataset)
+        fact_resource_df = transform_fact_resource(transformed_df, dataset)
         logger.info("EntityPipeline: fact_resource transform completed")
         show_df(fact_resource_df, 5, env)
         count = count_df(fact_resource_df, env)
         if count is not None:
             logger.info(f"EntityPipeline: fact_resource contains {count} records")
 
-        fact_df = FactTransformer().transform(transformed_df, dataset)
+        fact_df = transform_fact(transformed_df, dataset)
         logger.info("EntityPipeline: fact transform completed")
         show_df(fact_df, 5, env)
         fact_count = count_df(fact_df, env)
         if fact_count is not None:
             logger.info(f"EntityPipeline: fact contains {fact_count} records")
 
-        entity_df = EntityTransformer().transform(
-            transformed_df, dataset, organisation_df
-        )
+        entity_df = transform_entity(transformed_df, dataset, organisation_df)
         logger.info("EntityPipeline: entity transform completed")
 
         # -- Load: parquet ----------------------------------------------------
@@ -514,7 +512,7 @@ class IssuePipeline(BasePipeline):
             )
 
         # -- Transform --------------------------------------------------------
-        issue_df = IssueTransformer().transform(issue_df, dataset)
+        issue_df = transform_issue(issue_df, dataset)
         logger.info("IssuePipeline: issue transform completed")
 
         # -- Load -------------------------------------------------------------
@@ -553,7 +551,7 @@ class DatasetResourcePipeline(BasePipeline):
         show_df(df, 5, env)
 
         df = normalise_column_names(df)
-        df = DatasetResourceTransformer().transform(df, dataset)
+        df = transform_dataset_resource(df, dataset)
         logger.info("DatasetResourcePipeline: Transform complete")
 
         parquet_base = AnyPath(self.config.parquet_datasets_path)
@@ -587,7 +585,7 @@ class ColumnFieldPipeline(BasePipeline):
         show_df(df, 5, env)
 
         df = normalise_column_names(df)
-        df = ColumnFieldTransformer().transform(df, dataset)
+        df = transform_column_field(df, dataset)
         logger.info("ColumnFieldPipeline: Transform complete")
 
         parquet_base = AnyPath(self.config.parquet_datasets_path)

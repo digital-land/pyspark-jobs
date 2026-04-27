@@ -1,4 +1,4 @@
-"""Fact resource transformer for selecting and ordering fact resource columns."""
+"""Fact resource transformer."""
 
 from datetime import datetime
 
@@ -11,34 +11,16 @@ from jobs.utils.logger_config import get_logger
 logger = get_logger(__name__)
 
 
-class FactResourceTransformer:
-    """Transform fact resource records by selecting required columns."""
+def transform_fact_resource(df, dataset):
+    logger.info("transform_fact_resource: Transforming data for Fact Resource table")
 
-    @staticmethod
-    def transform(df, dataset):
-        """
-        Transform fact resource data.
+    df = df.withColumn("dataset", lit(dataset))
+    df = get_schema("fact_resource").enforce(df)
 
-        Selects and orders the standard fact resource columns.
-        """
-        try:
-            logger.info(
-                "FactResourceTransformer: Transforming data for Fact Resource table"
-            )
+    df = df.withColumn(
+        "processed_timestamp",
+        lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()),
+    )
 
-            df = df.withColumn("dataset", lit(dataset))
-            df = get_schema("fact_resource").enforce(df)
-
-            df = df.withColumn(
-                "processed_timestamp",
-                lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()),
-            )
-
-            logger.info(
-                f"FactResourceTransformer: Transformation complete, columns: {df.columns}"
-            )
-            return df
-
-        except Exception as e:
-            logger.error(f"FactResourceTransformer: Error occurred - {e}")
-            raise
+    logger.info(f"transform_fact_resource: Complete, columns: {df.columns}")
+    return df

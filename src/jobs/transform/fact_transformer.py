@@ -1,8 +1,8 @@
-"""Fact transformer for deduplicating and transforming fact records."""
+"""Fact transformer."""
 
 from datetime import datetime
 
-from pyspark.sql.functions import lit, row_number
+from pyspark.sql.functions import col, lit, row_number
 from pyspark.sql.types import TimestampType
 from pyspark.sql.window import Window
 
@@ -12,51 +12,28 @@ from jobs.utils.logger_config import get_logger
 logger = get_logger(__name__)
 
 
-class FactTransformer:
-    """
-    Transform fact records with priority-based deduplication.
+def transform_fact(df, dataset):
+    logger.info("transform_fact: Transforming data for Fact table")
 
-    Keeps the highest priority record per fact, using entry_date and
-    entry_number as tiebreakers.
-    """
+    window_spec = (
+        Window.partitionBy("fact")
+        .orderBy("priority", "entry_date", "entry_number")
+        .rowsBetween(Window.unboundedPreceding, Window.currentRow)
+    )
 
-    @staticmethod
-    def transform(df, dataset):
-        """
-        Transform fact data with deduplication.
+    transf_df = (
+        df.withColumn("row_num", row_number().over(window_spec))
+        .filter(col("row_num") == 1)
+        .drop("row_num")
+    )
 
-        Deduplicates by fact, keeping the record with highest priority,
-        most recent entry_date, and highest entry_number.
-        """
-        try:
-            logger.info("FactTransformer: Transforming data for Fact table")
+    transf_df = transf_df.withColumn("dataset", lit(dataset))
+    transf_df = get_schema("fact").enforce(transf_df)
 
-            # Define window specification for deduplication
-            window_spec = (
-                Window.partitionBy("fact")
-                .orderBy("priority", "entry_date", "entry_number")
-                .rowsBetween(Window.unboundedPreceding, Window.currentRow)
-            )
+    transf_df = transf_df.withColumn(
+        "processed_timestamp",
+        lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()),
+    )
 
-            # Add row number and keep only top record per fact
-            df_with_rownum = df.withColumn("row_num", row_number().over(window_spec))
-            transf_df = df_with_rownum.filter(df_with_rownum["row_num"] == 1).drop(
-                "row_num"
-            )
-
-            transf_df = transf_df.withColumn("dataset", lit(dataset))
-            transf_df = get_schema("fact").enforce(transf_df)
-
-            transf_df = transf_df.withColumn(
-                "processed_timestamp",
-                lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()),
-            )
-
-            logger.info(
-                f"FactTransformer: Transformation complete, columns: {transf_df.columns}"
-            )
-            return transf_df
-
-        except Exception as e:
-            logger.error(f"FactTransformer: Error occurred - {e}")
-            raise
+    logger.info(f"transform_fact: Complete, columns: {transf_df.columns}")
+    return transf_df

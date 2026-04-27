@@ -280,6 +280,23 @@ register(
 
 register(
     DatasetSchema(
+        name="old_entity",
+        fields=[
+            FieldSchema(field="old_entity", name="Old Entity", datatype="bigint"),
+            FieldSchema(field="status", name="Status", datatype="string"),
+            FieldSchema(field="entity", name="Entity", datatype="bigint"),
+            FieldSchema(field="notes", name="Notes", datatype="string"),
+            FieldSchema(field="end_date", name="End Date", datatype="string"),
+            FieldSchema(field="entry_date", name="Entry Date", datatype="string"),
+            FieldSchema(field="start_date", name="Start Date", datatype="string"),
+            FieldSchema(field="collection", name="Collection", datatype="string"),
+            FieldSchema(field="dataset", name="Dataset", datatype="string"),
+        ],
+    )
+)
+
+register(
+    DatasetSchema(
         name="issue",
         fields=[
             FieldSchema(field="end_date", name="End Date", datatype="string"),

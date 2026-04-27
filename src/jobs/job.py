@@ -11,6 +11,10 @@ from cloudpathlib import AnyPath, S3Path
 from delta.tables import DeltaTable
 
 from jobs.dbaccess.postgres_connectivity import get_aws_secret
+from functools import reduce
+
+from pyspark.sql.functions import lit
+
 from jobs.config.schema import _REGISTRY
 from jobs.pipeline import (
     ColumnFieldPipeline,
@@ -21,6 +25,8 @@ from jobs.pipeline import (
 )
 from jobs.utils.db_url import build_database_url
 from jobs.utils.logger_config import initialize_logging
+from jobs.transform.old_entity_transformer import fetch_dataset_df, transform_old_entity
+from jobs.utils.df_utils import normalise_column_names
 from jobs.utils.s3_utils import list_delta_table_paths, validate_s3_path
 from jobs.utils.spark_session import create_spark_session
 
@@ -111,6 +117,84 @@ def assemble_and_load_entity(
                 logger.info("Spark session stopped")
             except Exception as e:
                 logger.warning(f"Error stopping Spark session: {e}")
+
+
+def assemble_and_load_config(collection_data_path: str, parquet_datasets_path: str):
+    """
+    Build the old_entity config table from old-entity.csv files across all collections.
+
+    Reads old-entity.csv from config/pipeline/<collection>/ for every collection found,
+    derives the dataset from the digital-land specification entity ranges, filters records
+    where the collection doesn't match, and writes a single old_entity Delta table.
+
+    Args:
+        collection_data_path: Path to the collection data root (local or S3).
+        parquet_datasets_path: S3 path to the parquet datasets bucket.
+    """
+    base = AnyPath(collection_data_path)
+    config_pipeline_path = base / "config" / "pipeline"
+
+    logger.info(
+        f"assemble_and_load_config: Reading old-entity config from {config_pipeline_path}"
+    )
+
+    spark = None
+    try:
+        spark = create_spark_session()
+        if spark is None:
+            raise RuntimeError("Failed to create Spark session")
+
+        collection_dfs = []
+        for collection_dir in config_pipeline_path.iterdir():
+            if not collection_dir.is_dir():
+                continue
+            old_entity_path = collection_dir / "old-entity.csv"
+            if not old_entity_path.exists():
+                continue
+            collection_name = collection_dir.name
+            logger.info(
+                f"assemble_and_load_config: Reading old-entity for '{collection_name}'"
+            )
+            df = spark.read.option("header", "true").csv(str(old_entity_path))
+            df = normalise_column_names(df)
+            df = df.withColumn("collection", lit(collection_name))
+            collection_dfs.append(df)
+
+        if not collection_dfs:
+            logger.warning(
+                "assemble_and_load_config: No old-entity.csv files found, nothing to write"
+            )
+            return
+
+        logger.info(
+            f"assemble_and_load_config: Found {len(collection_dfs)} collections with old-entity data"
+        )
+
+        old_entity_df = reduce(
+            lambda a, b: a.unionByName(b, allowMissingColumns=True), collection_dfs
+        )
+
+        dataset_df = fetch_dataset_df(spark)
+        result_df = transform_old_entity(old_entity_df, dataset_df)
+
+        output_path = str(AnyPath(parquet_datasets_path) / "old_entity")
+        result_df.write.format("delta").mode("overwrite").save(output_path)
+        logger.info(
+            f"assemble_and_load_config: Wrote old_entity Delta table to {output_path}"
+        )
+
+    except Exception as e:
+        logger.exception(f"assemble_and_load_config: Unexpected error — {e}")
+        raise
+    finally:
+        if spark is not None:
+            try:
+                spark.stop()
+                logger.info("assemble_and_load_config: Spark session stopped")
+            except Exception as e:
+                logger.warning(
+                    f"assemble_and_load_config: Error stopping Spark session — {e}"
+                )
 
 
 def migrate_datasets(parquet_datasets_path: str, allow_destructive: bool = False):

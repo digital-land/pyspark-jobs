@@ -11,25 +11,18 @@ from jobs.utils.logger_config import get_logger
 logger = get_logger(__name__)
 
 
-class DatasetResourceTransformer:
-    """Transform dataset resource records by selecting required columns."""
+def transform_dataset_resource(df, dataset):
+    logger.info(
+        "transform_dataset_resource: Transforming data for dataset_resource table"
+    )
 
-    @staticmethod
-    def transform(df, dataset):
-        """Transform dataset resource data."""
-        logger.info(
-            "DatasetResourceTransformer: Transforming data for dataset_resource table"
-        )
+    df = df.withColumn("dataset", lit(dataset))
+    df = get_schema("dataset_resource").enforce(df)
 
-        df = df.withColumn("dataset", lit(dataset))
-        df = get_schema("dataset_resource").enforce(df)
+    df = df.withColumn(
+        "processed_timestamp",
+        lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()),
+    )
 
-        df = df.withColumn(
-            "processed_timestamp",
-            lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()),
-        )
-
-        logger.info(
-            f"DatasetResourceTransformer: Transformation complete, columns: {df.columns}"
-        )
-        return df
+    logger.info(f"transform_dataset_resource: Complete, columns: {df.columns}")
+    return df
