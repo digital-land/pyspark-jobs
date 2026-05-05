@@ -1,4 +1,4 @@
-"""Fact resource transformer."""
+"""Dataset resource transformer."""
 
 from datetime import datetime
 
@@ -11,16 +11,18 @@ from jobs.utils.logger_config import get_logger
 logger = get_logger(__name__)
 
 
-def transform_fact_resource(df, dataset):
-    logger.info("transform_fact_resource: Transforming data for Fact Resource table")
+def transform_dataset_resource(df, dataset):
+    logger.info(
+        "transform_dataset_resource: Transforming data for dataset_resource table"
+    )
 
     df = df.withColumn("dataset", lit(dataset))
-    df = get_schema("fact_resource").enforce(df)
+    df = get_schema("dataset_resource").enforce(df)
 
     df = df.withColumn(
         "processed_timestamp",
         lit(datetime.now().strftime("%Y-%m-%d %H:%M:%S")).cast(TimestampType()),
     )
 
-    logger.info(f"transform_fact_resource: Complete, columns: {df.columns}")
+    logger.info(f"transform_dataset_resource: Complete, columns: {df.columns}")
     return df

@@ -20,7 +20,7 @@ from typing import Tuple
 
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
-from cloudpathlib import S3Path
+from cloudpathlib import AnyPath, S3Path
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -232,6 +232,26 @@ def _extract_bucket_name_safe(output_path: str) -> str:
         # Fallback: try to extract something useful for error reporting
         clean_path = output_path[5:] if output_path.startswith("s3://") else output_path
         return clean_path.split("/")[0] if "/" in clean_path else clean_path
+
+
+def list_delta_table_paths(path: AnyPath) -> list[str]:
+    """List paths of all Delta tables directly under the given path.
+
+    Identifies Delta tables by checking for the presence of a _delta_log/
+    directory under each immediate child directory.
+
+    Args:
+        path: AnyPath (local or S3) to search under.
+
+    Returns:
+        Sorted list of paths, one per Delta table found.
+    """
+    table_paths = [
+        str(child)
+        for child in path.iterdir()
+        if child.is_dir() and (child / "_delta_log").exists()
+    ]
+    return sorted(table_paths)
 
 
 def validate_s3_bucket_access(bucket_name: str) -> bool:

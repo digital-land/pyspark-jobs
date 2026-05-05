@@ -20,6 +20,14 @@ def create_spark_session(app_name="EMR Transform Job"):
             .config("spark.sql.adaptive.coalescePartitions.enabled", "true")
             .config("spark.sql.adaptive.skewJoin.enabled", "true")
             .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+            .config(
+                "spark.sql.extensions",
+                "io.delta.sql.DeltaSparkSessionExtension",
+            )
+            .config(
+                "spark.sql.catalog.spark_catalog",
+                "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+            )
             .getOrCreate()
         )
 

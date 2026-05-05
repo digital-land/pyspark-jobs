@@ -20,6 +20,8 @@ setup(
         # NOTE: psycopg2-binary causes EMR compatibility issues - see docs/DATABASE_CONNECTIVITY.md
         "PyYAML>=6.0",
         "cloudpathlib>=0.18.0",
+        "pydantic>=2.0.0",
+        "delta-spark>=3.2.0,<4.0.0",
         "typing-extensions>=4.0.0",
         "setuptools>=65.0.0",
     ],

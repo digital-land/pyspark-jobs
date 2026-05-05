@@ -21,7 +21,16 @@ def spark():
         .config(
             "spark.jars.packages",
             "org.apache.sedona:sedona-spark-shaded-3.5_2.12:1.8.1,"
-            "org.postgresql:postgresql:42.7.4",
+            "org.postgresql:postgresql:42.7.4,"
+            "io.delta:delta-spark_2.12:3.2.0",
+        )
+        .config(
+            "spark.sql.extensions",
+            "io.delta.sql.DeltaSparkSessionExtension",
+        )
+        .config(
+            "spark.sql.catalog.spark_catalog",
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
         )
         .getOrCreate()
     )
@@ -110,6 +119,46 @@ def clean_entity_table(db_conn):
             FOR t IN SELECT tablename FROM pg_tables
                      WHERE schemaname = 'public'
                        AND tablename LIKE 'entity_staging_%'
+            LOOP
+                EXECUTE 'DROP TABLE IF EXISTS ' || t;
+            END LOOP;
+        END $$;
+        """
+    )
+    db_conn.commit()
+    cur.close()
+
+
+@pytest.fixture()
+def clean_entity_subdivided_table(db_conn):
+    """Create the entity_subdivided table before each test and truncate after."""
+    cur = db_conn.cursor()
+    cur.execute("CREATE EXTENSION IF NOT EXISTS postgis;")
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS entity_subdivided (
+            entity BIGINT,
+            dataset TEXT,
+            geometry_subdivided GEOMETRY(MULTIPOLYGON, 4326)
+        );
+        """
+    )
+    db_conn.commit()
+    cur.close()
+
+    yield
+
+    cur = db_conn.cursor()
+    cur.execute("TRUNCATE TABLE entity_subdivided;")
+    # Drop any leftover staging tables
+    cur.execute(
+        """
+        DO $$
+        DECLARE t TEXT;
+        BEGIN
+            FOR t IN SELECT tablename FROM pg_tables
+                     WHERE schemaname = 'public'
+                       AND tablename LIKE 'entity_subdivided_staging_%'
             LOOP
                 EXECUTE 'DROP TABLE IF EXISTS ' || t;
             END LOOP;

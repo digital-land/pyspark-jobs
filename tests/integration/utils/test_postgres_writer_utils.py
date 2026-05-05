@@ -7,7 +7,10 @@ and a real Spark session to verify the staging table pattern works end-to-end.
 
 import pytest
 
-from jobs.utils.postgres_writer_utils import write_dataframe_to_postgres_jdbc
+from jobs.utils.postgres_writer_utils import (
+    write_dataframe_to_postgres_jdbc,
+    write_entity_subdivided_to_postgres,
+)
 
 
 def _build_entity_df(spark, rows):
@@ -274,6 +277,111 @@ def test_write_handles_null_geometry(spark, db_url, db_conn, clean_entity_table)
 
     assert row[0] is None  # geometry
     assert row[1] is None  # point
+
+
+@pytest.mark.database
+def test_write_entity_subdivided_creates_rows(
+    spark, db_url, db_conn, clean_entity_subdivided_table
+):
+    """Entities with polygon geometry produce subdivided rows in entity_subdivided."""
+    from pyspark.sql.types import LongType, StringType, StructField, StructType
+
+    schema = StructType(
+        [
+            StructField("entity", LongType(), True),
+            StructField("dataset", StringType(), True),
+            StructField("geometry", StringType(), True),
+        ]
+    )
+    # A simple multipolygon — ST_SubDivide with 256 max vertices returns it unchanged
+    wkt = "MULTIPOLYGON(((0 0, 1 0, 1 1, 0 1, 0 0)))"
+    df = spark.createDataFrame([(1001, "flood-risk-zones", wkt)], schema)
+
+    write_entity_subdivided_to_postgres(df, "flood-risk-zones", db_url)
+
+    cur = db_conn.cursor()
+    cur.execute(
+        "SELECT entity, dataset FROM entity_subdivided WHERE dataset = %s ORDER BY entity;",
+        ("flood-risk-zones",),
+    )
+    rows = cur.fetchall()
+    cur.close()
+
+    assert len(rows) >= 1
+    assert rows[0][0] == 1001
+    assert rows[0][1] == "flood-risk-zones"
+
+
+@pytest.mark.database
+def test_write_entity_subdivided_replaces_existing(
+    spark, db_url, db_conn, clean_entity_subdivided_table
+):
+    """Writing the same dataset twice replaces the old subdivided rows atomically."""
+    from pyspark.sql.types import LongType, StringType, StructField, StructType
+
+    schema = StructType(
+        [
+            StructField("entity", LongType(), True),
+            StructField("dataset", StringType(), True),
+            StructField("geometry", StringType(), True),
+        ]
+    )
+    wkt = "MULTIPOLYGON(((0 0, 1 0, 1 1, 0 1, 0 0)))"
+
+    df_v1 = spark.createDataFrame([(1001, "flood-risk-zones", wkt)], schema)
+    write_entity_subdivided_to_postgres(df_v1, "flood-risk-zones", db_url)
+
+    df_v2 = spark.createDataFrame(
+        [(2001, "flood-risk-zones", wkt), (2002, "flood-risk-zones", wkt)], schema
+    )
+    write_entity_subdivided_to_postgres(df_v2, "flood-risk-zones", db_url)
+
+    cur = db_conn.cursor()
+    cur.execute(
+        "SELECT entity FROM entity_subdivided WHERE dataset = %s ORDER BY entity;",
+        ("flood-risk-zones",),
+    )
+    rows = cur.fetchall()
+    cur.close()
+
+    entities = [r[0] for r in rows]
+    assert 1001 not in entities
+    assert 2001 in entities
+    assert 2002 in entities
+
+
+@pytest.mark.database
+def test_write_entity_subdivided_excludes_null_geometry(
+    spark, db_url, db_conn, clean_entity_subdivided_table
+):
+    """Entities with NULL geometry are excluded from entity_subdivided."""
+    from pyspark.sql.types import LongType, StringType, StructField, StructType
+
+    schema = StructType(
+        [
+            StructField("entity", LongType(), True),
+            StructField("dataset", StringType(), True),
+            StructField("geometry", StringType(), True),
+        ]
+    )
+    wkt = "MULTIPOLYGON(((0 0, 1 0, 1 1, 0 1, 0 0)))"
+    df = spark.createDataFrame(
+        [(1001, "flood-risk-zones", wkt), (1002, "flood-risk-zones", None)], schema
+    )
+
+    write_entity_subdivided_to_postgres(df, "flood-risk-zones", db_url)
+
+    cur = db_conn.cursor()
+    cur.execute(
+        "SELECT entity FROM entity_subdivided WHERE dataset = %s ORDER BY entity;",
+        ("flood-risk-zones",),
+    )
+    rows = cur.fetchall()
+    cur.close()
+
+    entities = [r[0] for r in rows]
+    assert 1001 in entities
+    assert 1002 not in entities
 
 
 @pytest.mark.database

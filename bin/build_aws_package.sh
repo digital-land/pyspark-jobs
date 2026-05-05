@@ -144,141 +144,126 @@ build_wheel() {
     rm -rf build_venv/
 }
 
-# Create dependencies archive
+# Create Python virtual environment archive for --archives submission
 build_dependencies() {
-    print_status "Creating dependencies archive..."
-    
+    print_status "Creating Python environment archive..."
+
     cd "$PROJECT_DIR"
-    
+
     # Check if Docker is available for Linux-compatible builds
     if command_exists docker && [[ "$1" == "--docker" ]]; then
         build_dependencies_docker
         return
     fi
-    
-    # Create temporary virtual environment
-    $PYTHON_VERSION -m venv temp_venv
-    source temp_venv/bin/activate
-    
-    # Upgrade pip to avoid warnings
+
+    # Build a full venv so compiled extensions (.so files) are on the real filesystem
+    # when extracted by EMR Serverless. This is the AWS-recommended approach for packages
+    # with native extensions (e.g. pydantic-core). Submitted via --archives, not --py-files.
+    $PYTHON_VERSION -m venv --copies environment
+    source environment/bin/activate
+
     pip install --quiet --upgrade pip
-    
-    # Install only the external dependencies (not pre-installed in EMR Serverless)
-    print_status "Installing external dependencies..."
-    
-    # Install EMR-specific dependencies (excluding PySpark which is pre-installed)
-    print_status "Installing EMR dependencies (excluding PySpark)..."
-    print_warning "Note: Dependencies will be packaged for current platform. For Linux compatibility,"
-    print_warning "consider building this package in a Linux environment or Docker container."
-    print_warning "To use Docker for Linux-compatible build, run: ./build_aws_package.sh --docker"
-    
-    # Install dependencies from requirements.txt (EMR-specific dependencies only)
-    print_status "Installing EMR dependencies..."
-    
+
+    print_status "Installing EMR dependencies into venv..."
     pip install --quiet -r "$PROJECT_DIR/requirements.txt" || {
         print_error "Failed to install EMR dependencies."
         exit 1
     }
-    
-    # Create dependencies archive
-    cd temp_venv/lib/python*/site-packages/
-    
+
+    # Install delta-spark Python bindings without pyspark (pre-installed on EMR).
+    pip install --quiet --no-deps "delta-spark>=3.2.0,<4.0.0" || {
+        print_error "Failed to install delta-spark Python bindings."
+        exit 1
+    }
+
+    # venv-pack creates a relocatable venv archive — it patches absolute paths,
+    # symlinks, and pyvenv.cfg so the venv works when extracted at any location
+    # on EMR Serverless. Plain tar of a venv retains hardcoded build paths and breaks.
+    pip install --quiet venv-pack
+
+    deactivate
+
     # Verify dependencies and ensure AWS SDK packages are NOT included
     print_status "Verifying dependencies..."
-    
-    # Check that AWS SDK packages are NOT included (they should use native EMR versions)
+    SITE_PACKAGES=$(ls -d "$PROJECT_DIR/environment/lib/python"*/site-packages)
+
     aws_packages=("boto3" "botocore")
     found_aws_packages=()
-    
     for pkg in "${aws_packages[@]}"; do
-        if [[ -d "$pkg" || -d "${pkg}"* ]]; then
+        if [[ -d "$SITE_PACKAGES/$pkg" ]]; then
             found_aws_packages+=("$pkg")
         fi
     done
-    
     if [[ ${#found_aws_packages[@]} -gt 0 ]]; then
-        print_error "AWS SDK packages found in dependencies: ${found_aws_packages[*]}"
-        print_error "These packages should NOT be included as they are pre-installed in EMR Serverless."
-        print_error "This can cause the 'DataNotFoundError: Unable to load data for: endpoints' error."
-        print_error "This should not happen with the current filtering logic."
+        print_error "AWS SDK packages found in environment: ${found_aws_packages[*]}"
+        print_error "These are pre-installed on EMR Serverless and must not be bundled."
         exit 1
     fi
-    
-    print_success "✅ AWS SDK packages correctly excluded (using EMR native versions)"
-    
-    # Check for required custom dependencies
-    required_deps=("pg8000")
+    print_success "✅ AWS SDK packages correctly excluded"
+
+    required_deps=("pg8000" "pydantic" "pydantic_core")
     missing_deps=()
-    
     for dep in "${required_deps[@]}"; do
-        if [[ ! -d "$dep" && ! -d "${dep}"* ]]; then
+        if [[ ! -d "$SITE_PACKAGES/$dep" ]]; then
             missing_deps+=("$dep")
         fi
     done
-    
     if [[ ${#missing_deps[@]} -gt 0 ]]; then
-        print_error "Required dependencies missing: ${missing_deps[*]}"
-        print_error "Please check requirements.txt"
+        print_error "Required dependencies missing from environment: ${missing_deps[*]}"
         exit 1
     fi
-    
-    print_success "✅ All required custom dependencies present"
-    
-    zip -r "$BUILD_DIR/dependencies/dependencies.zip" .
-    
-    # Deactivate and cleanup
+    print_success "✅ All required dependencies present (including pydantic_core)"
+
+    "$PROJECT_DIR/environment/bin/venv-pack" -p "$PROJECT_DIR/environment" -o "$BUILD_DIR/dependencies/environment.tar.gz"
+
+    # Cleanup
     cd "$PROJECT_DIR"
-    deactivate
-    rm -rf temp_venv/
-    
-    print_success "Dependencies archive created: dependencies.zip"
+    rm -rf environment/
+
+    print_success "Environment archive created: environment.tar.gz"
 }
 
-# Create dependencies using Docker for Linux compatibility
+# Create environment archive using Docker for Linux compatibility
 build_dependencies_docker() {
-    print_status "Creating dependencies using Docker for Linux compatibility..."
-    
-    # Create a temporary Dockerfile for dependency building
+    print_status "Creating Python environment archive using Docker..."
+
     cat > temp_dockerfile << 'EOF'
 FROM python:3.9-slim
-RUN apt-get update && apt-get install -y zip && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y tar && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY requirements.txt /build/
-RUN pip install --no-cache-dir --target /build/deps -r requirements.txt && \
-    cd /build/deps && \
-    zip -r /build/dependencies.zip .
+RUN python -m venv --copies environment && \
+    environment/bin/pip install --quiet --upgrade pip && \
+    environment/bin/pip install --quiet -r requirements.txt && \
+    environment/bin/pip install --quiet --no-deps "delta-spark>=3.2.0,<4.0.0" && \
+    environment/bin/pip install --quiet venv-pack && \
+    environment/bin/venv-pack -o environment.tar.gz
 EOF
-    
-    # Build dependencies in Docker container
-    print_status "Building dependencies in Docker container..."
+
     docker build -f temp_dockerfile -t pyspark-deps-builder . || {
-        print_error "Failed to build Docker image for dependencies"
+        print_error "Failed to build Docker image"
         rm -f temp_dockerfile
         exit 1
     }
-    
-    # Extract the dependencies.zip from the built image
+
     docker create --name temp-deps-container pyspark-deps-builder || {
         print_error "Failed to create temporary container"
         rm -f temp_dockerfile
         exit 1
     }
-    
-    docker cp temp-deps-container:/build/dependencies.zip "$BUILD_DIR/dependencies/" || {
-        print_error "Failed to copy dependencies from Docker container"
+
+    docker cp temp-deps-container:/build/environment.tar.gz "$BUILD_DIR/dependencies/" || {
+        print_error "Failed to copy environment archive from Docker container"
         docker rm temp-deps-container
         rm -f temp_dockerfile
         exit 1
     }
-    
-    # Clean up temporary container
+
     docker rm temp-deps-container
-    
-    # Clean up
     docker rmi pyspark-deps-builder >/dev/null 2>&1 || true
     rm -f temp_dockerfile
-    
-    print_success "Dependencies archive created using Docker: dependencies.zip"
+
+    print_success "Environment archive created using Docker: environment.tar.gz"
 }
 
 # Download JDBC drivers (optional)
@@ -315,18 +300,16 @@ download_jdbc_drivers() {
 # Copy entry scripts
 copy_entry_scripts() {
     print_status "Copying entry scripts..."
-    
-    # Copy the main entry script
-    if [[ -f "$PROJECT_DIR/entry_points/run_main.py" ]]; then
-        cp "$PROJECT_DIR/entry_points/run_main.py" "$BUILD_DIR/entry_script/"
-        print_success "Entry script copied: entry_points/run_main.py"
-    else
-        print_error "Entry script not found: entry_points/run_main.py"
-        exit 1
-    fi
-    
-    # Copy any additional scripts if needed
-    # Add more entry scripts here if you have them
+
+    for script in run_main.py run_maintenance.py run_migrate.py run_config.py; do
+        if [[ -f "$PROJECT_DIR/entry_points/$script" ]]; then
+            cp "$PROJECT_DIR/entry_points/$script" "$BUILD_DIR/entry_script/"
+            print_success "Entry script copied: entry_points/$script"
+        else
+            print_error "Entry script not found: entry_points/$script"
+            exit 1
+        fi
+    done
 }
 
 # Generate deployment manifest

@@ -211,7 +211,7 @@ class TestEntityPipeline:
 
         EntityPipeline(config).run(collection=collection)
 
-        fact_resource_df = spark.read.parquet(
+        fact_resource_df = spark.read.format("delta").load(
             os.path.join(parquet_base, "fact_resource")
         )
         assert fact_resource_df.count() == len(TRANSFORMED_ROWS)
@@ -269,7 +269,7 @@ class TestEntityPipeline:
 
         EntityPipeline(config).run(collection=collection)
 
-        fact_df = spark.read.parquet(os.path.join(parquet_base, "fact"))
+        fact_df = spark.read.format("delta").load(os.path.join(parquet_base, "fact"))
         expected_unique_facts = len({r["fact"] for r in TRANSFORMED_ROWS})
         assert fact_df.count() == expected_unique_facts
 
@@ -326,7 +326,9 @@ class TestEntityPipeline:
 
         EntityPipeline(config).run(collection=collection)
 
-        entity_df = spark.read.parquet(os.path.join(parquet_base, "entity"))
+        entity_df = spark.read.format("delta").load(
+            os.path.join(parquet_base, "entity")
+        )
         expected_unique_entities = len({r["entity"] for r in TRANSFORMED_ROWS})
         assert entity_df.count() == expected_unique_entities
 
@@ -453,7 +455,7 @@ class TestIssuePipeline:
 
         assert pipeline.result["status"] == "success"
 
-        issue_df = spark.read.parquet(os.path.join(parquet_base, "issue"))
+        issue_df = spark.read.format("delta").load(os.path.join(parquet_base, "issue"))
         assert issue_df.count() == len(ISSUE_ROWS)
 
     def test_execute_raises_on_missing_input_path(self, spark, tmp_path):

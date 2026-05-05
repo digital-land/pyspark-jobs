@@ -22,6 +22,14 @@ requests>=2.28.0
 # Cloud path handling (consistent s3:// and local path joining)
 cloudpathlib>=0.18.0
 
+# Data validation
+pydantic>=2.0.0
+
+# Delta Lake Python bindings (delta-spark) are intentionally omitted here.
+# delta-spark depends on pyspark, which conflicts with the manylinux cross-platform
+# install used in bin/build_aws_package.sh. It is installed separately with --no-deps
+# in that script. For local development, install it manually: pip install delta-spark
+
 # Python standard library extensions
 typing-extensions>=4.0.0
 

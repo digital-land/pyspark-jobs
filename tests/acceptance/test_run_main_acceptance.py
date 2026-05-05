@@ -245,6 +245,44 @@ ORGANISATION_ROWS = [
     {"organisation": "local-authority:ABC", "entity": "100"},
 ]
 
+DATASET_RESOURCE_COLUMNS = [
+    "entry_date",
+    "dataset",
+    "entity_count",
+    "entry_count",
+    "line_count",
+    "mime_type",
+    "internal_path",
+    "internal_mime_type",
+    "resource",
+]
+
+DATASET_RESOURCE_ROWS = [
+    {
+        "entry_date": "2024-01-15",
+        "dataset": "test-dataset",
+        "entity_count": "10",
+        "entry_count": "20",
+        "line_count": "21",
+        "mime_type": "text/csv",
+        "internal_path": "",
+        "internal_mime_type": "",
+        "resource": "res-001",
+    },
+]
+
+COLUMN_FIELD_COLUMNS = ["entry_date", "field", "dataset", "resource", "column"]
+
+COLUMN_FIELD_ROWS = [
+    {
+        "entry_date": "2024-01-15",
+        "field": "name",
+        "dataset": "test-dataset",
+        "resource": "res-001",
+        "column": "Name",
+    },
+]
+
 
 def _write_csv(path, fieldnames, rows):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -257,8 +295,8 @@ def _write_csv(path, fieldnames, rows):
 def test_e2e_full_load_pipeline(cli_runner, run_main_cmd, spark, tmp_path, mocker):
     """Run the full ETL pipeline end-to-end.
 
-    Spark reads real CSV files from disk and all four transformers
-    (Fact, FactResource, Entity, Issue) run on real DataFrames.
+    Spark reads real CSV files from disk and all six transformers
+    (Fact, FactResource, Entity, Issue, DatasetResource, ColumnField) run on real DataFrames.
     Parquet writes go to local disk for assertion.
     Infrastructure I/O (S3 cleanup, consumer formats, Postgres) is mocked.
     """
@@ -286,6 +324,20 @@ def test_e2e_full_load_pipeline(cli_runner, run_main_cmd, spark, tmp_path, mocke
         os.path.join(base, "organisation-collection", "dataset", "organisation.csv"),
         ["organisation", "entity"],
         ORGANISATION_ROWS,
+    )
+
+    # Write dataset-resource CSV
+    _write_csv(
+        os.path.join(collection_dir, "var", "dataset-resource", dataset, "data.csv"),
+        DATASET_RESOURCE_COLUMNS,
+        DATASET_RESOURCE_ROWS,
+    )
+
+    # Write column-field CSV
+    _write_csv(
+        os.path.join(collection_dir, "var", "column-field", dataset, "data.csv"),
+        COLUMN_FIELD_COLUMNS,
+        COLUMN_FIELD_ROWS,
     )
 
     # --- Mock infrastructure I/O ---
@@ -342,19 +394,31 @@ def test_e2e_full_load_pipeline(cli_runner, run_main_cmd, spark, tmp_path, mocke
     expected_unique_entities = len({r["entity"] for r in TRANSFORMED_ROWS})
 
     # Fact resource: no rows removed, same count as transformed input
-    fact_resource_df = spark.read.parquet(os.path.join(parquet_base, "fact_resource"))
+    fact_resource_df = spark.read.format("delta").load(
+        os.path.join(parquet_base, "fact_resource")
+    )
     assert fact_resource_df.count() == expected_input_rows
 
     # Fact: one row per unique fact value after deduplication
-    fact_df = spark.read.parquet(os.path.join(parquet_base, "fact"))
+    fact_df = spark.read.format("delta").load(os.path.join(parquet_base, "fact"))
     assert fact_df.count() == expected_unique_facts
 
     # Entity: one row per unique entity (pivoted from EAV to wide format)
-    entity_df = spark.read.parquet(os.path.join(parquet_base, "entity"))
+    entity_df = spark.read.format("delta").load(os.path.join(parquet_base, "entity"))
     assert entity_df.count() == expected_unique_entities
 
-    issue_df = spark.read.parquet(os.path.join(parquet_base, "issue"))
+    issue_df = spark.read.format("delta").load(os.path.join(parquet_base, "issue"))
     assert issue_df.count() > 0
+
+    dataset_resource_df = spark.read.format("delta").load(
+        os.path.join(parquet_base, "dataset_resource")
+    )
+    assert dataset_resource_df.count() == len(DATASET_RESOURCE_ROWS)
+
+    column_field_df = spark.read.format("delta").load(
+        os.path.join(parquet_base, "column_field")
+    )
+    assert column_field_df.count() == len(COLUMN_FIELD_ROWS)
 
     # Entity written to Postgres
     assert mock_pg.call_count == 1

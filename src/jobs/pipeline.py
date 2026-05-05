@@ -20,20 +20,27 @@ from cloudpathlib import AnyPath, S3Path
 from pyspark.sql import SparkSession
 
 from jobs.config.metadata import load_metadata
-from jobs.transform.entity_transformer import EntityTransformer
-from jobs.transform.fact_resource_transformer import FactResourceTransformer
-from jobs.transform.fact_transformer import FactTransformer
-from jobs.transform.issue_transformer import IssueTransformer
+from jobs.transform.column_field_transformer import transform_column_field
+from jobs.transform.dataset_resource_transformer import transform_dataset_resource
+from jobs.transform.entity_transformer import transform_entity
+from jobs.transform.fact_resource_transformer import transform_fact_resource
+from jobs.transform.fact_transformer import transform_fact
+from jobs.transform.issue_transformer import transform_issue
+from jobs.read import read_old_resources
+from jobs.transform.filter import filter_old_resources
 from jobs.utils.df_utils import count_df, normalise_column_names, show_df
 from jobs.utils.flatten_csv import flatten_json_column
-from jobs.utils.postgres_writer_utils import write_dataframe_to_postgres_jdbc
-from jobs.utils.s3_utils import cleanup_dataset_data
+from jobs.utils.postgres_writer_utils import (
+    SUBDIVIDED_DATASETS,
+    write_dataframe_to_postgres_jdbc,
+    write_entity_subdivided_to_postgres,
+)
 from jobs.utils.s3_writer_utils import (
     cleanup_temp_path,
     ensure_schema_fields,
     resolve_geometry,
     s3_rename_and_move,
-    write_parquet,
+    write_delta,
 )
 
 logger = logging.getLogger(__name__)
@@ -143,6 +150,27 @@ class EntityPipeline(BasePipeline):
         if transformed_df.rdd.isEmpty():
             raise ValueError("EntityPipeline: Transformed DataFrame is empty")
 
+        # -- Filter old resources ---------------------------------------------
+        old_resource_path = (
+            base
+            / "config"
+            / "collection"
+            / f"{collection}-collection"
+            / "old-resource.csv"
+        )
+        try:
+            if old_resource_path.exists():
+                old_resources_df = read_old_resources(spark, str(old_resource_path))
+                transformed_df = filter_old_resources(transformed_df, old_resources_df)
+            else:
+                logger.info(
+                    f"EntityPipeline: No old-resource.csv found at {old_resource_path}, skipping filter"
+                )
+        except Exception as e:
+            logger.warning(
+                f"EntityPipeline: Could not read old-resource.csv, skipping filter: {e}"
+            )
+
         # Validate schema against schemas.json
         json_data = load_metadata("schemas.json")
         fields = json_data.get("transformed", [])
@@ -157,23 +185,21 @@ class EntityPipeline(BasePipeline):
             logger.warning("EntityPipeline: Some fields missing from transformed data")
 
         # -- Transform --------------------------------------------------------
-        fact_resource_df = FactResourceTransformer().transform(transformed_df, dataset)
+        fact_resource_df = transform_fact_resource(transformed_df, dataset)
         logger.info("EntityPipeline: fact_resource transform completed")
         show_df(fact_resource_df, 5, env)
         count = count_df(fact_resource_df, env)
         if count is not None:
             logger.info(f"EntityPipeline: fact_resource contains {count} records")
 
-        fact_df = FactTransformer().transform(transformed_df, dataset)
+        fact_df = transform_fact(transformed_df, dataset)
         logger.info("EntityPipeline: fact transform completed")
         show_df(fact_df, 5, env)
         fact_count = count_df(fact_df, env)
         if fact_count is not None:
             logger.info(f"EntityPipeline: fact contains {fact_count} records")
 
-        entity_df = EntityTransformer().transform(
-            transformed_df, dataset, organisation_df
-        )
+        entity_df = transform_entity(transformed_df, dataset, organisation_df)
         logger.info("EntityPipeline: entity transform completed")
 
         # -- Load: parquet ----------------------------------------------------
@@ -184,10 +210,8 @@ class EntityPipeline(BasePipeline):
             ("entity", entity_df),
         ]:
             output_path = str(parquet_base / table_name)
-            if isinstance(parquet_base, S3Path):
-                cleanup_dataset_data(output_path, dataset)
-            write_parquet(df, output_path, partition_by=["dataset"])
-            logger.info(f"EntityPipeline: Wrote {table_name} parquet")
+            write_delta(df, output_path, dataset, partition_by=["dataset"])
+            logger.info(f"EntityPipeline: Wrote {table_name} Delta table")
 
         # -- Load: consumer formats (CSV/JSON/GeoJSON) ------------------------
         self._write_consumer_formats(entity_df)
@@ -426,6 +450,14 @@ class EntityPipeline(BasePipeline):
             write_dataframe_to_postgres_jdbc(
                 entity_pg_df, "entity", dataset, self.config.database_url
             )
+
+            if dataset in SUBDIVIDED_DATASETS:
+                logger.info(
+                    f"EntityPipeline: {dataset} requires subdivided geometries, writing to entity_subdivided"
+                )
+                write_entity_subdivided_to_postgres(
+                    entity_pg_df, dataset, self.config.database_url
+                )
         else:
             logger.info("EntityPipeline: entity_df is empty, skipping Postgres write")
 
@@ -458,14 +490,105 @@ class IssuePipeline(BasePipeline):
         issue_df = normalise_column_names(issue_df)
         logger.info(f"IssuePipeline: Columns after renaming: {issue_df.columns}")
 
+        # -- Filter old resources ---------------------------------------------
+        old_resource_path = (
+            base
+            / "config"
+            / "collection"
+            / f"{collection}-collection"
+            / "old-resource.csv"
+        )
+        try:
+            if old_resource_path.exists():
+                old_resources_df = read_old_resources(spark, str(old_resource_path))
+                issue_df = filter_old_resources(issue_df, old_resources_df)
+            else:
+                logger.info(
+                    f"IssuePipeline: No old-resource.csv found at {old_resource_path}, skipping filter"
+                )
+        except Exception as e:
+            logger.warning(
+                f"IssuePipeline: Could not read old-resource.csv, skipping filter: {e}"
+            )
+
         # -- Transform --------------------------------------------------------
-        issue_df = IssueTransformer().transform(issue_df, dataset)
+        issue_df = transform_issue(issue_df, dataset)
         logger.info("IssuePipeline: issue transform completed")
 
         # -- Load -------------------------------------------------------------
         parquet_base = AnyPath(self.config.parquet_datasets_path)
         issue_output_path = str(parquet_base / "issue")
-        if isinstance(parquet_base, S3Path):
-            cleanup_dataset_data(issue_output_path, dataset)
-        write_parquet(issue_df, issue_output_path, partition_by=["dataset"])
-        logger.info("IssuePipeline: Wrote issue parquet")
+        write_delta(issue_df, issue_output_path, dataset, partition_by=["dataset"])
+        logger.info("IssuePipeline: Wrote issue Delta table")
+
+
+class DatasetResourcePipeline(BasePipeline):
+    """
+    Pipeline for dataset resource data.
+
+    Reads dataset-resource CSVs from the var directory and writes to a Delta table.
+    """
+
+    def execute(self, collection):
+        spark = self.config.spark
+        dataset = self.config.dataset
+        env = self.config.env
+        collection_data_path = self.config.collection_data_path
+
+        base = AnyPath(collection_data_path)
+        dataset_resource_path = (
+            str(
+                base / f"{collection}-collection" / "var" / "dataset-resource" / dataset
+            )
+            + "/*.csv"
+        )
+
+        logger.info(
+            f"DatasetResourcePipeline: Reading data from {dataset_resource_path}"
+        )
+        df = spark.read.option("header", "true").csv(dataset_resource_path)
+        df.cache()
+        show_df(df, 5, env)
+
+        df = normalise_column_names(df)
+        df = transform_dataset_resource(df, dataset)
+        logger.info("DatasetResourcePipeline: Transform complete")
+
+        parquet_base = AnyPath(self.config.parquet_datasets_path)
+        output_path = str(parquet_base / "dataset_resource")
+        write_delta(df, output_path, dataset, partition_by=["dataset"])
+        logger.info("DatasetResourcePipeline: Wrote dataset_resource Delta table")
+
+
+class ColumnFieldPipeline(BasePipeline):
+    """
+    Pipeline for column field log data.
+
+    Reads column-field CSVs from the var directory and writes to a Delta table.
+    """
+
+    def execute(self, collection):
+        spark = self.config.spark
+        dataset = self.config.dataset
+        env = self.config.env
+        collection_data_path = self.config.collection_data_path
+
+        base = AnyPath(collection_data_path)
+        column_field_path = (
+            str(base / f"{collection}-collection" / "var" / "column-field" / dataset)
+            + "/*.csv"
+        )
+
+        logger.info(f"ColumnFieldPipeline: Reading data from {column_field_path}")
+        df = spark.read.option("header", "true").csv(column_field_path)
+        df.cache()
+        show_df(df, 5, env)
+
+        df = normalise_column_names(df)
+        df = transform_column_field(df, dataset)
+        logger.info("ColumnFieldPipeline: Transform complete")
+
+        parquet_base = AnyPath(self.config.parquet_datasets_path)
+        output_path = str(parquet_base / "column_field")
+        write_delta(df, output_path, dataset, partition_by=["dataset"])
+        logger.info("ColumnFieldPipeline: Wrote column_field Delta table")
