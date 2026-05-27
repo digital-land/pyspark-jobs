@@ -14,10 +14,12 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import date, datetime
+from functools import reduce
 
 import boto3
 from cloudpathlib import AnyPath, S3Path
 from pyspark.sql import SparkSession
+from pyspark.sql.functions import col
 
 from jobs.config.metadata import load_metadata
 from jobs.transform.column_field_transformer import transform_column_field
@@ -26,6 +28,10 @@ from jobs.transform.entity_transformer import transform_entity
 from jobs.transform.fact_resource_transformer import transform_fact_resource
 from jobs.transform.fact_transformer import transform_fact
 from jobs.transform.issue_transformer import transform_issue
+from jobs.transform.task_transformer import (
+    transform_log_to_tasks,
+    transform_issues_to_tasks,
+)
 from jobs.read import read_old_resources
 from jobs.transform.filter import filter_old_resources
 from jobs.utils.df_utils import count_df, normalise_column_names, show_df
@@ -592,3 +598,81 @@ class ColumnFieldPipeline(BasePipeline):
         output_path = str(parquet_base / "column_field")
         write_delta(df, output_path, dataset, partition_by=["dataset"])
         logger.info("ColumnFieldPipeline: Wrote column_field Delta table")
+
+
+class TaskPipeline(BasePipeline):
+    """
+    Cross-collection pipeline for generating task data from log and issue files.
+
+    Unlike other pipelines, this reads across all collections at once using
+    wildcard S3 paths rather than processing a single dataset/collection.
+    Writes plain Parquet (not Delta) as a first step — Delta and Postgres
+    are added in subsequent tickets.
+    """
+
+    def execute(self):
+
+        spark = self.config.spark
+        base = AnyPath(self.config.collection_data_path)
+
+        # -- Active resources -------------------------------------------------
+        # Read resource.csv for all collections. Filter to end_date = '' to get
+        # only currently active resources. We use this both to filter log/issue
+        # rows and to map resource hashes to their dataset.
+        resource_path = str(base / "*-collection" / "collection" / "resource.csv")
+        logger.info(f"TaskPipeline: Reading resource files from {resource_path}")
+
+        resource_df = spark.read.option("header", "true").csv(resource_path)
+        resource_df = normalise_column_names(resource_df)
+        active_df = (
+            resource_df.filter(col("end_date") == "")
+            .select("resource", "dataset")
+            .distinct()
+        )
+        active_df.cache()
+        logger.info("TaskPipeline: Active resources loaded")
+
+        # -- Log tasks --------------------------------------------------------
+        log_path = str(base / "*-collection" / "collection" / "log.csv")
+        logger.info(f"TaskPipeline: Reading log files from {log_path}")
+
+        log_df = spark.read.option("header", "true").csv(log_path)
+        log_df = normalise_column_names(log_df)
+
+        # Join brings in dataset from resource.csv; also filters to active resources.
+        # log.csv already has endpoint so we only need dataset from the join.
+        log_df = log_df.join(active_df, on="resource", how="inner")
+
+        log_tasks = transform_log_to_tasks(log_df)
+
+        # -- Issue tasks ------------------------------------------------------
+        issue_path = str(base / "*-collection" / "issue" / "*" / "*.csv")
+        logger.info(f"TaskPipeline: Reading issue files from {issue_path}")
+
+        issue_df = spark.read.option("header", "true").csv(issue_path)
+        issue_df = normalise_column_names(issue_df)
+
+        # Filter to active resources only — dataset is already in the issue CSV.
+        issue_df = issue_df.join(
+            active_df.select("resource"), on="resource", how="inner"
+        )
+
+        issue_tasks = transform_issues_to_tasks(issue_df)
+
+        # -- Union and write --------------------------------------------------
+        frames = [df for df in [log_tasks, issue_tasks] if df is not None]
+
+        if not frames:
+            logger.warning("TaskPipeline: No tasks generated — nothing to write")
+            return
+
+        tasks_df = (
+            frames[0]
+            if len(frames) == 1
+            else reduce(lambda a, b: a.unionByName(b), frames)
+        )
+
+        output_path = str(AnyPath(self.config.parquet_datasets_path) / "task")
+        logger.info(f"TaskPipeline: Writing tasks to {output_path}")
+        tasks_df.write.mode("overwrite").parquet(output_path)
+        logger.info("TaskPipeline: Complete")
