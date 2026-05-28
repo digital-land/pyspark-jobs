@@ -6,16 +6,14 @@ Pipeline implementations live in jobs.pipeline.
 """
 
 import logging
+from functools import reduce
 
 from cloudpathlib import AnyPath, S3Path
 from delta.tables import DeltaTable
-
-from jobs.dbaccess.postgres_connectivity import get_aws_secret
-from functools import reduce
-
 from pyspark.sql.functions import lit
 
 from jobs.config.schema import _REGISTRY
+from jobs.dbaccess.postgres_connectivity import get_aws_secret
 from jobs.pipeline import (
     ColumnFieldPipeline,
     DatasetResourcePipeline,
@@ -24,10 +22,10 @@ from jobs.pipeline import (
     PipelineConfig,
     TaskPipeline,
 )
-from jobs.utils.db_url import build_database_url
-from jobs.utils.logger_config import initialize_logging
 from jobs.transform.old_entity_transformer import fetch_dataset_df, transform_old_entity
+from jobs.utils.db_url import build_database_url
 from jobs.utils.df_utils import normalise_column_names
+from jobs.utils.logger_config import initialize_logging
 from jobs.utils.s3_utils import list_delta_table_paths, validate_s3_path
 from jobs.utils.spark_session import create_spark_session
 

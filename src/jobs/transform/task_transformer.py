@@ -6,13 +6,13 @@ from datetime import date
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import (
     col,
-    lit,
-    udf,
-    sha2,
     concat_ws,
-    substring,
     count,
     first,
+    lit,
+    sha2,
+    substring,
+    udf,
 )
 from pyspark.sql.types import StringType
 
@@ -21,52 +21,12 @@ from jobs.utils.logger_config import get_logger
 logger = get_logger(__name__)
 
 
-def _log_details_udf(status, exception):
-    """Build JSON details string for a log task."""
-    if status and str(status).isdigit():
-        status_val = int(status)
-    else:
-        status_val = status
-    return json.dumps({"status": status_val, "exception": exception or ""})
-
-
-_log_details = udf(_log_details_udf, StringType())
-
-
-def _issue_details_udf(issue_type, count_val, field):
-    """Build JSON details string for an issue task."""
-    return json.dumps(
-        {
-            "issue_type": issue_type or "",
-            "count": int(count_val) if count_val else 0,
-            "field": field or "",
-        }
-    )
-
-
-_issue_details = udf(_issue_details_udf, StringType())
-
-
-def _add_reference(df: DataFrame) -> DataFrame:
-    """Add reference column: first 16 chars of SHA-256 hash of key fields."""
-    return df.withColumn(
-        "reference",
-        substring(
-            sha2(
-                concat_ws(
-                    "|",
-                    col("dataset"),
-                    col("endpoint"),
-                    col("resource"),
-                    col("task_source"),
-                    col("details"),
-                ),
-                256,
-            ),
-            1,
-            16,
-        ),
-    )
+# NOTE: This module mirrors the task transform logic in digital-land-python:
+# digital_land/pipeline/task.py (_transform_log_to_tasks, _transform_issues_to_tasks).
+# The two implementations use different frameworks (PySpark vs Polars) but must
+# produce identical output schemas and reference hashes for the same input data.
+# If you change filtering logic, grouping, details JSON structure, or the reference
+# hash inputs here, make the equivalent change there too (and vice versa).
 
 
 def transform_log_to_tasks(df: DataFrame, entry_date: str = None) -> DataFrame:
@@ -157,4 +117,52 @@ def transform_issues_to_tasks(df: DataFrame, entry_date: str = None) -> DataFram
         col("task_source").alias("task-source"),
         col("entry_date").alias("entry-date"),
         col("reference"),
+    )
+
+
+def _log_details_udf(status, exception):
+    """Build JSON details string for a log task."""
+    if status and str(status).isdigit():
+        status_val = int(status)
+    else:
+        status_val = status
+    return json.dumps({"status": status_val, "exception": exception or ""})
+
+
+_log_details = udf(_log_details_udf, StringType())
+
+
+def _issue_details_udf(issue_type, count_val, field):
+    """Build JSON details string for an issue task."""
+    return json.dumps(
+        {
+            "issue_type": issue_type or "",
+            "count": int(count_val) if count_val else 0,
+            "field": field or "",
+        }
+    )
+
+
+_issue_details = udf(_issue_details_udf, StringType())
+
+
+def _add_reference(df: DataFrame) -> DataFrame:
+    """Add reference column: first 16 chars of SHA-256 hash of key fields."""
+    return df.withColumn(
+        "reference",
+        substring(
+            sha2(
+                concat_ws(
+                    "|",
+                    col("dataset"),
+                    col("endpoint"),
+                    col("resource"),
+                    col("task_source"),
+                    col("details"),
+                ),
+                256,
+            ),
+            1,
+            16,
+        ),
     )

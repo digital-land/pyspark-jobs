@@ -22,18 +22,18 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 
 from jobs.config.metadata import load_metadata
+from jobs.read import read_old_resources
 from jobs.transform.column_field_transformer import transform_column_field
 from jobs.transform.dataset_resource_transformer import transform_dataset_resource
 from jobs.transform.entity_transformer import transform_entity
 from jobs.transform.fact_resource_transformer import transform_fact_resource
 from jobs.transform.fact_transformer import transform_fact
+from jobs.transform.filter import filter_old_resources
 from jobs.transform.issue_transformer import transform_issue
 from jobs.transform.task_transformer import (
-    transform_log_to_tasks,
     transform_issues_to_tasks,
+    transform_log_to_tasks,
 )
-from jobs.read import read_old_resources
-from jobs.transform.filter import filter_old_resources
 from jobs.utils.df_utils import count_df, normalise_column_names, show_df
 from jobs.utils.flatten_csv import flatten_json_column
 from jobs.utils.postgres_writer_utils import (
