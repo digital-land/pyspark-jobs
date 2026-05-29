@@ -374,8 +374,8 @@ aws s3 cp "$SCRIPT_DIR/whl_pkg/"*.whl "s3://$S3_BUCKET/emr-data-processing/src0/
 
 # Upload dependencies
 echo "Uploading dependencies..."
-aws s3 cp "$SCRIPT_DIR/dependencies/dependencies.zip" "s3://$S3_BUCKET/pkg/dependencies/"
-aws s3 cp "$SCRIPT_DIR/dependencies/dependencies.zip" "s3://$S3_BUCKET/emr-data-processing/src0/dependencies/dependencies.zip"
+aws s3 cp "$SCRIPT_DIR/dependencies/environment.tar.gz" "s3://$S3_BUCKET/pkg/dependencies/"
+aws s3 cp "$SCRIPT_DIR/dependencies/environment.tar.gz" "s3://$S3_BUCKET/emr-data-processing/src0/dependencies/environment.tar.gz"
 
 # Upload entry script
 echo "Uploading entry script..."
@@ -395,7 +395,7 @@ echo "Upload completed successfully!"
 echo ""
 echo "Files uploaded to:"
 echo "  - s3://$S3_BUCKET/pkg/whl_pkg/"
-echo "  - s3://$S3_BUCKET/pkg/dependencies/"
+echo "  - s3://$S3_BUCKET/pkg/dependencies/environment.tar.gz"
 echo "  - s3://$S3_BUCKET/pkg/entry_script/"
 if [ -d "$SCRIPT_DIR/jars" ] && [ "$(ls -A $SCRIPT_DIR/jars)" ]; then
     echo "  - s3://$S3_BUCKET/pkg/jars/"
