@@ -700,7 +700,22 @@ class TaskPipeline(BasePipeline):
             issue_df = issue_df.join(
                 active_df.select("resource"), on="resource", how="inner"
             )
-            issue_tasks = transform_issues_to_tasks(issue_df)
+            required_cols = {
+                "severity",
+                "responsibility",
+                "issue_type",
+                "resource",
+                "field",
+                "dataset",
+            }
+            if not required_cols.issubset(set(issue_df.columns)):
+                logger.warning(
+                    f"TaskPipeline: Issue files missing expected columns, skipping. "
+                    f"Found: {issue_df.columns}"
+                )
+                issue_tasks = None
+            else:
+                issue_tasks = transform_issues_to_tasks(issue_df)
 
         # -- Union and write --------------------------------------------------
         frames = [df for df in [log_tasks, issue_tasks] if df is not None]
