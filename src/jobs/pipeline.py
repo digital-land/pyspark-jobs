@@ -15,6 +15,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import date, datetime
 from functools import reduce
+from urllib.parse import urlparse
 
 import boto3
 from cloudpathlib import AnyPath, S3Path
@@ -600,6 +601,18 @@ class ColumnFieldPipeline(BasePipeline):
         logger.info("ColumnFieldPipeline: Wrote column_field Delta table")
 
 
+def _list_s3_paths(bucket: str, prefix: str, suffix: str) -> list[str]:
+    """List all S3 paths under prefix whose key ends with suffix."""
+    s3 = boto3.client("s3", region_name="eu-west-2")
+    paginator = s3.get_paginator("list_objects_v2")
+    paths = []
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            if obj["Key"].endswith(suffix):
+                paths.append(f"s3://{bucket}/{obj['Key']}")
+    return paths
+
+
 class TaskPipeline(BasePipeline):
     """
     Cross-collection pipeline for generating task data from log and issue files.
@@ -611,18 +624,45 @@ class TaskPipeline(BasePipeline):
     """
 
     def execute(self):
-
         spark = self.config.spark
         base = AnyPath(self.config.collection_data_path)
+        _is_s3 = isinstance(base, S3Path)
+
+        # -- Resolve file paths ---------------------------------------------------
+        if _is_s3:
+            parsed = urlparse(str(base))
+            bucket = parsed.netloc
+            s3_prefix = parsed.path.lstrip("/")
+            resource_files = _list_s3_paths(
+                bucket, s3_prefix, "collection/resource.csv"
+            )
+            log_files = _list_s3_paths(bucket, s3_prefix, "collection/log.csv")
+            issue_files = [
+                p for p in _list_s3_paths(bucket, s3_prefix, ".csv") if "/issue/" in p
+            ]
+            logger.info(
+                f"TaskPipeline: Found {len(resource_files)} resource, "
+                f"{len(log_files)} log, {len(issue_files)} issue files"
+            )
+        else:
+            import glob as _glob
+
+            resource_files = _glob.glob(
+                str(base / "*-collection" / "collection" / "resource.csv")
+            )
+            log_files = _glob.glob(
+                str(base / "*-collection" / "collection" / "log.csv")
+            )
+            issue_files = _glob.glob(
+                str(base / "*-collection" / "issue" / "*" / "*.csv")
+            )
+
+        if not resource_files:
+            logger.warning("TaskPipeline: No resource files found — nothing to process")
+            return
 
         # -- Active resources -------------------------------------------------
-        # Read resource.csv for all collections. Filter to end_date = '' to get
-        # only currently active resources. We use this both to filter log/issue
-        # rows and to map resource hashes to their dataset.
-        resource_path = str(base / "*-collection" / "collection" / "resource.csv")
-        logger.info(f"TaskPipeline: Reading resource files from {resource_path}")
-
-        resource_df = spark.read.option("header", "true").csv(resource_path)
+        resource_df = spark.read.option("header", "true").csv(resource_files)
         resource_df = normalise_column_names(resource_df)
         active_df = (
             resource_df.filter(col("end_date") == "")
@@ -633,31 +673,26 @@ class TaskPipeline(BasePipeline):
         logger.info("TaskPipeline: Active resources loaded")
 
         # -- Log tasks --------------------------------------------------------
-        log_path = str(base / "*-collection" / "collection" / "log.csv")
-        logger.info(f"TaskPipeline: Reading log files from {log_path}")
-
-        log_df = spark.read.option("header", "true").csv(log_path)
-        log_df = normalise_column_names(log_df)
-
-        # Join brings in dataset from resource.csv; also filters to active resources.
-        # log.csv already has endpoint so we only need dataset from the join.
-        log_df = log_df.join(active_df, on="resource", how="inner")
-
-        log_tasks = transform_log_to_tasks(log_df)
+        if not log_files:
+            logger.warning("TaskPipeline: No log files found — skipping log tasks")
+            log_tasks = None
+        else:
+            log_df = spark.read.option("header", "true").csv(log_files)
+            log_df = normalise_column_names(log_df)
+            log_df = log_df.join(active_df, on="resource", how="inner")
+            log_tasks = transform_log_to_tasks(log_df)
 
         # -- Issue tasks ------------------------------------------------------
-        issue_path = str(base / "*-collection" / "issue" / "*" / "*.csv")
-        logger.info(f"TaskPipeline: Reading issue files from {issue_path}")
-
-        issue_df = spark.read.option("header", "true").csv(issue_path)
-        issue_df = normalise_column_names(issue_df)
-
-        # Filter to active resources only — dataset is already in the issue CSV.
-        issue_df = issue_df.join(
-            active_df.select("resource"), on="resource", how="inner"
-        )
-
-        issue_tasks = transform_issues_to_tasks(issue_df)
+        if not issue_files:
+            logger.warning("TaskPipeline: No issue files found — skipping issue tasks")
+            issue_tasks = None
+        else:
+            issue_df = spark.read.option("header", "true").csv(issue_files)
+            issue_df = normalise_column_names(issue_df)
+            issue_df = issue_df.join(
+                active_df.select("resource"), on="resource", how="inner"
+            )
+            issue_tasks = transform_issues_to_tasks(issue_df)
 
         # -- Union and write --------------------------------------------------
         frames = [df for df in [log_tasks, issue_tasks] if df is not None]
