@@ -644,7 +644,9 @@ class TaskPipeline(BasePipeline):
                 if "-collection/collection/log.csv" in p
             ]
             issue_files = [
-                p for p in _list_s3_paths(bucket, s3_prefix, ".csv") if "/issue/" in p
+                p
+                for p in _list_s3_paths(bucket, s3_prefix, ".csv")
+                if "-collection/issue/" in p
             ]
             logger.info(
                 f"TaskPipeline: Found {len(resource_files)} resource, "
@@ -672,7 +674,7 @@ class TaskPipeline(BasePipeline):
         resource_df = normalise_column_names(resource_df)
         active_df = (
             resource_df.filter(col("end_date") == "")
-            .select("resource", "dataset")
+            .select("resource", col("datasets").alias("dataset"))
             .distinct()
         )
         active_df.cache()
