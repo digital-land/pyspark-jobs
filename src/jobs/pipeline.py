@@ -633,10 +633,16 @@ class TaskPipeline(BasePipeline):
             parsed = urlparse(str(base))
             bucket = parsed.netloc
             s3_prefix = parsed.path.lstrip("/")
-            resource_files = _list_s3_paths(
-                bucket, s3_prefix, "collection/resource.csv"
-            )
-            log_files = _list_s3_paths(bucket, s3_prefix, "collection/log.csv")
+            resource_files = [
+                p
+                for p in _list_s3_paths(bucket, s3_prefix, "collection/resource.csv")
+                if "-collection/collection/resource.csv" in p
+            ]
+            log_files = [
+                p
+                for p in _list_s3_paths(bucket, s3_prefix, "collection/log.csv")
+                if "-collection/collection/log.csv" in p
+            ]
             issue_files = [
                 p for p in _list_s3_paths(bucket, s3_prefix, ".csv") if "/issue/" in p
             ]

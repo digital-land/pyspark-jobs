@@ -6,7 +6,6 @@ import pytest
 
 from jobs.utils.db_url import build_database_url, parse_database_url
 
-
 # -- parse_database_url -------------------------------------------------------
 
 
