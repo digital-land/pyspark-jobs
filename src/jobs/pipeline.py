@@ -689,7 +689,7 @@ class TaskPipeline(BasePipeline):
         resource_df = spark.read.option("header", "true").csv(resource_files)
         resource_df = normalise_column_names(resource_df)
         active_df = (
-            resource_df.filter(col("end_date") == "")
+            resource_df.filter(col("end_date").isNull() | (col("end_date") == ""))
             .select("resource", col("datasets").alias("dataset"))
             .distinct()
         )
