@@ -687,7 +687,8 @@ class TaskPipeline(BasePipeline):
         else:
             log_df = spark.read.option("header", "true").csv(log_files)
             log_df = normalise_column_names(log_df)
-            log_df = log_df.join(active_df, on="resource", how="inner")
+            log_df = log_df.join(active_df, on="resource", how="left")
+            log_df = log_df.fillna("", subset=["dataset"])
             log_tasks = transform_log_to_tasks(log_df)
 
         # -- Issue tasks ------------------------------------------------------
