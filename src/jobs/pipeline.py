@@ -9,8 +9,10 @@ Transform, extract/read and load/write functions should be defined outside of
 this module and tested independently.
 """
 
+import csv
 import json
 import logging
+import urllib.request
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -613,6 +615,20 @@ def _list_s3_paths(bucket: str, prefix: str, suffix: str) -> list[str]:
     return paths
 
 
+ISSUE_TYPE_URL = "https://raw.githubusercontent.com/digital-land/specification/main/content/issue-type.csv"
+
+
+def _load_issue_type_df(spark):
+    with urllib.request.urlopen(ISSUE_TYPE_URL) as response:
+        lines = [line.decode("utf-8") for line in response.readlines()]
+        reader = csv.DictReader(lines)
+        rows = [
+            (row["issue-type"], row["severity"], row["responsibility"])
+            for row in reader
+        ]
+    return spark.createDataFrame(rows, ["issue_type", "severity", "responsibility"])
+
+
 class TaskPipeline(BasePipeline):
     """
     Cross-collection pipeline for generating task data from log and issue files.
@@ -701,22 +717,10 @@ class TaskPipeline(BasePipeline):
             issue_df = issue_df.join(
                 active_df.select("resource"), on="resource", how="inner"
             )
-            required_cols = {
-                "severity",
-                "responsibility",
-                "issue_type",
-                "resource",
-                "field",
-                "dataset",
-            }
-            if not required_cols.issubset(set(issue_df.columns)):
-                logger.warning(
-                    f"TaskPipeline: Issue files missing expected columns, skipping. "
-                    f"Found: {issue_df.columns}"
-                )
-                issue_tasks = None
-            else:
-                issue_tasks = transform_issues_to_tasks(issue_df)
+
+            issue_type_df = _load_issue_type_df(spark)
+            issue_df = issue_df.join(issue_type_df, on="issue_type", how="left")
+            issue_tasks = transform_issues_to_tasks(issue_df)
 
         # -- Union and write --------------------------------------------------
         frames = [df for df in [log_tasks, issue_tasks] if df is not None]
