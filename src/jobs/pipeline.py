@@ -714,12 +714,25 @@ class TaskPipeline(BasePipeline):
         else:
             issue_df = spark.read.option("header", "true").csv(issue_files)
             issue_df = normalise_column_names(issue_df)
+            logger.info(
+                f"TaskPipeline: Sample resources from issue CSVs: {[r.resource for r in issue_df.select('resource').distinct().limit(5).collect()]}"
+            )
+            logger.info(
+                f"TaskPipeline: Sample active resources: {[r.resource for r in active_df.select('resource').limit(5).collect()]}"
+            )
             issue_df = issue_df.join(
                 active_df.select("resource"), on="resource", how="inner"
             )
 
             issue_type_df = _load_issue_type_df(spark)
             issue_df = issue_df.join(issue_type_df, on="issue_type", how="left")
+            logger.info(f"TaskPipeline: Issue rows after joins: {issue_df.count()}")
+            logger.info(
+                f"TaskPipeline: Sample issue types: {[r.issue_type for r in issue_df.select('issue_type').distinct().limit(20).collect()]}"
+            )
+            logger.info(
+                f"TaskPipeline: Rows with error+external: {issue_df.filter((col('severity') == 'error') & (col('responsibility') == 'external')).count()}"
+            )
             issue_tasks = transform_issues_to_tasks(issue_df)
 
         # -- Union and write --------------------------------------------------
