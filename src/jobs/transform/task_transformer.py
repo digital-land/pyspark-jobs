@@ -1,20 +1,20 @@
 """Task transformer — generates task rows from log and issue DataFrames."""
 
-import json
 from datetime import date
 
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import (
+    coalesce,
     col,
     concat_ws,
     count,
     first,
     lit,
     sha2,
+    struct,
     substring,
-    udf,
+    to_json,
 )
-from pyspark.sql.types import StringType
 
 from jobs.utils.logger_config import get_logger
 
@@ -46,7 +46,15 @@ def transform_log_to_tasks(df: DataFrame, entry_date: str = None) -> DataFrame:
         return None
 
     df = (
-        df.withColumn("details", _log_details(col("status"), col("exception")))
+        df.withColumn(
+            "details",
+            to_json(
+                struct(
+                    col("status").cast("int").alias("status"),
+                    coalesce(col("exception"), lit("")).alias("exception"),
+                )
+            ),
+        )
         .withColumn("organisation", lit(""))
         .withColumn("severity", lit("error"))
         .withColumn("responsibility", lit("external"))
@@ -96,7 +104,13 @@ def transform_issues_to_tasks(df: DataFrame, entry_date: str = None) -> DataFram
     grouped = (
         grouped.withColumn(
             "details",
-            _issue_details(col("issue_type"), col("count"), col("field")),
+            to_json(
+                struct(
+                    coalesce(col("issue_type"), lit("")).alias("issue_type"),
+                    col("count").cast("int").alias("count"),
+                    coalesce(col("field"), lit("")).alias("field"),
+                )
+            ),
         )
         .withColumn("organisation", lit(""))
         .withColumn("endpoint", lit(""))
@@ -118,32 +132,6 @@ def transform_issues_to_tasks(df: DataFrame, entry_date: str = None) -> DataFram
         col("entry_date").alias("entry-date"),
         col("reference"),
     )
-
-
-def _log_details_udf(status, exception):
-    """Build JSON details string for a log task."""
-    if status and str(status).isdigit():
-        status_val = int(status)
-    else:
-        status_val = status
-    return json.dumps({"status": status_val, "exception": exception or ""})
-
-
-_log_details = udf(_log_details_udf, StringType())
-
-
-def _issue_details_udf(issue_type, count_val, field):
-    """Build JSON details string for an issue task."""
-    return json.dumps(
-        {
-            "issue_type": issue_type or "",
-            "count": int(count_val) if count_val else 0,
-            "field": field or "",
-        }
-    )
-
-
-_issue_details = udf(_issue_details_udf, StringType())
 
 
 def _add_reference(df: DataFrame) -> DataFrame:
