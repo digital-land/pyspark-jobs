@@ -48,12 +48,20 @@ logger = get_logger(__name__)
     default=None,
     help="Output path for parquet datasets (default: s3://{env}-parquet-datasets/)",
 )
-def run(env, collection_data_path, parquet_datasets_path):
+@click.option(
+    "--database-url",
+    required=False,
+    type=str,
+    default=None,
+    help="PostgreSQL connection URL (default: resolved from AWS Secrets Manager)",
+)
+def run(env, collection_data_path, parquet_datasets_path, database_url):
     """Generate task data from log and issue files across all collections."""
     job.generate_tasks(
         collection_data_path=collection_data_path or f"s3://{env}-collection-data/",
         parquet_datasets_path=parquet_datasets_path or f"s3://{env}-parquet-datasets/",
         env=env,
+        database_url=database_url,
     )
 
 
