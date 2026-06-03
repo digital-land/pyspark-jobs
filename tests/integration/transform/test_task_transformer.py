@@ -65,8 +65,8 @@ class TestTransformLogToTasks:
             "details",
             "severity",
             "responsibility",
-            "task-source",
-            "entry-date",
+            "task_source",
+            "entry_date",
             "reference",
         }
         assert set(result.columns) == expected
@@ -79,7 +79,7 @@ class TestTransformLogToTasks:
         )
         result = transform_log_to_tasks(df)
         rows = result.collect()
-        assert all(row["task-source"] == "log" for row in rows)
+        assert all(row["task_source"] == "log" for row in rows)
 
     def test_severity_and_responsibility_are_fixed(self, spark):
         df = _build_df(
@@ -270,8 +270,8 @@ class TestTransformIssuesToTasks:
             "details",
             "severity",
             "responsibility",
-            "task-source",
-            "entry-date",
+            "task_source",
+            "entry_date",
             "reference",
         }
         assert set(result.columns) == expected
@@ -299,7 +299,7 @@ class TestTransformIssuesToTasks:
             ],
         )
         result = transform_issues_to_tasks(df)
-        assert all(row["task-source"] == "issue" for row in result.collect())
+        assert all(row["task_source"] == "issue" for row in result.collect())
 
     def test_details_json_has_correct_structure(self, spark):
         df = _build_df(
