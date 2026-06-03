@@ -24,7 +24,6 @@ from jobs.pipeline import (
 )
 from jobs.transform.old_entity_transformer import fetch_dataset_df, transform_old_entity
 from jobs.utils.db_url import build_database_url
-from jobs.utils.df_utils import normalise_column_names
 from jobs.utils.logger_config import initialize_logging
 from jobs.utils.postgres_writer_utils import write_old_entity_to_postgres
 from jobs.utils.s3_utils import list_delta_table_paths, validate_s3_path
