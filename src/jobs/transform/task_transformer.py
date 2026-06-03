@@ -72,8 +72,8 @@ def transform_log_to_tasks(df: DataFrame, entry_date: str = None) -> DataFrame:
         col("details"),
         col("severity"),
         col("responsibility"),
-        col("task_source").alias("task-source"),
-        col("entry_date").alias("entry-date"),
+        col("task_source"),
+        col("entry_date"),
         col("reference"),
     )
 
@@ -128,23 +128,22 @@ def transform_issues_to_tasks(df: DataFrame, entry_date: str = None) -> DataFram
         col("details"),
         col("severity"),
         col("responsibility"),
-        col("task_source").alias("task-source"),
-        col("entry_date").alias("entry-date"),
+        col("task_source"),
+        col("entry_date"),
         col("reference"),
     )
 
 
 def _add_reference(df: DataFrame) -> DataFrame:
-    """Add reference column: first 16 chars of SHA-256 hash of key fields."""
     return df.withColumn(
         "reference",
         substring(
             sha2(
                 concat_ws(
                     "|",
-                    col("dataset"),
-                    col("endpoint"),
-                    col("resource"),
+                    coalesce(col("dataset"), lit("")),
+                    coalesce(col("endpoint"), lit("")),
+                    coalesce(col("resource"), lit("")),
                     col("task_source"),
                     col("details"),
                 ),
