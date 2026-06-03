@@ -635,8 +635,8 @@ class TaskPipeline(BasePipeline):
 
     Unlike other pipelines, this reads across all collections at once using
     wildcard S3 paths rather than processing a single dataset/collection.
-    Writes plain Parquet (not Delta) as a first step — Delta and Postgres
-    are added in subsequent tickets.
+    Writes a Delta Lake table — full overwrite each run since the table is
+    regenerated from scratch nightly.
     """
 
     def execute(self):
@@ -750,5 +750,10 @@ class TaskPipeline(BasePipeline):
 
         output_path = str(AnyPath(self.config.parquet_datasets_path) / "task")
         logger.info(f"TaskPipeline: Writing tasks to {output_path}")
-        tasks_df.write.mode("overwrite").parquet(output_path)
+        (
+            tasks_df.write.format("delta")
+            .mode("overwrite")
+            .option("overwriteSchema", "true")
+            .save(output_path)
+        )
         logger.info("TaskPipeline: Complete")
