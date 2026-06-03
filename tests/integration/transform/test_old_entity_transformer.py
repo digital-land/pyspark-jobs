@@ -237,3 +237,63 @@ def test_transform_old_entity_missing_schema_fields_added_as_null(spark):
     row = result.collect()[0]
     assert row["notes"] is None
     assert row["end_date"] is None
+
+
+def test_transform_old_entity_filters_redirect_to_different_dataset(spark):
+    """A redirect whose target entity falls outside the source dataset's range is removed."""
+    spec_df = _make_spec_df(spark)
+    old_entity_df = _make_old_entity_df(
+        spark,
+        [
+            # old_entity in ancient-woodland range, redirect target in brownfield range — filtered
+            (
+                11000001,
+                "301",
+                4000001,
+                None,
+                None,
+                "2024-01-01",
+                None,
+                "ancient-woodland-collection",
+            ),
+            # valid: both old_entity and entity are in the ancient-woodland range
+            (
+                11000002,
+                "301",
+                11000003,
+                None,
+                None,
+                "2024-01-01",
+                None,
+                "ancient-woodland-collection",
+            ),
+        ],
+    )
+
+    result = transform_old_entity(old_entity_df, spec_df)
+    assert result.count() == 1
+    assert result.collect()[0]["old_entity"] == 11000002
+
+
+def test_transform_old_entity_allows_null_entity(spark):
+    """Records with a null entity (status=410 gone, no redirect) are always kept."""
+    spec_df = _make_spec_df(spark)
+    old_entity_df = _make_old_entity_df(
+        spark,
+        [
+            (
+                11000001,
+                "410",
+                None,
+                None,
+                None,
+                "2024-01-01",
+                None,
+                "ancient-woodland-collection",
+            )
+        ],
+    )
+
+    result = transform_old_entity(old_entity_df, spec_df)
+    assert result.count() == 1
+    assert result.collect()[0]["entity"] is None

@@ -14,6 +14,12 @@ def spark():
     """Create a local Sedona-enabled Spark session shared across all tests."""
     os.environ["PYSPARK_PYTHON"] = sys.executable
     os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
+    # Java 23 removed the Security Manager API that Spark's dependency resolution uses.
+    # These flags restore the required access so Spark can start correctly.
+    os.environ["JAVA_TOOL_OPTIONS"] = (
+        "--add-opens=java.base/sun.security.action=ALL-UNNAMED "
+        "-Djava.security.manager=allow"
+    )
     session = (
         SedonaContext.builder()
         .master("local[1]")
