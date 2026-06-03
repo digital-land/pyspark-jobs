@@ -502,6 +502,7 @@ def write_old_entity_to_postgres(df, database_url):
     hash_suffix = hashlib.md5(timestamp.encode()).hexdigest()[:8]
     staging_table = f"old_entity_staging_{hash_suffix}_{timestamp}"
 
+    # collection is stored in parquet but not in the Postgres table
     required_cols = [
         "old_entity",
         "status",
@@ -510,7 +511,6 @@ def write_old_entity_to_postgres(df, database_url):
         "end_date",
         "entry_date",
         "start_date",
-        "collection",
         "dataset",
     ]
 
@@ -529,7 +529,6 @@ def write_old_entity_to_postgres(df, database_url):
                 end_date TEXT,
                 entry_date TEXT,
                 start_date TEXT,
-                collection TEXT,
                 dataset TEXT
             );
             """
@@ -600,11 +599,11 @@ def write_old_entity_to_postgres(df, database_url):
                 f"""
                 INSERT INTO old_entity (
                     old_entity, status, entity, notes,
-                    end_date, entry_date, start_date, collection, dataset
+                    end_date, entry_date, start_date, dataset
                 )
                 SELECT
                     old_entity, status, entity, notes,
-                    end_date, entry_date, start_date, collection, dataset
+                    end_date, entry_date, start_date, dataset
                 FROM {staging_table};
                 """
             )
