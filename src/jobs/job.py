@@ -6,27 +6,26 @@ Pipeline implementations live in jobs.pipeline.
 """
 
 import logging
+from functools import reduce
 
 from cloudpathlib import AnyPath, S3Path
 from delta.tables import DeltaTable
-
-from jobs.dbaccess.postgres_connectivity import get_aws_secret
-from functools import reduce
-
 from pyspark.sql.functions import lit
 
 from jobs.config.schema import _REGISTRY
+from jobs.dbaccess.postgres_connectivity import get_aws_secret
 from jobs.pipeline import (
     ColumnFieldPipeline,
     DatasetResourcePipeline,
     EntityPipeline,
     IssuePipeline,
     PipelineConfig,
+    TaskPipeline,
 )
-from jobs.utils.db_url import build_database_url
-from jobs.utils.logger_config import initialize_logging
 from jobs.transform.old_entity_transformer import fetch_dataset_df, transform_old_entity
+from jobs.utils.db_url import build_database_url
 from jobs.utils.df_utils import normalise_column_names
+from jobs.utils.logger_config import initialize_logging
 from jobs.utils.s3_utils import list_delta_table_paths, validate_s3_path
 from jobs.utils.spark_session import create_spark_session
 
@@ -324,3 +323,68 @@ def maintain_datasets(parquet_datasets_path: str, retention_hours: float = 24):
                 logger.info("maintain_datasets: Spark session stopped")
             except Exception as e:
                 logger.warning(f"maintain_datasets: Error stopping Spark session — {e}")
+
+
+def generate_tasks(
+    collection_data_path: str,
+    parquet_datasets_path: str,
+    env: str,
+):
+    """
+    Generate task data from log and issue files across all collections.
+
+    Reads collection log and issue CSVs from S3, filters to active resources,
+    and writes a plain Parquet task table to parquet_datasets_path/task/.
+
+    Args:
+        collection_data_path: Root path containing all *-collection directories.
+        parquet_datasets_path: S3 path to the parquet datasets bucket.
+        env: Environment name (development, staging, production, local).
+    """
+    initialize_logging(env)
+
+    allowed_envs = ["development", "staging", "production", "local"]
+    if env not in allowed_envs:
+        raise ValueError(f"Invalid env: {env}. Must be one of {allowed_envs}")
+
+    if isinstance(AnyPath(collection_data_path), S3Path):
+        validate_s3_path(collection_data_path)
+    else:
+        logger.info(
+            f"generate_tasks: Local collection_data_path: {collection_data_path}"
+        )
+
+    logger.info("generate_tasks: Starting cross-collection task generation")
+
+    spark = None
+    try:
+        spark = create_spark_session()
+        if spark is None:
+            raise RuntimeError("Failed to create Spark session")
+
+        config = PipelineConfig(
+            spark=spark,
+            dataset="",
+            env=env,
+            collection_data_path=collection_data_path,
+            parquet_datasets_path=parquet_datasets_path,
+        )
+
+        task_pipeline = TaskPipeline(config)
+        task_pipeline.run()
+
+        logger.info(f"generate_tasks: Result — {task_pipeline.result}")
+
+    except (ValueError, AttributeError, KeyError) as e:
+        logger.exception("generate_tasks: Error during task generation: %s", str(e))
+        raise
+    except Exception as e:
+        logger.exception("generate_tasks: Unexpected error: %s", str(e))
+        raise
+    finally:
+        if spark is not None:
+            try:
+                spark.stop()
+                logger.info("generate_tasks: Spark session stopped")
+            except Exception as e:
+                logger.warning(f"generate_tasks: Error stopping Spark session — {e}")

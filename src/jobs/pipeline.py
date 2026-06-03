@@ -9,25 +9,34 @@ Transform, extract/read and load/write functions should be defined outside of
 this module and tested independently.
 """
 
+import csv
 import json
 import logging
+import urllib.request
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import date, datetime
+from functools import reduce
+from urllib.parse import urlparse
 
 import boto3
 from cloudpathlib import AnyPath, S3Path
 from pyspark.sql import SparkSession
+from pyspark.sql.functions import col
 
 from jobs.config.metadata import load_metadata
+from jobs.read import read_old_resources
 from jobs.transform.column_field_transformer import transform_column_field
 from jobs.transform.dataset_resource_transformer import transform_dataset_resource
 from jobs.transform.entity_transformer import transform_entity
 from jobs.transform.fact_resource_transformer import transform_fact_resource
 from jobs.transform.fact_transformer import transform_fact
-from jobs.transform.issue_transformer import transform_issue
-from jobs.read import read_old_resources
 from jobs.transform.filter import filter_old_resources
+from jobs.transform.issue_transformer import transform_issue
+from jobs.transform.task_transformer import (
+    transform_issues_to_tasks,
+    transform_log_to_tasks,
+)
 from jobs.utils.df_utils import count_df, normalise_column_names, show_df
 from jobs.utils.flatten_csv import flatten_json_column
 from jobs.utils.postgres_writer_utils import (
@@ -592,3 +601,154 @@ class ColumnFieldPipeline(BasePipeline):
         output_path = str(parquet_base / "column_field")
         write_delta(df, output_path, dataset, partition_by=["dataset"])
         logger.info("ColumnFieldPipeline: Wrote column_field Delta table")
+
+
+def _list_s3_paths(bucket: str, prefix: str, suffix: str) -> list[str]:
+    """List all S3 paths under prefix whose key ends with suffix."""
+    s3 = boto3.client("s3", region_name="eu-west-2")
+    paginator = s3.get_paginator("list_objects_v2")
+    paths = []
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            if obj["Key"].endswith(suffix):
+                paths.append(f"s3://{bucket}/{obj['Key']}")
+    return paths
+
+
+ISSUE_TYPE_URL = "https://raw.githubusercontent.com/digital-land/specification/main/content/issue-type.csv"
+
+
+def _load_issue_type_df(spark):
+    with urllib.request.urlopen(ISSUE_TYPE_URL) as response:
+        lines = [line.decode("utf-8") for line in response.readlines()]
+        reader = csv.DictReader(lines)
+        rows = [
+            (row["issue-type"], row["severity"], row["responsibility"])
+            for row in reader
+        ]
+    return spark.createDataFrame(rows, ["issue_type", "severity", "responsibility"])
+
+
+class TaskPipeline(BasePipeline):
+    """
+    Cross-collection pipeline for generating task data from log and issue files.
+
+    Unlike other pipelines, this reads across all collections at once using
+    wildcard S3 paths rather than processing a single dataset/collection.
+    Writes plain Parquet (not Delta) as a first step — Delta and Postgres
+    are added in subsequent tickets.
+    """
+
+    def execute(self):
+        spark = self.config.spark
+        base = AnyPath(self.config.collection_data_path)
+        _is_s3 = isinstance(base, S3Path)
+
+        # -- Resolve file paths ---------------------------------------------------
+        if _is_s3:
+            parsed = urlparse(str(base))
+            bucket = parsed.netloc
+            s3_prefix = parsed.path.lstrip("/")
+            resource_files = [
+                p
+                for p in _list_s3_paths(bucket, s3_prefix, "collection/resource.csv")
+                if "-collection/collection/resource.csv" in p
+            ]
+            log_files = [
+                p
+                for p in _list_s3_paths(bucket, s3_prefix, "collection/log.csv")
+                if "-collection/collection/log.csv" in p
+            ]
+            issue_files = [
+                p
+                for p in _list_s3_paths(bucket, s3_prefix, ".csv")
+                if "-collection/issue/" in p
+            ]
+            logger.info(
+                f"TaskPipeline: Found {len(resource_files)} resource, "
+                f"{len(log_files)} log, {len(issue_files)} issue files"
+            )
+        else:
+            import glob as _glob
+
+            resource_files = _glob.glob(
+                str(base / "*-collection" / "collection" / "resource.csv")
+            )
+            log_files = _glob.glob(
+                str(base / "*-collection" / "collection" / "log.csv")
+            )
+            issue_files = _glob.glob(
+                str(base / "*-collection" / "issue" / "*" / "*.csv")
+            )
+
+        if not resource_files:
+            logger.warning("TaskPipeline: No resource files found — nothing to process")
+            return
+
+        # -- Active resources -------------------------------------------------
+        resource_df = spark.read.option("header", "true").csv(resource_files)
+        resource_df = normalise_column_names(resource_df)
+        active_df = (
+            resource_df.filter(col("end_date").isNull() | (col("end_date") == ""))
+            .select("resource", col("datasets").alias("dataset"))
+            .distinct()
+        )
+        active_df.cache()
+        logger.info("TaskPipeline: Active resources loaded")
+
+        # -- Log tasks --------------------------------------------------------
+        if not log_files:
+            logger.warning("TaskPipeline: No log files found — skipping log tasks")
+            log_tasks = None
+        else:
+            log_df = spark.read.option("header", "true").csv(log_files)
+            log_df = normalise_column_names(log_df)
+            log_df = log_df.join(active_df, on="resource", how="left")
+            log_df = log_df.fillna("", subset=["dataset"])
+            log_tasks = transform_log_to_tasks(log_df)
+
+        # -- Issue tasks ------------------------------------------------------
+        if not issue_files:
+            logger.warning("TaskPipeline: No issue files found — skipping issue tasks")
+            issue_tasks = None
+        else:
+            issue_df = spark.read.option("header", "true").csv(issue_files)
+            issue_df = normalise_column_names(issue_df)
+            logger.info(
+                f"TaskPipeline: Sample resources from issue CSVs: {[r.resource for r in issue_df.select('resource').distinct().limit(5).collect()]}"
+            )
+            logger.info(
+                f"TaskPipeline: Sample active resources: {[r.resource for r in active_df.select('resource').limit(5).collect()]}"
+            )
+            issue_df = issue_df.join(
+                active_df.select("resource"), on="resource", how="inner"
+            )
+
+            issue_type_df = _load_issue_type_df(spark)
+            issue_df = issue_df.join(issue_type_df, on="issue_type", how="left")
+            logger.info(f"TaskPipeline: Issue rows after joins: {issue_df.count()}")
+            logger.info(
+                f"TaskPipeline: Sample issue types: {[r.issue_type for r in issue_df.select('issue_type').distinct().limit(20).collect()]}"
+            )
+            logger.info(
+                f"TaskPipeline: Rows with error+external: {issue_df.filter((col('severity') == 'error') & (col('responsibility') == 'external')).count()}"
+            )
+            issue_tasks = transform_issues_to_tasks(issue_df)
+
+        # -- Union and write --------------------------------------------------
+        frames = [df for df in [log_tasks, issue_tasks] if df is not None]
+
+        if not frames:
+            logger.warning("TaskPipeline: No tasks generated — nothing to write")
+            return
+
+        tasks_df = (
+            frames[0]
+            if len(frames) == 1
+            else reduce(lambda a, b: a.unionByName(b), frames)
+        )
+
+        output_path = str(AnyPath(self.config.parquet_datasets_path) / "task")
+        logger.info(f"TaskPipeline: Writing tasks to {output_path}")
+        tasks_df.write.mode("overwrite").parquet(output_path)
+        logger.info("TaskPipeline: Complete")
