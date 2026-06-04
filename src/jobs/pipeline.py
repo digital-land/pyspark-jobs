@@ -630,55 +630,6 @@ def _load_issue_type_df(spark):
     return spark.createDataFrame(rows, ["issue_type", "severity", "responsibility"])
 
 
-def _write_postgres(self, tasks_df):
-    import pg8000
-    from pyspark.sql.types import DateType
-
-    conn_params = parse_database_url(self.config.database_url)
-
-    conn = pg8000.connect(**conn_params)
-    cur = conn.cursor()
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS task (
-            dataset TEXT,
-            organisation TEXT,
-            endpoint TEXT,
-            resource TEXT,
-            details TEXT,
-            severity TEXT,
-            responsibility TEXT,
-            task_source TEXT,
-            entry_date DATE,
-            reference TEXT PRIMARY KEY
-        );
-    """
-    )
-    conn.commit()
-    cur.close()
-    conn.close()
-    logger.info("TaskPipeline: task table ready in Postgres")
-
-    tasks_df = tasks_df.withColumn("entry_date", col("entry_date").cast(DateType()))
-
-    url = f"jdbc:postgresql://{conn_params['host']}:{conn_params['port']}/{conn_params['database']}"
-    tasks_df.write.jdbc(
-        url=url,
-        table="task",
-        mode="overwrite",
-        properties={
-            "user": conn_params["user"],
-            "password": conn_params["password"],
-            "driver": "org.postgresql.Driver",
-            "truncate": "true",
-            "stringtype": "unspecified",
-            "batchsize": "5000",
-            "reWriteBatchedInserts": "true",
-        },
-    )
-    logger.info("TaskPipeline: Wrote tasks to Postgres")
-
-
 class TaskPipeline(BasePipeline):
     """
     Cross-collection pipeline for generating task data from log and issue files.
@@ -806,7 +757,7 @@ class TaskPipeline(BasePipeline):
         )
 
         output_path = str(AnyPath(self.config.parquet_datasets_path) / "task")
-        logger.info(f"TaskPipeline: Writing tasks to {output_path}")
+        logger.info(f"TaskPipeline: Writing {count_after} tasks to {output_path}...")
         (
             tasks_df.write.format("delta")
             .mode("overwrite")
@@ -816,7 +767,7 @@ class TaskPipeline(BasePipeline):
         logger.info(f"TaskPipeline: Delta table written to {output_path}")
 
         if self.config.database_url:
-            logger.info("TaskPipeline: Writing tasks to postgres...")
+            logger.info(f"TaskPipeline: Writing {count_after} tasks to Postgres...")
             self._write_postgres(tasks_df)
 
     def _write_postgres(self, tasks_df):
