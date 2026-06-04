@@ -812,33 +812,9 @@ class TaskPipeline(BasePipeline):
             self._write_postgres(tasks_df)
 
     def _write_postgres(self, tasks_df):
-        import pg8000
         from pyspark.sql.types import DateType
 
         conn_params = parse_database_url(self.config.database_url)
-
-        conn = pg8000.connect(**conn_params)
-        cur = conn.cursor()
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS task (
-                dataset TEXT,
-                organisation TEXT,
-                endpoint TEXT,
-                resource TEXT,
-                details TEXT,
-                severity TEXT,
-                responsibility TEXT,
-                task_source TEXT,
-                entry_date DATE,
-                reference TEXT PRIMARY KEY
-            );
-        """
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
-        logger.info("TaskPipeline: task table ready in Postgres")
 
         tasks_df = tasks_df.withColumn("entry_date", col("entry_date").cast(DateType()))
 
