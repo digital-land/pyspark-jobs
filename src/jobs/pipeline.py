@@ -798,7 +798,13 @@ class TaskPipeline(BasePipeline):
             else reduce(lambda a, b: a.unionByName(b), frames)
         )
 
+        count_before = tasks_df.count()
         tasks_df = tasks_df.dropDuplicates(["reference"])
+        count_after = tasks_df.count()
+        logger.info(
+            f"TaskPipeline: {count_before} rows before dedup, "
+            f"{count_after} after ({count_before - count_after} duplicates removed)"
+        )
 
         output_path = str(AnyPath(self.config.parquet_datasets_path) / "task")
         logger.info(f"TaskPipeline: Writing tasks to {output_path}")
@@ -814,6 +820,7 @@ class TaskPipeline(BasePipeline):
             self._write_postgres(tasks_df)
 
     def _write_postgres(self, tasks_df):
+        import pg8000
         from pyspark.sql.types import DateType
 
         conn_params = parse_database_url(self.config.database_url)
@@ -836,3 +843,13 @@ class TaskPipeline(BasePipeline):
             },
         )
         logger.info("TaskPipeline: Wrote tasks to Postgres")
+
+        conn = pg8000.connect(**conn_params)
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM task;")
+        pg_count = cur.fetchone()[0]
+        cur.close()
+        conn.close()
+        logger.info(
+            f"TaskPipeline: Postgres task table has {pg_count:,} rows after write"
+        )
