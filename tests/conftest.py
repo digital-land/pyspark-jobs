@@ -129,6 +129,7 @@ def clean_entity_table(db_conn):
     cur.close()
 
 
+# Mimicks table in actual Postgres db, see models here https://github.com/digital-land/digital-land.info/blob/main/application/db/models.py
 @pytest.fixture()
 def clean_old_entity_table(db_conn):
     """Create the old_entity table before each test and truncate after."""
@@ -137,12 +138,12 @@ def clean_old_entity_table(db_conn):
         """
         CREATE TABLE IF NOT EXISTS old_entity (
             old_entity BIGINT,
-            status TEXT,
+            status INT,
             entity BIGINT,
             notes TEXT,
-            end_date TEXT,
-            entry_date TEXT,
-            start_date TEXT,
+            end_date DATE,
+            entry_date DATE,
+            start_date DATE,
             dataset TEXT
         );
         """
