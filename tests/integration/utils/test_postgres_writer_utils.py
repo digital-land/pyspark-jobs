@@ -6,10 +6,13 @@ and a real Spark session to verify the staging table pattern works end-to-end.
 """
 
 import pytest
+from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql.types import LongType, StringType, StructField, StructType
 
 from jobs.utils.postgres_writer_utils import (
     write_dataframe_to_postgres_jdbc,
     write_entity_subdivided_to_postgres,
+    write_old_entity_to_postgres,
 )
 
 
@@ -422,3 +425,133 @@ def test_write_stores_json_column(spark, db_url, db_conn, clean_entity_table):
 
     assert row[0] is not None  # json written
     assert row[1] is None  # geojson NULL (column not in input)
+
+
+def _build_old_entity_df(spark: SparkSession, rows: list) -> DataFrame:
+    """Build a Spark DataFrame matching the old_entity schema."""
+    schema = StructType(
+        [
+            StructField("old_entity", LongType(), True),
+            StructField("status", StringType(), True),
+            StructField("entity", LongType(), True),
+            StructField("notes", StringType(), True),
+            StructField("end_date", StringType(), True),
+            StructField("entry_date", StringType(), True),
+            StructField("start_date", StringType(), True),
+            StructField("dataset", StringType(), True),
+        ]
+    )
+    return spark.createDataFrame(rows, schema)
+
+
+def _query_old_entity_rows(db_conn) -> list:
+    """Return all rows from old_entity ordered by old_entity id."""
+    cur = db_conn.cursor()
+    cur.execute(
+        "SELECT old_entity, status, entity, notes, end_date, entry_date, start_date, dataset"
+        " FROM old_entity ORDER BY old_entity;"
+    )
+    rows = cur.fetchall()
+    cur.close()
+    return rows
+
+
+def _count_tables_matching(db_conn, pattern: str) -> int:
+    """Return the number of tables in the public schema whose names match the given LIKE pattern."""
+    cur = db_conn.cursor()
+    cur.execute(
+        "SELECT COUNT(*) FROM pg_tables WHERE schemaname = 'public' AND tablename LIKE %s;",
+        (pattern,),
+    )
+    count = cur.fetchone()[0]
+    cur.close()
+    return count
+
+
+@pytest.mark.database
+def test_write_old_entity_creates_rows(spark, db_url, db_conn, clean_old_entity_table):
+    """Write a DataFrame and verify rows land in the old_entity table."""
+    df = _build_old_entity_df(
+        spark,
+        [
+            (
+                111,
+                "301",
+                222,
+                None,
+                "2024-01-01",
+                "2020-01-01",
+                "2020-01-01",
+                "ancient-woodland",
+            ),
+            (
+                333,
+                "301",
+                444,
+                "duplicate",
+                None,
+                "2021-06-01",
+                None,
+                "ancient-woodland",
+            ),
+        ],
+    )
+
+    write_old_entity_to_postgres(df, db_url)
+
+    rows = _query_old_entity_rows(db_conn)
+    assert len(rows) == 2
+    assert rows[0][0] == 111
+    assert rows[0][1] == "301"
+    assert rows[0][2] == 222
+    assert rows[1][0] == 333
+    assert rows[1][3] == "duplicate"
+    assert _count_tables_matching(db_conn, "old_entity_staging_%") == 0
+
+
+@pytest.mark.database
+def test_write_old_entity_replaces_all_rows(
+    spark, db_url, db_conn, clean_old_entity_table
+):
+    """Writing twice replaces all rows — the entire table is replaced atomically."""
+    df_v1 = _build_old_entity_df(
+        spark,
+        [(111, "301", 222, None, None, "2020-01-01", None, "ancient-woodland")],
+    )
+    write_old_entity_to_postgres(df_v1, db_url)
+
+    df_v2 = _build_old_entity_df(
+        spark,
+        [
+            (555, "301", 666, None, None, "2022-01-01", None, "flood-risk-zone"),
+            (777, "301", 888, None, None, "2022-01-01", None, "flood-risk-zone"),
+        ],
+    )
+    write_old_entity_to_postgres(df_v2, db_url)
+
+    rows = _query_old_entity_rows(db_conn)
+    old_entity_ids = [r[0] for r in rows]
+    assert 111 not in old_entity_ids
+    assert 555 in old_entity_ids
+    assert 777 in old_entity_ids
+    assert _count_tables_matching(db_conn, "old_entity_staging_%") == 0
+
+
+@pytest.mark.database
+def test_write_old_entity_handles_nulls(spark, db_url, db_conn, clean_old_entity_table):
+    """Rows with all-null optional fields are written correctly."""
+    df = _build_old_entity_df(
+        spark,
+        [(999, None, None, None, None, None, None, "some-dataset")],
+    )
+
+    write_old_entity_to_postgres(df, db_url)
+
+    rows = _query_old_entity_rows(db_conn)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row[0] == 999
+    assert row[1] is None  # status
+    assert row[2] is None  # entity
+    assert row[3] is None  # notes
+    assert _count_tables_matching(db_conn, "old_entity_staging_%") == 0
