@@ -42,9 +42,13 @@ def transform_old_entity(old_entity_df: DataFrame, dataset_df: DataFrame) -> Dat
 
     Args:
         old_entity_df: Unioned DataFrame of old-entity.csv records with a collection column.
+            Column names may use hyphens (old-entity, end-date) — they are normalised internally.
         dataset_df: DataFrame from fetch_dataset_df.
     """
-    # Rename dataset collection to avoid collision with old_entity_df's collection column
+    # Normalise column names from CSV kebab-case to snake_case (old-entity → old_entity, etc.)
+    old_entity_df = normalise_column_names(old_entity_df)
+
+    # Rename spec collection to avoid collision with old_entity_df's collection column
     spec_df = dataset_df.withColumnRenamed("collection", "spec_collection")
 
     # Range join: find the dataset whose entity range contains the old_entity value
@@ -57,6 +61,16 @@ def transform_old_entity(old_entity_df: DataFrame, dataset_df: DataFrame) -> Dat
 
     # Keep only rows where the collection from the path matches the spec collection
     result = result.filter(col("collection") == col("spec_collection"))
+
+    # Redirects can only be within the same dataset — the target entity must fall in the same
+    # entity range as old_entity. Null entity (e.g. status=410 "gone") is always kept.
+    result = result.filter(
+        col("entity").isNull()
+        | (
+            (col("entity").cast("long") >= col("entity_minimum").cast("long"))
+            & (col("entity").cast("long") <= col("entity_maximum").cast("long"))
+        )
+    )
 
     result = get_schema("old_entity").enforce(result)
 

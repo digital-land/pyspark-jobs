@@ -129,6 +129,36 @@ def clean_entity_table(db_conn):
     cur.close()
 
 
+# Mimicks table in actual Postgres db, see models here https://github.com/digital-land/digital-land.info/blob/main/application/db/models.py
+@pytest.fixture()
+def clean_old_entity_table(db_conn):
+    """Create the old_entity table before each test and truncate after."""
+    cur = db_conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS old_entity (
+            old_entity BIGINT,
+            status INT,
+            entity BIGINT,
+            notes TEXT,
+            end_date DATE,
+            entry_date DATE,
+            start_date DATE,
+            dataset TEXT
+        );
+        """
+    )
+    db_conn.commit()
+    cur.close()
+
+    yield
+
+    cur = db_conn.cursor()
+    cur.execute("TRUNCATE TABLE old_entity;")
+    db_conn.commit()
+    cur.close()
+
+
 @pytest.fixture()
 def clean_entity_subdivided_table(db_conn):
     """Create the entity_subdivided table before each test and truncate after."""

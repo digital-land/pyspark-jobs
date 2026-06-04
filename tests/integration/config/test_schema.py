@@ -5,6 +5,7 @@ Uses a real Spark session to verify schema enforcement on DataFrames.
 """
 
 import pytest
+from pyspark.sql.types import DateType, IntegerType, LongType
 
 from jobs.config.schema import DatasetSchema, FieldSchema, get_schema
 
@@ -57,8 +58,6 @@ class TestDatasetSchema:
 
     def test_enforce_casts_missing_field_to_correct_type(self, spark):
         """A missing bigint field is added with the correct Spark type."""
-        from pyspark.sql.types import LongType
-
         schema = DatasetSchema(
             name="test",
             fields=[FieldSchema(field="entity", datatype="bigint")],
@@ -68,6 +67,27 @@ class TestDatasetSchema:
         result = schema.enforce(df)
 
         assert isinstance(result.schema["entity"].dataType, LongType)
+
+    def test_enforce_casts_existing_field_to_declared_type(self, spark):
+        """An existing string field is cast to the type declared in the schema."""
+        schema = DatasetSchema(
+            name="test",
+            fields=[
+                FieldSchema(field="status", datatype="integer"),
+                FieldSchema(field="entry_date", datatype="date"),
+            ],
+        )
+        df = spark.createDataFrame(
+            [("301", "2024-01-01")], schema=["status", "entry_date"]
+        )
+
+        result = schema.enforce(df)
+
+        assert isinstance(result.schema["status"].dataType, IntegerType)
+        assert isinstance(result.schema["entry_date"].dataType, DateType)
+        row = result.collect()[0]
+        assert row["status"] == 301
+        assert str(row["entry_date"]) == "2024-01-01"
 
 
 def test_get_schema_returns_registered_schema():

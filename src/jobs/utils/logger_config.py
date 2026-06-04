@@ -21,37 +21,33 @@ import logging.config
 import os
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 
 def setup_logging(
-    log_level: Optional[str] = None,
+    log_level: Optional[Union[str, int]] = None,
     log_file: Optional[str] = None,
-    environment: Optional[str] = None,
 ) -> None:
     """
     Setup logging configuration for the application.
 
     Args:
-        log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        log_level: Logging level as a string ("INFO", "DEBUG") or stdlib constant
+                   (logging.INFO, logging.DEBUG). Defaults to LOG_LEVEL env var or INFO.
         log_file: Optional path to log file
-        environment: Environment name (development, staging, production)
 
     Environment Variables:
         LOG_LEVEL: Logging level (default: INFO)
         LOG_FILE: Path to log file
-        ENVIRONMENT: Environment name (default: development)
     """
-    # Get configuration from environment variables with defaults
-    log_level = log_level or os.getenv("LOG_LEVEL", "INFO").upper()
-    log_file = log_file or os.getenv("LOG_FILE")
-    environment = environment or os.getenv("ENVIRONMENT", "development")
-
-    # Default format based on environment
-    if environment.lower() == "production":
-        log_format = "[%(asctime)s] %(levelname)s - %(name)s - %(message)s"
+    raw_level = log_level or os.getenv("LOG_LEVEL", "INFO")
+    if isinstance(raw_level, int):
+        log_level = logging.getLevelName(raw_level)
     else:
-        log_format = "[%(asctime)s] %(levelname)s - %(name)s:%(lineno)d - %(message)s"
+        log_level = raw_level.upper()
+    log_file = log_file or os.getenv("LOG_FILE")
+
+    log_format = "[%(asctime)s] %(levelname)s - %(name)s:%(lineno)d - %(message)s"
 
     # Create basic configuration
     handlers = ["console"]
@@ -105,9 +101,7 @@ def setup_logging(
 
     # Log the configuration setup
     root_logger = logging.getLogger()
-    root_logger.info(
-        f"Logging configured - Level: {log_level}, Environment: {environment}"
-    )
+    root_logger.info(f"Logging configured - Level: {log_level}")
     if log_file:
         root_logger.info(f"File logging enabled: {log_file}")
 
@@ -181,20 +175,17 @@ def set_spark_log_level(log_level: str = "WARN") -> None:
 
 
 # Convenience function for quick setup
-def quick_setup(
-    log_level: str = "INFO", environment: str = "development"
-) -> logging.Logger:
+def quick_setup(log_level: Union[str, int] = "INFO") -> logging.Logger:
     """
     Quick logging setup for simple scripts.
 
     Args:
-        log_level: Logging level
-        environment: Environment name
+        log_level: Logging level as a string or stdlib constant.
 
     Returns:
         Root logger
     """
-    setup_logging(log_level=log_level, environment=environment)
+    setup_logging(log_level=log_level)
     return get_logger(__name__)
 
 
@@ -203,7 +194,6 @@ def initialize_logging(env):
         setup_logging(
             log_level=os.getenv("LOG_LEVEL", "INFO"),
             log_file=os.getenv("LOG_FILE") if os.getenv("LOG_FILE") else None,
-            environment=env,
         )
     except AttributeError as e:
         print(f"Error: Missing required argument attribute: {e}")

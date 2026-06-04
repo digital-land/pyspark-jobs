@@ -24,8 +24,8 @@ from jobs.pipeline import (
 )
 from jobs.transform.old_entity_transformer import fetch_dataset_df, transform_old_entity
 from jobs.utils.db_url import build_database_url
-from jobs.utils.df_utils import normalise_column_names
 from jobs.utils.logger_config import initialize_logging
+from jobs.utils.postgres_writer_utils import write_old_entity_to_postgres
 from jobs.utils.s3_utils import list_delta_table_paths, validate_s3_path
 from jobs.utils.spark_session import create_spark_session
 
@@ -118,17 +118,23 @@ def assemble_and_load_entity(
                 logger.warning(f"Error stopping Spark session: {e}")
 
 
-def assemble_and_load_config(collection_data_path: str, parquet_datasets_path: str):
+def assemble_and_load_config(
+    collection_data_path: str,
+    parquet_datasets_path: str,
+    database_url: str,
+):
     """
     Build the old_entity config table from old-entity.csv files across all collections.
 
     Reads old-entity.csv from config/pipeline/<collection>/ for every collection found,
     derives the dataset from the digital-land specification entity ranges, filters records
-    where the collection doesn't match, and writes a single old_entity Delta table.
+    where the collection or redirect target entity don't match, and writes to the
+    old_entity parquet table and the old_entity Postgres table.
 
     Args:
         collection_data_path: Path to the collection data root (local or S3).
         parquet_datasets_path: S3 path to the parquet datasets bucket.
+        database_url: PostgreSQL connection URL (postgresql://user:pass@host:port/dbname).
     """
     base = AnyPath(collection_data_path)
     config_pipeline_path = base / "config" / "pipeline"
@@ -155,7 +161,6 @@ def assemble_and_load_config(collection_data_path: str, parquet_datasets_path: s
                 f"assemble_and_load_config: Reading old-entity for '{collection_name}'"
             )
             df = spark.read.option("header", "true").csv(str(old_entity_path))
-            df = normalise_column_names(df)
             df = df.withColumn("collection", lit(collection_name))
             collection_dfs.append(df)
 
@@ -181,6 +186,9 @@ def assemble_and_load_config(collection_data_path: str, parquet_datasets_path: s
         logger.info(
             f"assemble_and_load_config: Wrote old_entity Delta table to {output_path}"
         )
+
+        write_old_entity_to_postgres(result_df, database_url)
+        logger.info("assemble_and_load_config: Wrote old_entity to Postgres")
 
     except Exception as e:
         logger.exception(f"assemble_and_load_config: Unexpected error — {e}")

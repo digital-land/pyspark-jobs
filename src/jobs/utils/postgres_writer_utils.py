@@ -1,4 +1,11 @@
+import hashlib
+import logging
+import time
+from datetime import datetime
+
+import pg8000
 from pyspark.sql.functions import col, explode, expr, lit, to_json
+from pyspark.sql.types import DateType, IntegerType, LongType
 
 from jobs.utils.db_url import parse_database_url
 from jobs.utils.df_utils import show_df
@@ -106,13 +113,6 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, database_url):
         data_set: Dataset identifier
         database_url: PostgreSQL connection URL (postgresql://user:pass@host:port/dbname)
     """
-    import hashlib
-    import time
-    from datetime import datetime
-
-    import pg8000
-    from pyspark.sql.types import LongType
-
     logger.info("write_dataframe_to_postgres_jdbc: Show df:")
     show_df(df, 5, "local")
 
@@ -319,11 +319,6 @@ def write_entity_subdivided_to_postgres(entity_df, dataset, database_url):
         dataset: Dataset identifier
         database_url: PostgreSQL connection URL
     """
-    import hashlib
-    import time
-    from datetime import datetime
-
-    import pg8000
     from sedona.spark import SedonaContext
 
     SedonaContext.create(entity_df.sparkSession)
@@ -487,3 +482,193 @@ def write_entity_subdivided_to_postgres(entity_df, dataset, database_url):
         logger.warning(
             f"Cleanup drop entity_subdivided staging table failed or not needed: {e}"
         )
+
+
+def _count_db_rows(conn, table: str) -> int:
+    """Return the current row count for a table using an existing connection."""
+    cur = conn.cursor()
+    cur.execute(f"SELECT COUNT(*) FROM {table};")
+    count = cur.fetchone()[0]
+    cur.close()
+    return count
+
+
+def write_old_entity_to_postgres(df, database_url):
+    """
+    Write the old_entity DataFrame to PostgreSQL using a staging table and full table swap.
+
+    Because all collections are processed at once, the entire old_entity table is replaced
+    atomically: TRUNCATE + INSERT from staging, so there is never a partial state.
+
+    Args:
+        df: Spark DataFrame with old_entity columns.
+        database_url: PostgreSQL connection URL (postgresql://user:pass@host:port/dbname)
+    """
+    conn_params = parse_database_url(database_url)
+    row_count = df.count()
+    logger.info(f"write_old_entity_to_postgres: Writing {row_count:,} rows")
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    hash_suffix = hashlib.md5(timestamp.encode()).hexdigest()[:8]
+    staging_table = f"old_entity_staging_{hash_suffix}_{timestamp}"
+
+    # collection is stored in parquet but not in the Postgres table
+    required_cols = [
+        "old_entity",
+        "status",
+        "entity",
+        "notes",
+        "end_date",
+        "entry_date",
+        "start_date",
+        "dataset",
+    ]
+
+    # Step 1: Create staging table
+    try:
+        conn_params["timeout"] = 1800
+        conn = pg8000.connect(**conn_params)
+        cur = conn.cursor()
+        cur.execute(
+            f"""
+            CREATE TABLE {staging_table} (
+                old_entity BIGINT,
+                status INT,
+                entity BIGINT,
+                notes TEXT,
+                end_date DATE,
+                entry_date DATE,
+                start_date DATE,
+                dataset TEXT
+            );
+            """
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        logger.info(f"write_old_entity_to_postgres: Created {staging_table}")
+    except Exception as e:
+        logger.error(
+            f"write_old_entity_to_postgres: Failed to create staging table: {e}"
+        )
+        raise
+
+    # Step 2: Prepare DataFrame
+    df_typed = (
+        df.select(*required_cols)
+        .withColumn("old_entity", col("old_entity").cast(LongType()))
+        .withColumn("status", col("status").cast(IntegerType()))
+        .withColumn("entity", col("entity").cast(LongType()))
+        .withColumn("end_date", col("end_date").cast(DateType()))
+        .withColumn("entry_date", col("entry_date").cast(DateType()))
+        .withColumn("start_date", col("start_date").cast(DateType()))
+    )
+
+    if logger.isEnabledFor(logging.DEBUG):
+        conn = pg8000.connect(**conn_params)
+        db_count_before = _count_db_rows(conn, "old_entity")
+        conn.close()
+        logger.debug(
+            f"write_old_entity_to_postgres: DataFrame rows to write: {row_count:,}"
+        )
+        logger.debug(
+            f"write_old_entity_to_postgres: DB rows before load: {db_count_before:,}"
+        )
+
+    # Step 3: JDBC write to staging with retry
+    url = f"jdbc:postgresql://{conn_params['host']}:{conn_params['port']}/{conn_params['database']}"
+    num_partitions = max(1, min(10, row_count // 50000))
+
+    max_attempts = 3
+    attempt = 0
+    while attempt < max_attempts:
+        try:
+            df_typed.repartition(num_partitions).write.jdbc(
+                url=url,
+                table=staging_table,
+                mode="append",
+                properties={
+                    "user": conn_params["user"],
+                    "password": conn_params["password"],
+                    "driver": "org.postgresql.Driver",
+                    "stringtype": "unspecified",
+                    "batchsize": "5000",
+                    "reWriteBatchedInserts": "true",
+                },
+            )
+            logger.info(
+                f"write_old_entity_to_postgres: JDBC write successful on attempt {attempt + 1}"
+            )
+            break
+        except Exception as e:
+            attempt += 1
+            logger.warning(
+                f"write_old_entity_to_postgres: JDBC write failed (attempt {attempt}): {e}"
+            )
+            if attempt < max_attempts:
+                time.sleep(5 * attempt)
+            else:
+                raise
+
+    # Step 4: Atomic swap — TRUNCATE old_entity, INSERT from staging
+    attempt = 0
+    while attempt < max_attempts:
+        try:
+            conn_params["timeout"] = 1800
+            conn = pg8000.connect(**conn_params)
+            cur = conn.cursor()
+            cur.execute("SET statement_timeout = '1800000';")
+            cur.execute("BEGIN;")
+            cur.execute("TRUNCATE TABLE old_entity;")
+            cur.execute(
+                f"""
+                INSERT INTO old_entity (
+                    old_entity, status, entity, notes,
+                    end_date, entry_date, start_date, dataset
+                )
+                SELECT
+                    old_entity, status, entity, notes,
+                    end_date, entry_date, start_date, dataset
+                FROM {staging_table};
+                """
+            )
+            inserted = cur.rowcount
+            cur.execute(f"DROP TABLE {staging_table};")
+            cur.execute("COMMIT;")
+            logger.info(f"write_old_entity_to_postgres: Inserted {inserted:,} rows")
+            if logger.isEnabledFor(logging.DEBUG):
+                db_count_after = _count_db_rows(conn, "old_entity")
+                logger.debug(
+                    f"write_old_entity_to_postgres: DB rows after load: {db_count_after:,}"
+                )
+            break
+        except Exception as e:
+            try:
+                cur.execute("ROLLBACK;")
+            except Exception:
+                pass
+            attempt += 1
+            logger.warning(
+                f"write_old_entity_to_postgres: Atomic commit failed (attempt {attempt}): {e}"
+            )
+            if attempt < max_attempts:
+                time.sleep(5 * attempt)
+            else:
+                raise
+        finally:
+            try:
+                cur.close()
+                conn.close()
+            except Exception:
+                pass
+
+    # Step 5: Safety cleanup
+    try:
+        conn = pg8000.connect(**conn_params)
+        cur = conn.cursor()
+        cur.execute(f"DROP TABLE IF EXISTS {staging_table};")
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        logger.warning(f"write_old_entity_to_postgres: Cleanup failed: {e}")
