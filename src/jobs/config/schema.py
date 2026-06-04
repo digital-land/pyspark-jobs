@@ -62,11 +62,16 @@ class DatasetSchema(BaseModel):
             return cls.model_validate(json.load(f))
 
     def enforce(self, df: DataFrame) -> DataFrame:
-        """Add missing fields as typed nulls and select schema fields in order."""
+        """Cast existing fields to their declared types, add missing fields as typed nulls, and select schema fields in order."""
         for field_spec in self.fields:
             if field_spec.field not in df.columns:
                 df = df.withColumn(
                     field_spec.field, lit(None).cast(field_spec.to_spark_type())
+                )
+            else:
+                df = df.withColumn(
+                    field_spec.field,
+                    col(field_spec.field).cast(field_spec.to_spark_type()),
                 )
         return df.select([f.field for f in self.fields])
 
@@ -283,12 +288,12 @@ register(
         name="old_entity",
         fields=[
             FieldSchema(field="old_entity", name="Old Entity", datatype="bigint"),
-            FieldSchema(field="status", name="Status", datatype="string"),
+            FieldSchema(field="status", name="Status", datatype="integer"),
             FieldSchema(field="entity", name="Entity", datatype="bigint"),
             FieldSchema(field="notes", name="Notes", datatype="string"),
-            FieldSchema(field="end_date", name="End Date", datatype="string"),
-            FieldSchema(field="entry_date", name="Entry Date", datatype="string"),
-            FieldSchema(field="start_date", name="Start Date", datatype="string"),
+            FieldSchema(field="end_date", name="End Date", datatype="date"),
+            FieldSchema(field="entry_date", name="Entry Date", datatype="date"),
+            FieldSchema(field="start_date", name="Start Date", datatype="date"),
             FieldSchema(field="collection", name="Collection", datatype="string"),
             FieldSchema(field="dataset", name="Dataset", datatype="string"),
         ],

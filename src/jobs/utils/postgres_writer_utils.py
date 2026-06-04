@@ -4,7 +4,7 @@ from datetime import datetime
 
 import pg8000
 from pyspark.sql.functions import col, explode, expr, lit, to_json
-from pyspark.sql.types import LongType
+from pyspark.sql.types import DateType, IntegerType, LongType
 
 from jobs.utils.db_url import parse_database_url
 from jobs.utils.df_utils import show_df
@@ -523,12 +523,12 @@ def write_old_entity_to_postgres(df, database_url):
             f"""
             CREATE TABLE {staging_table} (
                 old_entity BIGINT,
-                status TEXT,
+                status INT,
                 entity BIGINT,
                 notes TEXT,
-                end_date TEXT,
-                entry_date TEXT,
-                start_date TEXT,
+                end_date DATE,
+                entry_date DATE,
+                start_date DATE,
                 dataset TEXT
             );
             """
@@ -547,7 +547,11 @@ def write_old_entity_to_postgres(df, database_url):
     df_typed = (
         df.select(*required_cols)
         .withColumn("old_entity", col("old_entity").cast(LongType()))
+        .withColumn("status", col("status").cast(IntegerType()))
         .withColumn("entity", col("entity").cast(LongType()))
+        .withColumn("end_date", col("end_date").cast(DateType()))
+        .withColumn("entry_date", col("entry_date").cast(DateType()))
+        .withColumn("start_date", col("start_date").cast(DateType()))
     )
 
     # Step 3: JDBC write to staging with retry

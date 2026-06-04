@@ -5,9 +5,18 @@ Uses a real PostGIS database (testcontainers locally, GitHub Actions service in 
 and a real Spark session to verify the staging table pattern works end-to-end.
 """
 
+from datetime import date
+
 import pytest
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.types import LongType, StringType, StructField, StructType
+from pyspark.sql.types import (
+    DateType,
+    IntegerType,
+    LongType,
+    StringType,
+    StructField,
+    StructType,
+)
 
 from jobs.utils.postgres_writer_utils import (
     write_dataframe_to_postgres_jdbc,
@@ -432,12 +441,12 @@ def _build_old_entity_df(spark: SparkSession, rows: list) -> DataFrame:
     schema = StructType(
         [
             StructField("old_entity", LongType(), True),
-            StructField("status", StringType(), True),
+            StructField("status", IntegerType(), True),
             StructField("entity", LongType(), True),
             StructField("notes", StringType(), True),
-            StructField("end_date", StringType(), True),
-            StructField("entry_date", StringType(), True),
-            StructField("start_date", StringType(), True),
+            StructField("end_date", DateType(), True),
+            StructField("entry_date", DateType(), True),
+            StructField("start_date", DateType(), True),
             StructField("dataset", StringType(), True),
         ]
     )
@@ -476,21 +485,21 @@ def test_write_old_entity_creates_rows(spark, db_url, db_conn, clean_old_entity_
         [
             (
                 111,
-                "301",
+                301,
                 222,
                 None,
-                "2024-01-01",
-                "2020-01-01",
-                "2020-01-01",
+                date(2024, 1, 1),
+                date(2020, 1, 1),
+                date(2020, 1, 1),
                 "ancient-woodland",
             ),
             (
                 333,
-                "301",
+                301,
                 444,
                 "duplicate",
                 None,
-                "2021-06-01",
+                date(2021, 6, 1),
                 None,
                 "ancient-woodland",
             ),
@@ -502,7 +511,7 @@ def test_write_old_entity_creates_rows(spark, db_url, db_conn, clean_old_entity_
     rows = _query_old_entity_rows(db_conn)
     assert len(rows) == 2
     assert rows[0][0] == 111
-    assert rows[0][1] == "301"
+    assert rows[0][1] == 301
     assert rows[0][2] == 222
     assert rows[1][0] == 333
     assert rows[1][3] == "duplicate"
@@ -516,15 +525,15 @@ def test_write_old_entity_replaces_all_rows(
     """Writing twice replaces all rows — the entire table is replaced atomically."""
     df_v1 = _build_old_entity_df(
         spark,
-        [(111, "301", 222, None, None, "2020-01-01", None, "ancient-woodland")],
+        [(111, 301, 222, None, None, date(2020, 1, 1), None, "ancient-woodland")],
     )
     write_old_entity_to_postgres(df_v1, db_url)
 
     df_v2 = _build_old_entity_df(
         spark,
         [
-            (555, "301", 666, None, None, "2022-01-01", None, "flood-risk-zone"),
-            (777, "301", 888, None, None, "2022-01-01", None, "flood-risk-zone"),
+            (555, 301, 666, None, None, date(2022, 1, 1), None, "flood-risk-zone"),
+            (777, 301, 888, None, None, date(2022, 1, 1), None, "flood-risk-zone"),
         ],
     )
     write_old_entity_to_postgres(df_v2, db_url)
