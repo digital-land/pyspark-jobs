@@ -699,25 +699,31 @@ class TaskPipeline(BasePipeline):
             parsed = urlparse(str(base))
             bucket = parsed.netloc
             s3_prefix = parsed.path.lstrip("/")
+
+            logger.info("TaskPipeline: Listing resource files")
             resource_files = [
                 p
                 for p in _list_s3_paths(bucket, s3_prefix, "collection/resource.csv")
                 if "-collection/collection/resource.csv" in p
             ]
+            logger.info(f"TaskPipeline: Found {len(resource_files)} resource files")
+
+            logger.info("TaskPipeline: Listing log files")
             log_files = [
                 p
                 for p in _list_s3_paths(bucket, s3_prefix, "collection/log.csv")
                 if "-collection/collection/log.csv" in p
             ]
+            logger.info(f"TaskPipeline: Found {len(log_files)} log files")
+
+            logger.info("TaskPipeline: Listing issue files")
             issue_files = [
                 p
                 for p in _list_s3_paths(bucket, s3_prefix, ".csv")
                 if "-collection/issue/" in p
             ]
-            logger.info(
-                f"TaskPipeline: Found {len(resource_files)} resource, "
-                f"{len(log_files)} log, {len(issue_files)} issue files"
-            )
+            logger.info(f"TaskPipeline: Found {len(issue_files)} issue files")
+
         else:
             import glob as _glob
 
@@ -764,24 +770,17 @@ class TaskPipeline(BasePipeline):
         else:
             issue_df = spark.read.option("header", "true").csv(issue_files)
             issue_df = normalise_column_names(issue_df)
-            logger.info(
-                f"TaskPipeline: Sample resources from issue CSVs: {[r.resource for r in issue_df.select('resource').distinct().limit(5).collect()]}"
-            )
-            logger.info(
-                f"TaskPipeline: Sample active resources: {[r.resource for r in active_df.select('resource').limit(5).collect()]}"
-            )
             issue_df = issue_df.join(
                 active_df.select("resource"), on="resource", how="inner"
             )
 
             issue_type_df = _load_issue_type_df(spark)
             issue_df = issue_df.join(issue_type_df, on="issue_type", how="left")
-            logger.info(f"TaskPipeline: Issue rows after joins: {issue_df.count()}")
             logger.info(
-                f"TaskPipeline: Sample issue types: {[r.issue_type for r in issue_df.select('issue_type').distinct().limit(20).collect()]}"
+                f"TaskPipeline: {issue_df.count()} issue rows for active resources after joining with issue type metadata"
             )
             logger.info(
-                f"TaskPipeline: Rows with error+external: {issue_df.filter((col('severity') == 'error') & (col('responsibility') == 'external')).count()}"
+                f"TaskPipeline: {issue_df.filter((col('severity') == 'error') & (col('responsibility') == 'external')).count()} rows with severity=error and responsibility=external — these become issue tasks"
             )
             issue_tasks = transform_issues_to_tasks(issue_df)
 
@@ -814,9 +813,10 @@ class TaskPipeline(BasePipeline):
             .option("overwriteSchema", "true")
             .save(output_path)
         )
-        logger.info("TaskPipeline: Complete")
+        logger.info(f"TaskPipeline: Delta table written to {output_path}")
 
         if self.config.database_url:
+            logger.info("TaskPipeline: Writing tasks to postgres...")
             self._write_postgres(tasks_df)
 
     def _write_postgres(self, tasks_df):
