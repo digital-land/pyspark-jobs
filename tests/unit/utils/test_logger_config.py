@@ -127,7 +127,7 @@ class TestLoggerConfig:
 
     def test_quick_setup_function(self):
         """Test the quick_setup convenience function."""
-        logger = quick_setup(log_level="DEBUG", environment="development")
+        logger = quick_setup(log_level="DEBUG")
 
         assert isinstance(logger, logging.Logger)
         assert logger.isEnabledFor(logging.DEBUG)
