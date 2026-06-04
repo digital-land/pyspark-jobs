@@ -108,7 +108,8 @@ def test_transform_old_entity_dataset_derived_from_entity_range(spark):
     )
 
     result = transform_old_entity(old_entity_df, spec_df)
-    assert result.collect()[0]["dataset"] == "ancient-woodland"
+    row = result.collect()[0]
+    assert row["dataset"] == "ancient-woodland"
 
 
 def test_transform_old_entity_filters_collection_mismatch(spark):
@@ -144,7 +145,9 @@ def test_transform_old_entity_filters_collection_mismatch(spark):
 
     result = transform_old_entity(old_entity_df, spec_df)
     assert result.count() == 1
-    assert result.collect()[0]["old_entity"] == 4000001
+    row = result.collect()[0]
+    assert row["old_entity"] == 4000001
+    assert row["dataset"] is not None
 
 
 def test_transform_old_entity_drops_entity_outside_all_ranges(spark):
@@ -189,7 +192,9 @@ def test_transform_old_entity_preserves_collection_column(spark):
     )
 
     result = transform_old_entity(old_entity_df, spec_df)
-    assert result.collect()[0]["collection"] == "ancient-woodland-collection"
+    row = result.collect()[0]
+    assert row["collection"] == "ancient-woodland-collection"
+    assert row["dataset"] is not None
 
 
 def test_transform_old_entity_adds_processed_timestamp(spark):
@@ -212,7 +217,9 @@ def test_transform_old_entity_adds_processed_timestamp(spark):
 
     result = transform_old_entity(old_entity_df, spec_df)
     assert "processed_timestamp" in result.columns
-    assert result.collect()[0]["processed_timestamp"] is not None
+    row = result.collect()[0]
+    assert row["processed_timestamp"] is not None
+    assert row["dataset"] is not None
 
 
 def test_transform_old_entity_missing_schema_fields_added_as_null(spark):
@@ -237,6 +244,7 @@ def test_transform_old_entity_missing_schema_fields_added_as_null(spark):
     row = result.collect()[0]
     assert row["notes"] is None
     assert row["end_date"] is None
+    assert row["dataset"] is not None
 
 
 def test_transform_old_entity_filters_redirect_to_different_dataset(spark):
@@ -272,7 +280,9 @@ def test_transform_old_entity_filters_redirect_to_different_dataset(spark):
 
     result = transform_old_entity(old_entity_df, spec_df)
     assert result.count() == 1
-    assert result.collect()[0]["old_entity"] == 11000002
+    row = result.collect()[0]
+    assert row["old_entity"] == 11000002
+    assert row["dataset"] is not None
 
 
 def test_transform_old_entity_allows_null_entity(spark):
@@ -296,4 +306,6 @@ def test_transform_old_entity_allows_null_entity(spark):
 
     result = transform_old_entity(old_entity_df, spec_df)
     assert result.count() == 1
-    assert result.collect()[0]["entity"] is None
+    row = result.collect()[0]
+    assert row["entity"] is None
+    assert row["dataset"] is not None
