@@ -21,7 +21,7 @@ import click
 from jobs import job
 from jobs.utils.logger_config import get_logger, setup_logging
 
-setup_logging(log_level="INFO", environment="production")
+setup_logging(log_level="INFO")
 logger = get_logger(__name__)
 
 

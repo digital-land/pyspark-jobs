@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import time
 from datetime import datetime
 
@@ -483,6 +484,15 @@ def write_entity_subdivided_to_postgres(entity_df, dataset, database_url):
         )
 
 
+def _count_db_rows(conn, table: str) -> int:
+    """Return the current row count for a table using an existing connection."""
+    cur = conn.cursor()
+    cur.execute(f"SELECT COUNT(*) FROM {table};")
+    count = cur.fetchone()[0]
+    cur.close()
+    return count
+
+
 def write_old_entity_to_postgres(df, database_url):
     """
     Write the old_entity DataFrame to PostgreSQL using a staging table and full table swap.
@@ -554,6 +564,17 @@ def write_old_entity_to_postgres(df, database_url):
         .withColumn("start_date", col("start_date").cast(DateType()))
     )
 
+    if logger.isEnabledFor(logging.DEBUG):
+        conn = pg8000.connect(**conn_params)
+        db_count_before = _count_db_rows(conn, "old_entity")
+        conn.close()
+        logger.debug(
+            f"write_old_entity_to_postgres: DataFrame rows to write: {row_count:,}"
+        )
+        logger.debug(
+            f"write_old_entity_to_postgres: DB rows before load: {db_count_before:,}"
+        )
+
     # Step 3: JDBC write to staging with retry
     url = f"jdbc:postgresql://{conn_params['host']}:{conn_params['port']}/{conn_params['database']}"
     num_partitions = max(1, min(10, row_count // 50000))
@@ -615,6 +636,11 @@ def write_old_entity_to_postgres(df, database_url):
             cur.execute(f"DROP TABLE {staging_table};")
             cur.execute("COMMIT;")
             logger.info(f"write_old_entity_to_postgres: Inserted {inserted:,} rows")
+            if logger.isEnabledFor(logging.DEBUG):
+                db_count_after = _count_db_rows(conn, "old_entity")
+                logger.debug(
+                    f"write_old_entity_to_postgres: DB rows after load: {db_count_after:,}"
+                )
             break
         except Exception as e:
             try:

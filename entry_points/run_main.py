@@ -29,7 +29,7 @@ from jobs import job
 from jobs.utils.logger_config import get_logger, setup_logging
 
 # Setup basic logging for the entry point
-setup_logging(log_level="INFO", environment="production")
+setup_logging(log_level="INFO")
 logger = get_logger(__name__)
 
 
