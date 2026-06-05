@@ -131,16 +131,50 @@ class TestTransformLogToTasks:
         assert ref1 == ref2
 
     def test_same_endpoint_failing_repeatedly_produces_one_task(self, spark):
-        """The same endpoint failing with the same status on multiple collection
-        runs should produce a single task, not one per log row."""
         df = _build_df(
             spark,
             [
-                ("endpoint-aaa", "resource-aaa", "404", "", "dataset-a"),
-                ("endpoint-aaa", "resource-aaa", "404", "", "dataset-a"),
-                ("endpoint-aaa", "resource-aaa", "404", "", "dataset-a"),
+                (
+                    "endpoint-aaa",
+                    "resource-aaa",
+                    "404",
+                    "",
+                    "dataset-a",
+                    "2026-01-01",
+                    "200",
+                    "1.2",
+                ),
+                (
+                    "endpoint-aaa",
+                    "resource-aaa",
+                    "404",
+                    "",
+                    "dataset-a",
+                    "2026-01-02",
+                    "200",
+                    "1.1",
+                ),
+                (
+                    "endpoint-aaa",
+                    "resource-aaa",
+                    "404",
+                    "",
+                    "dataset-a",
+                    "2026-01-03",
+                    "201",
+                    "0.9",
+                ),
             ],
-            ["endpoint", "resource", "status", "exception", "dataset"],
+            [
+                "endpoint",
+                "resource",
+                "status",
+                "exception",
+                "dataset",
+                "entry_date",
+                "bytes",
+                "elapsed",
+            ],
         )
         result = transform_log_to_tasks(df)
         assert result.count() == 1

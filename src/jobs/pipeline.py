@@ -704,18 +704,6 @@ class TaskPipeline(BasePipeline):
             else reduce(lambda a, b: a.unionByName(b), frames)
         )
 
-        if logger.isEnabledFor(logging.DEBUG):
-            count_before = tasks_df.count()
-
-        tasks_df = tasks_df.dropDuplicates(["reference"])
-
-        if logger.isEnabledFor(logging.DEBUG):
-            count_after = tasks_df.count()
-            logger.debug(
-                f"TaskPipeline: {count_before} rows before dedup, "
-                f"{count_after} after ({count_before - count_after} duplicates removed)"
-            )
-
         output_path = str(AnyPath(self.config.parquet_datasets_path) / "task")
         logger.info(f"TaskPipeline: Writing tasks to {output_path}...")
         (
