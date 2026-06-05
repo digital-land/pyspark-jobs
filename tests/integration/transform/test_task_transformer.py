@@ -130,6 +130,42 @@ class TestTransformLogToTasks:
         ref2 = transform_log_to_tasks(df).collect()[0]["reference"]
         assert ref1 == ref2
 
+    def test_same_endpoint_failing_repeatedly_produces_one_task(self, spark):
+        """The same endpoint failing with the same status on multiple collection
+        runs should produce a single task, not one per log row."""
+        df = _build_df(
+            spark,
+            [
+                ("endpoint-aaa", "resource-aaa", "404", "", "dataset-a"),
+                ("endpoint-aaa", "resource-aaa", "404", "", "dataset-a"),
+                ("endpoint-aaa", "resource-aaa", "404", "", "dataset-a"),
+            ],
+            ["endpoint", "resource", "status", "exception", "dataset"],
+        )
+        result = transform_log_to_tasks(df)
+        assert result.count() == 1
+
+    def test_references_are_unique(self, spark):
+        """No two log tasks should share a reference."""
+        df = _build_df(
+            spark,
+            [
+                ("endpoint-aaa", "resource-aaa", "404", "", "dataset-a"),
+                ("endpoint-aaa", "resource-aaa", "404", "", "dataset-a"),
+                (
+                    "endpoint-bbb",
+                    "resource-bbb",
+                    "500",
+                    "Connection refused",
+                    "dataset-a",
+                ),
+            ],
+            ["endpoint", "resource", "status", "exception", "dataset"],
+        )
+        result = transform_log_to_tasks(df)
+        references = [row["reference"] for row in result.collect()]
+        assert len(references) == len(set(references))
+
 
 class TestTransformIssuesToTasks:
 
@@ -353,3 +389,46 @@ class TestTransformIssuesToTasks:
         )
         result = transform_issues_to_tasks(df)
         assert len(result.collect()[0]["reference"]) == 16
+
+    def test_references_are_unique(self, spark):
+        """No two issue tasks should share a reference."""
+        df = _build_df(
+            spark,
+            [
+                (
+                    "dataset-a",
+                    "resource-aaa",
+                    "geometry",
+                    "invalid-geometry",
+                    "error",
+                    "external",
+                ),
+                (
+                    "dataset-a",
+                    "resource-aaa",
+                    "geometry",
+                    "invalid-geometry",
+                    "error",
+                    "external",
+                ),
+                (
+                    "dataset-a",
+                    "resource-aaa",
+                    "name",
+                    "missing-value",
+                    "error",
+                    "external",
+                ),
+            ],
+            [
+                "dataset",
+                "resource",
+                "field",
+                "issue_type",
+                "severity",
+                "responsibility",
+            ],
+        )
+        result = transform_issues_to_tasks(df)
+        references = [row["reference"] for row in result.collect()]
+        assert len(references) == len(set(references))
