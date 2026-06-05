@@ -538,13 +538,14 @@ class TestTaskPipeline:
             os.path.join(
                 base, "test-collection", "issue", "dataset-a", "resource-aaa.csv"
             ),
-            ["resource", "issue_type", "field", "value"],
+            ["resource", "issue_type", "field", "value", "dataset"],
             [
                 {
                     "resource": "resource-aaa",
                     "issue_type": "invalid-geometry",
                     "field": "geometry",
                     "value": "POLYGON((0 0))",
+                    "dataset": "dataset-a",
                 }
             ],
         )
