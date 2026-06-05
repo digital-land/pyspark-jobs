@@ -14,6 +14,7 @@ Usage:
    - `--py-files`: S3 path to the .whl file
 """
 
+import logging
 import sys
 
 import click
@@ -21,7 +22,6 @@ import click
 from jobs import job
 from jobs.utils.logger_config import get_logger, setup_logging
 
-setup_logging(log_level="INFO")
 logger = get_logger(__name__)
 
 
@@ -55,8 +55,15 @@ logger = get_logger(__name__)
     default=None,
     help="PostgreSQL connection URL (default: resolved from AWS Secrets Manager)",
 )
-def run(env, collection_data_path, parquet_datasets_path, database_url):
+@click.option(
+    "--debug",
+    is_flag=True,
+    default=False,
+    help="Enable DEBUG logging (default: INFO)",
+)
+def run(env, collection_data_path, parquet_datasets_path, database_url, debug):
     """Generate task data from log and issue files across all collections."""
+    setup_logging(log_level=logging.DEBUG if debug else logging.INFO)
     job.generate_tasks(
         collection_data_path=collection_data_path or f"s3://{env}-collection-data/",
         parquet_datasets_path=parquet_datasets_path or f"s3://{env}-parquet-datasets/",

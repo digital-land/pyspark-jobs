@@ -727,12 +727,13 @@ class TaskPipeline(BasePipeline):
 
             issue_type_df = _load_issue_type_df(spark)
             issue_df = issue_df.join(issue_type_df, on="issue_type", how="left")
-            logger.info(
-                f"TaskPipeline: {issue_df.count()} issue rows for active resources after joining with issue type metadata"
-            )
-            logger.info(
-                f"TaskPipeline: {issue_df.filter((col('severity') == 'error') & (col('responsibility') == 'external')).count()} rows with severity=error and responsibility=external — these become issue tasks"
-            )
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    f"TaskPipeline: {issue_df.count()} issue rows for active resources after joining with issue type metadata"
+                )
+                logger.debug(
+                    f"TaskPipeline: {issue_df.filter((col('severity') == 'error') & (col('responsibility') == 'external')).count()} rows with severity=error and responsibility=external — these become issue tasks"
+                )
             issue_tasks = transform_issues_to_tasks(issue_df)
 
         # -- Union and write --------------------------------------------------
@@ -748,16 +749,20 @@ class TaskPipeline(BasePipeline):
             else reduce(lambda a, b: a.unionByName(b), frames)
         )
 
-        count_before = tasks_df.count()
+        if logger.isEnabledFor(logging.DEBUG):
+            count_before = tasks_df.count()
+
         tasks_df = tasks_df.dropDuplicates(["reference"])
-        count_after = tasks_df.count()
-        logger.info(
-            f"TaskPipeline: {count_before} rows before dedup, "
-            f"{count_after} after ({count_before - count_after} duplicates removed)"
-        )
+
+        if logger.isEnabledFor(logging.DEBUG):
+            count_after = tasks_df.count()
+            logger.debug(
+                f"TaskPipeline: {count_before} rows before dedup, "
+                f"{count_after} after ({count_before - count_after} duplicates removed)"
+            )
 
         output_path = str(AnyPath(self.config.parquet_datasets_path) / "task")
-        logger.info(f"TaskPipeline: Writing {count_after} tasks to {output_path}...")
+        logger.info(f"TaskPipeline: Writing tasks to {output_path}...")
         (
             tasks_df.write.format("delta")
             .mode("overwrite")
@@ -767,7 +772,7 @@ class TaskPipeline(BasePipeline):
         logger.info(f"TaskPipeline: Delta table written to {output_path}")
 
         if self.config.database_url:
-            logger.info(f"TaskPipeline: Writing {count_after} tasks to Postgres...")
+            logger.info("TaskPipeline: Writing tasks to Postgres...")
             self._write_postgres(tasks_df)
 
     def _write_postgres(self, tasks_df):
