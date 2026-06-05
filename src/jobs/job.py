@@ -350,7 +350,6 @@ def generate_tasks(
         parquet_datasets_path: S3 path to the parquet datasets bucket.
         env: Environment name (development, staging, production, local).
     """
-    initialize_logging(env)
 
     allowed_envs = ["development", "staging", "production", "local"]
     if env not in allowed_envs:

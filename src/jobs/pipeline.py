@@ -17,7 +17,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import date, datetime
 from functools import reduce
-from urllib.parse import urlparse
 
 import boto3
 from cloudpathlib import AnyPath, S3Path
@@ -604,18 +603,6 @@ class ColumnFieldPipeline(BasePipeline):
         logger.info("ColumnFieldPipeline: Wrote column_field Delta table")
 
 
-def _list_s3_paths(bucket: str, prefix: str, suffix: str) -> list[str]:
-    """List all S3 paths under prefix whose key ends with suffix."""
-    s3 = boto3.client("s3", region_name="eu-west-2")
-    paginator = s3.get_paginator("list_objects_v2")
-    paths = []
-    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-        for obj in page.get("Contents", []):
-            if obj["Key"].endswith(suffix):
-                paths.append(f"s3://{bucket}/{obj['Key']}")
-    return paths
-
-
 ISSUE_TYPE_URL = "https://raw.githubusercontent.com/digital-land/specification/main/content/issue-type.csv"
 
 
@@ -643,50 +630,18 @@ class TaskPipeline(BasePipeline):
     def execute(self):
         spark = self.config.spark
         base = AnyPath(self.config.collection_data_path)
-        _is_s3 = isinstance(base, S3Path)
 
         # -- Resolve file paths ---------------------------------------------------
-        if _is_s3:
-            parsed = urlparse(str(base))
-            bucket = parsed.netloc
-            s3_prefix = parsed.path.lstrip("/")
+        resource_files = [
+            str(p) for p in base.glob("*-collection/collection/resource.csv")
+        ]
+        logger.info(f"TaskPipeline: Found {len(resource_files)} resource files")
 
-            logger.info("TaskPipeline: Listing resource files")
-            resource_files = [
-                p
-                for p in _list_s3_paths(bucket, s3_prefix, "collection/resource.csv")
-                if "-collection/collection/resource.csv" in p
-            ]
-            logger.info(f"TaskPipeline: Found {len(resource_files)} resource files")
+        log_files = [str(p) for p in base.glob("*-collection/collection/log.csv")]
+        logger.info(f"TaskPipeline: Found {len(log_files)} log files")
 
-            logger.info("TaskPipeline: Listing log files")
-            log_files = [
-                p
-                for p in _list_s3_paths(bucket, s3_prefix, "collection/log.csv")
-                if "-collection/collection/log.csv" in p
-            ]
-            logger.info(f"TaskPipeline: Found {len(log_files)} log files")
-
-            logger.info("TaskPipeline: Listing issue files")
-            issue_files = [
-                p
-                for p in _list_s3_paths(bucket, s3_prefix, ".csv")
-                if "-collection/issue/" in p
-            ]
-            logger.info(f"TaskPipeline: Found {len(issue_files)} issue files")
-
-        else:
-            import glob as _glob
-
-            resource_files = _glob.glob(
-                str(base / "*-collection" / "collection" / "resource.csv")
-            )
-            log_files = _glob.glob(
-                str(base / "*-collection" / "collection" / "log.csv")
-            )
-            issue_files = _glob.glob(
-                str(base / "*-collection" / "issue" / "*" / "*.csv")
-            )
+        issue_files = [str(p) for p in base.glob("*-collection/issue/*/*.csv")]
+        logger.info(f"TaskPipeline: Found {len(issue_files)} issue files")
 
         if not resource_files:
             logger.warning("TaskPipeline: No resource files found — nothing to process")
