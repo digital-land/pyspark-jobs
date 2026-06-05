@@ -37,7 +37,6 @@ from jobs.transform.task_transformer import (
     transform_issues_to_tasks,
     transform_log_to_tasks,
 )
-from jobs.utils.db_url import parse_database_url
 from jobs.utils.df_utils import count_df, normalise_column_names, show_df
 from jobs.utils.flatten_csv import flatten_json_column
 from jobs.utils.postgres_writer_utils import (
