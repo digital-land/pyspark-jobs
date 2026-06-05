@@ -44,6 +44,7 @@ from jobs.utils.postgres_writer_utils import (
     SUBDIVIDED_DATASETS,
     write_dataframe_to_postgres_jdbc,
     write_entity_subdivided_to_postgres,
+    write_task_to_postgres,
 )
 from jobs.utils.s3_writer_utils import (
     cleanup_temp_path,
@@ -776,36 +777,4 @@ class TaskPipeline(BasePipeline):
             self._write_postgres(tasks_df)
 
     def _write_postgres(self, tasks_df):
-        import pg8000
-        from pyspark.sql.types import DateType
-
-        conn_params = parse_database_url(self.config.database_url)
-
-        tasks_df = tasks_df.withColumn("entry_date", col("entry_date").cast(DateType()))
-
-        url = f"jdbc:postgresql://{conn_params['host']}:{conn_params['port']}/{conn_params['database']}"
-        tasks_df.write.jdbc(
-            url=url,
-            table="task",
-            mode="overwrite",
-            properties={
-                "user": conn_params["user"],
-                "password": conn_params["password"],
-                "driver": "org.postgresql.Driver",
-                "truncate": "true",
-                "stringtype": "unspecified",
-                "batchsize": "5000",
-                "reWriteBatchedInserts": "true",
-            },
-        )
-        logger.info("TaskPipeline: Wrote tasks to Postgres")
-
-        conn = pg8000.connect(**conn_params)
-        cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM task;")
-        pg_count = cur.fetchone()[0]
-        cur.close()
-        conn.close()
-        logger.info(
-            f"TaskPipeline: Postgres task table has {pg_count:,} rows after write"
-        )
+        write_task_to_postgres(tasks_df, self.config.database_url)
