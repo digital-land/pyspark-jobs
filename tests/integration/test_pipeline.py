@@ -1,5 +1,5 @@
 """
-Integration tests for EntityPipeline and IssuePipeline.
+Integration tests for EntityPipeline, IssuePipeline and TaskPipeline
 
 Uses a real Spark session and local filesystem for reads/writes.
 Parquet I/O uses local disk; S3 (_write_consumer_formats) uses moto.
@@ -11,7 +11,7 @@ import os
 
 import pytest
 
-from jobs.pipeline import EntityPipeline, IssuePipeline, PipelineConfig
+from jobs.pipeline import EntityPipeline, IssuePipeline, PipelineConfig, TaskPipeline
 
 # -- Test data ----------------------------------------------------------------
 
@@ -477,3 +477,99 @@ class TestIssuePipeline:
             pipeline.run(collection="test-dataset")
 
         assert pipeline.result["status"] == "failed"
+
+
+# -- TaskPipeline tests -------------------------------------------------------
+
+
+class TestTaskPipeline:
+
+    def test_no_duplicate_references_in_output(self, spark, tmp_path, mocker):
+        """TaskPipeline produces no duplicate references even when the same
+        endpoint fails on multiple collection days — realistic log.csv scenario
+        where extra columns (entry-date, bytes, elapsed) would previously prevent
+        .distinct() from deduplicating repeated failures."""
+        base = str(tmp_path)
+        parquet_base = os.path.join(base, "parquet-output/")
+
+        _write_csv(
+            os.path.join(base, "test-collection", "collection", "resource.csv"),
+            ["resource", "datasets", "end_date"],
+            [{"resource": "resource-aaa", "datasets": "dataset-a", "end_date": ""}],
+        )
+
+        # Same endpoint failing on two different dates — the key scenario.
+        # entry-date and elapsed differ, which previously caused .distinct()
+        # to keep both rows and produce duplicate reference hashes.
+        _write_csv(
+            os.path.join(base, "test-collection", "collection", "log.csv"),
+            [
+                "endpoint",
+                "resource",
+                "status",
+                "exception",
+                "entry-date",
+                "bytes",
+                "elapsed",
+            ],
+            [
+                {
+                    "endpoint": "http://endpoint-a",
+                    "resource": "resource-aaa",
+                    "status": "404",
+                    "exception": "",
+                    "entry-date": "2026-01-01",
+                    "bytes": "200",
+                    "elapsed": "1.2",
+                },
+                {
+                    "endpoint": "http://endpoint-a",
+                    "resource": "resource-aaa",
+                    "status": "404",
+                    "exception": "",
+                    "entry-date": "2026-01-02",
+                    "bytes": "200",
+                    "elapsed": "1.1",
+                },
+            ],
+        )
+
+        _write_csv(
+            os.path.join(
+                base, "test-collection", "issue", "dataset-a", "resource-aaa.csv"
+            ),
+            ["resource", "issue_type", "field", "value", "dataset"],
+            [
+                {
+                    "resource": "resource-aaa",
+                    "issue_type": "invalid-geometry",
+                    "field": "geometry",
+                    "value": "POLYGON((0 0))",
+                    "dataset": "dataset-a",
+                }
+            ],
+        )
+
+        mocker.patch(
+            "jobs.pipeline._load_issue_type_df",
+            return_value=spark.createDataFrame(
+                [("invalid-geometry", "error", "external")],
+                ["issue_type", "severity", "responsibility"],
+            ),
+        )
+
+        config = PipelineConfig(
+            spark=spark,
+            dataset="",
+            env="local",
+            collection_data_path=f"{base}/",
+            parquet_datasets_path=parquet_base,
+        )
+
+        TaskPipeline(config).run()
+
+        tasks_df = spark.read.format("delta").load(os.path.join(parquet_base, "task"))
+        references = [row["reference"] for row in tasks_df.collect()]
+        assert len(references) == len(
+            set(references)
+        ), f"{len(references) - len(set(references))} duplicate references found"

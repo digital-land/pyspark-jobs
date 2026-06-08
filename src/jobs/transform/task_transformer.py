@@ -39,7 +39,11 @@ def transform_log_to_tasks(df: DataFrame, entry_date: str = None) -> DataFrame:
     entry_date = entry_date or str(date.today())
     logger.info("transform_log_to_tasks: Starting")
 
-    df = df.filter(col("status") != "200")
+    df = (
+        df.filter(col("status") != "200")
+        .select("dataset", "endpoint", "resource", "status", "exception")
+        .distinct()
+    )
 
     if df.rdd.isEmpty():
         logger.info("transform_log_to_tasks: No failed log rows found")

@@ -337,6 +337,7 @@ def generate_tasks(
     collection_data_path: str,
     parquet_datasets_path: str,
     env: str,
+    database_url: str = None,
 ):
     """
     Generate task data from log and issue files across all collections.
@@ -349,7 +350,6 @@ def generate_tasks(
         parquet_datasets_path: S3 path to the parquet datasets bucket.
         env: Environment name (development, staging, production, local).
     """
-    initialize_logging(env)
 
     allowed_envs = ["development", "staging", "production", "local"]
     if env not in allowed_envs:
@@ -361,6 +361,15 @@ def generate_tasks(
         logger.info(
             f"generate_tasks: Local collection_data_path: {collection_data_path}"
         )
+
+    if database_url is None:
+        logger.info(
+            "generate_tasks: No database_url provided, resolving from AWS Secrets Manager"
+        )
+        conn_params = get_aws_secret(env)
+        database_url = build_database_url(conn_params)
+    else:
+        logger.info("generate_tasks: Using provided database_url")
 
     logger.info("generate_tasks: Starting cross-collection task generation")
 
@@ -376,6 +385,7 @@ def generate_tasks(
             env=env,
             collection_data_path=collection_data_path,
             parquet_datasets_path=parquet_datasets_path,
+            database_url=database_url,
         )
 
         task_pipeline = TaskPipeline(config)
