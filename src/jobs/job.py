@@ -301,17 +301,7 @@ def maintain_datasets(parquet_datasets_path: str, retention_hours: float = 24):
             f"maintain_datasets: Found {len(table_paths)} Delta tables to maintain"
         )
 
-        results = []
-        for path in table_paths:
-            try:
-                logger.info(f"maintain_datasets: Optimising {path}")
-                DeltaTable.forPath(spark, path).optimize().executeCompaction()
-                logger.info(f"maintain_datasets: Vacuuming {path}")
-                DeltaTable.forPath(spark, path).vacuum(retention_hours)
-                results.append({"path": path, "status": "ok"})
-            except Exception as e:
-                logger.error(f"maintain_datasets: Failed to maintain {path} — {e}")
-                results.append({"path": path, "status": "error", "error": str(e)})
+        results = _optimise_and_vacuum_tables(spark, table_paths, retention_hours)
 
         errors = [r for r in results if r["status"] == "error"]
         logger.info(
@@ -331,6 +321,26 @@ def maintain_datasets(parquet_datasets_path: str, retention_hours: float = 24):
                 logger.info("maintain_datasets: Spark session stopped")
             except Exception as e:
                 logger.warning(f"maintain_datasets: Error stopping Spark session — {e}")
+
+
+def _optimise_and_vacuum_tables(spark, table_paths, retention_hours):
+    """
+    Run OPTIMIZE + VACUUM on each given Delta table path.
+
+    Returns a list of {"path", "status", ["error"]} result dicts.
+    """
+    results = []
+    for path in table_paths:
+        try:
+            logger.info(f"maintain_datasets: Optimising {path}")
+            DeltaTable.forPath(spark, path).optimize().executeCompaction()
+            logger.info(f"maintain_datasets: Vacuuming {path}")
+            DeltaTable.forPath(spark, path).vacuum(retention_hours)
+            results.append({"path": path, "status": "ok"})
+        except Exception as e:
+            logger.error(f"maintain_datasets: Failed to maintain {path} — {e}")
+            results.append({"path": path, "status": "error", "error": str(e)})
+    return results
 
 
 def generate_tasks(
