@@ -22,3 +22,17 @@ def run_main_cmd():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module.run
+
+
+@pytest.fixture
+def run_tasks_cmd():
+    """Load the click command from the run_tasks entry point script."""
+    script_path = os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), "..", "..", "entry_points", "run_tasks.py"
+        )
+    )
+    spec = importlib.util.spec_from_file_location("run_tasks", script_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.run

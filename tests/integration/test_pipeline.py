@@ -11,7 +11,13 @@ import os
 
 import pytest
 
-from jobs.pipeline import EntityPipeline, IssuePipeline, PipelineConfig, TaskPipeline
+from jobs.pipeline import (
+    EntityPipeline,
+    IssuePipeline,
+    PipelineConfig,
+    TaskPipeline,
+    _backfill_dataset_from_source,
+)
 
 # -- Test data ----------------------------------------------------------------
 
@@ -573,3 +579,70 @@ class TestTaskPipeline:
         assert len(references) == len(
             set(references)
         ), f"{len(references) - len(set(references))} duplicate references found"
+
+
+class TestBackfillDatasetFromSource:
+
+    def _make_log_df(self, spark, rows):
+        return spark.createDataFrame(
+            rows,
+            ["endpoint", "resource", "status", "exception", "dataset"],
+        )
+
+    def _make_source_df(self, spark, rows):
+        return spark.createDataFrame(rows, ["endpoint", "dataset"])
+
+    def test_fills_in_dataset_for_failed_row(self, spark):
+        """A row with no dataset gets its dataset from the source lookup."""
+        log_df = self._make_log_df(spark, [("endpoint-aaa", "", "404", "", "")])
+        source_df = self._make_source_df(spark, [("endpoint-aaa", "conservation-area")])
+
+        result = _backfill_dataset_from_source(log_df, source_df)
+
+        rows = result.collect()
+        assert len(rows) == 1
+        assert rows[0]["dataset"] == "conservation-area"
+
+    def test_existing_dataset_is_not_changed(self, spark):
+        """A row that already has a dataset is left untouched."""
+        log_df = self._make_log_df(
+            spark, [("endpoint-aaa", "resource-aaa", "200", "", "conservation-area")]
+        )
+        source_df = self._make_source_df(spark, [("endpoint-aaa", "something-else")])
+
+        result = _backfill_dataset_from_source(log_df, source_df)
+
+        rows = result.collect()
+        assert len(rows) == 1
+        assert rows[0]["dataset"] == "conservation-area"
+
+    def test_multi_dataset_endpoint_produces_one_row_per_dataset(self, spark):
+        """A failing endpoint that serves two datasets produces two task rows."""
+        log_df = self._make_log_df(
+            spark, [("endpoint-aaa", "", "500", "Connection refused", "")]
+        )
+        source_df = self._make_source_df(
+            spark,
+            [
+                ("endpoint-aaa", "tree-preservation-order"),
+                ("endpoint-aaa", "tree"),
+            ],
+        )
+
+        result = _backfill_dataset_from_source(log_df, source_df)
+
+        datasets = {row["dataset"] for row in result.collect()}
+        assert datasets == {"tree-preservation-order", "tree"}
+
+    def test_endpoint_not_in_source_keeps_empty_dataset(self, spark):
+        """A failing endpoint with no source entry stays with dataset=''."""
+        log_df = self._make_log_df(spark, [("endpoint-unknown", "", "404", "", "")])
+        source_df = self._make_source_df(
+            spark, [("endpoint-other", "conservation-area")]
+        )
+
+        result = _backfill_dataset_from_source(log_df, source_df)
+
+        rows = result.collect()
+        assert len(rows) == 1
+        assert rows[0]["dataset"] == ""

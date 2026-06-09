@@ -21,7 +21,7 @@ from functools import reduce
 import boto3
 from cloudpathlib import AnyPath, S3Path
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col
+from pyspark.sql.functions import col, explode, split
 
 from jobs.config.metadata import load_metadata
 from jobs.read import read_old_resources
@@ -617,6 +617,23 @@ def _load_issue_type_df(spark):
     return spark.createDataFrame(rows, ["issue_type", "severity", "responsibility"])
 
 
+def _backfill_dataset_from_source(log_df, endpoint_dataset_df):
+    """
+    Fill in missing dataset values for failed log entries using the endpoint → source lookup.
+
+    Rows with dataset already set are left unchanged. Rows with dataset="" are joined
+    against endpoint_dataset_df; if an endpoint serves multiple datasets the row expands
+    to one row per dataset.
+    """
+    missing_df = log_df.filter(col("dataset") == "")
+    resolved_df = (
+        missing_df.drop("dataset")
+        .join(endpoint_dataset_df, on="endpoint", how="left")
+        .fillna("", subset=["dataset"])
+    )
+    return log_df.filter(col("dataset") != "").unionByName(resolved_df)
+
+
 class TaskPipeline(BasePipeline):
     """
     Cross-collection pipeline for generating task data from log and issue files.
@@ -643,6 +660,9 @@ class TaskPipeline(BasePipeline):
         issue_files = [str(p) for p in base.glob("*-collection/issue/*/*.csv")]
         logger.info(f"TaskPipeline: Found {len(issue_files)} issue files")
 
+        source_files = [str(p) for p in base.glob("*-collection/collection/source.csv")]
+        logger.info(f"TaskPipeline: Found {len(source_files)} source files")
+
         if not resource_files:
             logger.warning("TaskPipeline: No resource files found — nothing to process")
             return
@@ -658,6 +678,24 @@ class TaskPipeline(BasePipeline):
         active_df.cache()
         logger.info("TaskPipeline: Active resources loaded")
 
+        # -- Endpoint → dataset lookup (from source.csv) ----------------------
+        # Needed to fill in dataset for failed log entries where resource is blank.
+        # source.csv maps endpoint hash → pipelines (dataset name), with ';'
+        # separating multiple datasets when one endpoint serves more than one.
+        if source_files:
+            source_df = spark.read.option("header", "true").csv(source_files)
+            source_df = normalise_column_names(source_df)
+            endpoint_dataset_df = (
+                source_df.filter(col("end_date").isNull() | (col("end_date") == ""))
+                .select(
+                    col("endpoint"),
+                    explode(split(col("pipelines"), ";")).alias("dataset"),
+                )
+                .distinct()
+            )
+        else:
+            endpoint_dataset_df = None
+
         # -- Log tasks --------------------------------------------------------
         if not log_files:
             logger.warning("TaskPipeline: No log files found — skipping log tasks")
@@ -667,6 +705,10 @@ class TaskPipeline(BasePipeline):
             log_df = normalise_column_names(log_df)
             log_df = log_df.join(active_df, on="resource", how="left")
             log_df = log_df.fillna("", subset=["dataset"])
+
+            if endpoint_dataset_df is not None:
+                log_df = _backfill_dataset_from_source(log_df, endpoint_dataset_df)
+
             log_tasks = transform_log_to_tasks(log_df)
 
         # -- Issue tasks ------------------------------------------------------
