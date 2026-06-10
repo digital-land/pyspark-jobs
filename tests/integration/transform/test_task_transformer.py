@@ -19,23 +19,41 @@ def _build_df(spark, rows, columns):
     return spark.createDataFrame(rows, schema=columns)
 
 
+LOG_COLUMNS = ["endpoint", "resource", "status", "exception", "dataset", "organisation"]
+
+
 class TestTransformLogToTasks:
 
     def test_filters_out_200_rows_keeps_failures(self, spark):
         df = _build_df(
             spark,
             [
-                ("endpoint-aaa", "resource-aaa", "200", "", "dataset-a"),
-                ("endpoint-bbb", "resource-bbb", "404", "", "dataset-a"),
+                (
+                    "endpoint-aaa",
+                    "resource-aaa",
+                    "200",
+                    "",
+                    "dataset-a",
+                    "organisation-x",
+                ),
+                (
+                    "endpoint-bbb",
+                    "resource-bbb",
+                    "404",
+                    "",
+                    "dataset-a",
+                    "organisation-x",
+                ),
                 (
                     "endpoint-ccc",
                     "resource-ccc",
                     "500",
                     "Connection refused",
                     "dataset-a",
+                    "organisation-x",
                 ),
             ],
-            ["endpoint", "resource", "status", "exception", "dataset"],
+            LOG_COLUMNS,
         )
         result = transform_log_to_tasks(df)
         assert result is not None
@@ -45,16 +63,34 @@ class TestTransformLogToTasks:
     def test_returns_none_when_all_rows_are_200(self, spark):
         df = _build_df(
             spark,
-            [("endpoint-aaa", "resource-aaa", "200", "", "dataset-a")],
-            ["endpoint", "resource", "status", "exception", "dataset"],
+            [
+                (
+                    "endpoint-aaa",
+                    "resource-aaa",
+                    "200",
+                    "",
+                    "dataset-a",
+                    "organisation-x",
+                )
+            ],
+            LOG_COLUMNS,
         )
         assert transform_log_to_tasks(df) is None
 
     def test_output_has_correct_columns(self, spark):
         df = _build_df(
             spark,
-            [("endpoint-aaa", "resource-aaa", "404", "", "dataset-a")],
-            ["endpoint", "resource", "status", "exception", "dataset"],
+            [
+                (
+                    "endpoint-aaa",
+                    "resource-aaa",
+                    "404",
+                    "",
+                    "dataset-a",
+                    "organisation-x",
+                )
+            ],
+            LOG_COLUMNS,
         )
         result = transform_log_to_tasks(df)
         expected = {
@@ -74,8 +110,17 @@ class TestTransformLogToTasks:
     def test_task_source_is_log(self, spark):
         df = _build_df(
             spark,
-            [("endpoint-aaa", "resource-aaa", "404", "", "dataset-a")],
-            ["endpoint", "resource", "status", "exception", "dataset"],
+            [
+                (
+                    "endpoint-aaa",
+                    "resource-aaa",
+                    "404",
+                    "",
+                    "dataset-a",
+                    "organisation-x",
+                )
+            ],
+            LOG_COLUMNS,
         )
         result = transform_log_to_tasks(df)
         rows = result.collect()
@@ -84,8 +129,17 @@ class TestTransformLogToTasks:
     def test_severity_and_responsibility_are_fixed(self, spark):
         df = _build_df(
             spark,
-            [("endpoint-aaa", "resource-aaa", "500", "", "dataset-a")],
-            ["endpoint", "resource", "status", "exception", "dataset"],
+            [
+                (
+                    "endpoint-aaa",
+                    "resource-aaa",
+                    "500",
+                    "",
+                    "dataset-a",
+                    "organisation-x",
+                )
+            ],
+            LOG_COLUMNS,
         )
         result = transform_log_to_tasks(df)
         row = result.collect()[0]
@@ -102,9 +156,10 @@ class TestTransformLogToTasks:
                     "500",
                     "Connection refused",
                     "dataset-a",
+                    "organisation-x",
                 )
             ],
-            ["endpoint", "resource", "status", "exception", "dataset"],
+            LOG_COLUMNS,
         )
         result = transform_log_to_tasks(df)
         details = json.loads(result.collect()[0]["details"])
@@ -114,8 +169,17 @@ class TestTransformLogToTasks:
     def test_reference_is_16_chars(self, spark):
         df = _build_df(
             spark,
-            [("endpoint-aaa", "resource-aaa", "404", "", "dataset-a")],
-            ["endpoint", "resource", "status", "exception", "dataset"],
+            [
+                (
+                    "endpoint-aaa",
+                    "resource-aaa",
+                    "404",
+                    "",
+                    "dataset-a",
+                    "organisation-x",
+                )
+            ],
+            LOG_COLUMNS,
         )
         result = transform_log_to_tasks(df)
         assert len(result.collect()[0]["reference"]) == 16
@@ -123,8 +187,17 @@ class TestTransformLogToTasks:
     def test_reference_is_stable_for_same_input(self, spark):
         df = _build_df(
             spark,
-            [("endpoint-aaa", "resource-aaa", "404", "", "dataset-a")],
-            ["endpoint", "resource", "status", "exception", "dataset"],
+            [
+                (
+                    "endpoint-aaa",
+                    "resource-aaa",
+                    "404",
+                    "",
+                    "dataset-a",
+                    "organisation-x",
+                )
+            ],
+            LOG_COLUMNS,
         )
         ref1 = transform_log_to_tasks(df).collect()[0]["reference"]
         ref2 = transform_log_to_tasks(df).collect()[0]["reference"]
@@ -140,6 +213,7 @@ class TestTransformLogToTasks:
                     "404",
                     "",
                     "dataset-a",
+                    "organisation-x",
                     "2026-01-01",
                     "200",
                     "1.2",
@@ -150,6 +224,7 @@ class TestTransformLogToTasks:
                     "404",
                     "",
                     "dataset-a",
+                    "organisation-x",
                     "2026-01-02",
                     "200",
                     "1.1",
@@ -160,21 +235,13 @@ class TestTransformLogToTasks:
                     "404",
                     "",
                     "dataset-a",
+                    "organisation-x",
                     "2026-01-03",
                     "201",
                     "0.9",
                 ),
             ],
-            [
-                "endpoint",
-                "resource",
-                "status",
-                "exception",
-                "dataset",
-                "entry_date",
-                "bytes",
-                "elapsed",
-            ],
+            LOG_COLUMNS + ["entry_date", "bytes", "elapsed"],
         )
         result = transform_log_to_tasks(df)
         assert result.count() == 1
@@ -184,21 +251,48 @@ class TestTransformLogToTasks:
         df = _build_df(
             spark,
             [
-                ("endpoint-aaa", "resource-aaa", "404", "", "dataset-a"),
-                ("endpoint-aaa", "resource-aaa", "404", "", "dataset-a"),
+                (
+                    "endpoint-aaa",
+                    "resource-aaa",
+                    "404",
+                    "",
+                    "dataset-a",
+                    "organisation-x",
+                ),
+                (
+                    "endpoint-aaa",
+                    "resource-aaa",
+                    "404",
+                    "",
+                    "dataset-a",
+                    "organisation-x",
+                ),
                 (
                     "endpoint-bbb",
                     "resource-bbb",
                     "500",
                     "Connection refused",
                     "dataset-a",
+                    "organisation-x",
                 ),
             ],
-            ["endpoint", "resource", "status", "exception", "dataset"],
+            LOG_COLUMNS,
         )
         result = transform_log_to_tasks(df)
         references = [row["reference"] for row in result.collect()]
         assert len(references) == len(set(references))
+
+
+ISSUE_COLUMNS = [
+    "dataset",
+    "resource",
+    "field",
+    "issue_type",
+    "severity",
+    "responsibility",
+    "organisation",
+    "endpoint",
+]
 
 
 class TestTransformIssuesToTasks:
@@ -214,6 +308,8 @@ class TestTransformIssuesToTasks:
                     "invalid-geometry",
                     "error",
                     "external",
+                    "organisation-x",
+                    "endpoint-aaa",
                 ),
                 (
                     "dataset-a",
@@ -222,16 +318,11 @@ class TestTransformIssuesToTasks:
                     "missing-value",
                     "warning",
                     "internal",
+                    "organisation-x",
+                    "endpoint-aaa",
                 ),
             ],
-            [
-                "dataset",
-                "resource",
-                "field",
-                "issue_type",
-                "severity",
-                "responsibility",
-            ],
+            ISSUE_COLUMNS,
         )
         result = transform_issues_to_tasks(df)
         assert result is not None
@@ -248,16 +339,11 @@ class TestTransformIssuesToTasks:
                     "missing-value",
                     "warning",
                     "internal",
+                    "organisation-x",
+                    "endpoint-aaa",
                 )
             ],
-            [
-                "dataset",
-                "resource",
-                "field",
-                "issue_type",
-                "severity",
-                "responsibility",
-            ],
+            ISSUE_COLUMNS,
         )
         assert transform_issues_to_tasks(df) is None
 
@@ -272,6 +358,8 @@ class TestTransformIssuesToTasks:
                     "invalid-geometry",
                     "error",
                     "external",
+                    "organisation-x",
+                    "endpoint-aaa",
                 ),
                 (
                     "dataset-a",
@@ -280,6 +368,8 @@ class TestTransformIssuesToTasks:
                     "invalid-geometry",
                     "error",
                     "external",
+                    "organisation-x",
+                    "endpoint-aaa",
                 ),
                 (
                     "dataset-a",
@@ -288,16 +378,11 @@ class TestTransformIssuesToTasks:
                     "missing-value",
                     "error",
                     "external",
+                    "organisation-x",
+                    "endpoint-aaa",
                 ),
             ],
-            [
-                "dataset",
-                "resource",
-                "field",
-                "issue_type",
-                "severity",
-                "responsibility",
-            ],
+            ISSUE_COLUMNS,
         )
         result = transform_issues_to_tasks(df)
         assert result.count() == 2
@@ -320,16 +405,11 @@ class TestTransformIssuesToTasks:
                     "invalid-geometry",
                     "error",
                     "external",
+                    "organisation-x",
+                    "endpoint-aaa",
                 )
             ],
-            [
-                "dataset",
-                "resource",
-                "field",
-                "issue_type",
-                "severity",
-                "responsibility",
-            ],
+            ISSUE_COLUMNS,
         )
         result = transform_issues_to_tasks(df)
         expected = {
@@ -357,16 +437,11 @@ class TestTransformIssuesToTasks:
                     "invalid-geometry",
                     "error",
                     "external",
+                    "organisation-x",
+                    "endpoint-aaa",
                 )
             ],
-            [
-                "dataset",
-                "resource",
-                "field",
-                "issue_type",
-                "severity",
-                "responsibility",
-            ],
+            ISSUE_COLUMNS,
         )
         result = transform_issues_to_tasks(df)
         assert all(row["task_source"] == "issue" for row in result.collect())
@@ -382,16 +457,11 @@ class TestTransformIssuesToTasks:
                     "invalid-geometry",
                     "error",
                     "external",
+                    "organisation-x",
+                    "endpoint-aaa",
                 )
             ],
-            [
-                "dataset",
-                "resource",
-                "field",
-                "issue_type",
-                "severity",
-                "responsibility",
-            ],
+            ISSUE_COLUMNS,
         )
         result = transform_issues_to_tasks(df)
         details = json.loads(result.collect()[0]["details"])
@@ -410,19 +480,36 @@ class TestTransformIssuesToTasks:
                     "invalid-geometry",
                     "error",
                     "external",
+                    "organisation-x",
+                    "endpoint-aaa",
                 )
             ],
-            [
-                "dataset",
-                "resource",
-                "field",
-                "issue_type",
-                "severity",
-                "responsibility",
-            ],
+            ISSUE_COLUMNS,
         )
         result = transform_issues_to_tasks(df)
         assert len(result.collect()[0]["reference"]) == 16
+
+    def test_organisation_and_endpoint_are_carried_through(self, spark):
+        df = _build_df(
+            spark,
+            [
+                (
+                    "dataset-a",
+                    "resource-aaa",
+                    "geometry",
+                    "invalid-geometry",
+                    "error",
+                    "external",
+                    "organisation:1",
+                    "endpoint-aaa",
+                )
+            ],
+            ISSUE_COLUMNS,
+        )
+        result = transform_issues_to_tasks(df)
+        row = result.collect()[0]
+        assert row["organisation"] == "organisation:1"
+        assert row["endpoint"] == "endpoint-aaa"
 
     def test_references_are_unique(self, spark):
         """No two issue tasks should share a reference."""
@@ -436,6 +523,8 @@ class TestTransformIssuesToTasks:
                     "invalid-geometry",
                     "error",
                     "external",
+                    "organisation-x",
+                    "endpoint-aaa",
                 ),
                 (
                     "dataset-a",
@@ -444,6 +533,8 @@ class TestTransformIssuesToTasks:
                     "invalid-geometry",
                     "error",
                     "external",
+                    "organisation-x",
+                    "endpoint-aaa",
                 ),
                 (
                     "dataset-a",
@@ -452,16 +543,11 @@ class TestTransformIssuesToTasks:
                     "missing-value",
                     "error",
                     "external",
+                    "organisation-x",
+                    "endpoint-aaa",
                 ),
             ],
-            [
-                "dataset",
-                "resource",
-                "field",
-                "issue_type",
-                "severity",
-                "responsibility",
-            ],
+            ISSUE_COLUMNS,
         )
         result = transform_issues_to_tasks(df)
         references = [row["reference"] for row in result.collect()]

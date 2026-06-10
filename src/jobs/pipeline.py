@@ -21,7 +21,7 @@ from functools import reduce
 import boto3
 from cloudpathlib import AnyPath, S3Path
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col
+from pyspark.sql.functions import col, explode, split
 
 from jobs.config.metadata import load_metadata
 from jobs.read import read_old_resources
@@ -617,6 +617,39 @@ def _load_issue_type_df(spark):
     return spark.createDataFrame(rows, ["issue_type", "severity", "responsibility"])
 
 
+def _backfill_dataset_from_source(log_df, endpoint_dataset_df):
+    """
+    Fill in missing dataset values for failed log entries using the endpoint → source lookup.
+
+    Rows with dataset already set are left unchanged. Rows with dataset="" are joined
+    against endpoint_dataset_df; if an endpoint serves multiple datasets the row expands
+    to one row per dataset.
+    """
+    missing_df = log_df.filter(col("dataset") == "")
+    resolved_df = (
+        missing_df.drop("dataset")
+        .join(endpoint_dataset_df, on="endpoint", how="left")
+        .fillna("", subset=["dataset"])
+    )
+    return log_df.filter(col("dataset") != "").unionByName(resolved_df)
+
+
+def _backfill_organisation_from_source(log_df, endpoint_organisation_df):
+    """
+    Fill in missing organisation values for failed log entries using the endpoint → source lookup.
+
+    Mirrors _backfill_dataset_from_source: rows with organisation already set are left
+    unchanged, rows with organisation="" are joined against endpoint_organisation_df.
+    """
+    missing_df = log_df.filter(col("organisation") == "")
+    resolved_df = (
+        missing_df.drop("organisation")
+        .join(endpoint_organisation_df, on="endpoint", how="left")
+        .fillna("", subset=["organisation"])
+    )
+    return log_df.filter(col("organisation") != "").unionByName(resolved_df)
+
+
 class TaskPipeline(BasePipeline):
     """
     Cross-collection pipeline for generating task data from log and issue files.
@@ -643,6 +676,9 @@ class TaskPipeline(BasePipeline):
         issue_files = [str(p) for p in base.glob("*-collection/issue/*/*.csv")]
         logger.info(f"TaskPipeline: Found {len(issue_files)} issue files")
 
+        source_files = [str(p) for p in base.glob("*-collection/collection/source.csv")]
+        logger.info(f"TaskPipeline: Found {len(source_files)} source files")
+
         if not resource_files:
             logger.warning("TaskPipeline: No resource files found — nothing to process")
             return
@@ -652,11 +688,39 @@ class TaskPipeline(BasePipeline):
         resource_df = normalise_column_names(resource_df)
         active_df = (
             resource_df.filter(col("end_date").isNull() | (col("end_date") == ""))
-            .select("resource", col("datasets").alias("dataset"))
+            .select(
+                "resource",
+                col("datasets").alias("dataset"),
+                col("organisations").alias("organisation"),
+                col("endpoints").alias("endpoint"),
+            )
             .distinct()
         )
         active_df.cache()
         logger.info("TaskPipeline: Active resources loaded")
+
+        # -- Endpoint → dataset/organisation lookups (from source.csv) ----------
+        # Needed to fill in dataset for failed log entries where resource is blank.
+        # source.csv maps endpoint hash → pipelines (dataset name), with ';'
+        # separating multiple datasets when one endpoint serves more than one.
+        if source_files:
+            source_df = spark.read.option("header", "true").csv(source_files)
+            source_df = normalise_column_names(source_df)
+            active_source_df = source_df.filter(
+                col("end_date").isNull() | (col("end_date") == "")
+            )
+            endpoint_dataset_df = active_source_df.select(
+                col("endpoint"),
+                explode(split(col("pipelines"), ";")).alias("dataset"),
+            ).distinct()
+
+            # dropDuplicates, not distinct because organisation isn't part of the reference hash
+            endpoint_organisation_df = active_source_df.select(
+                "endpoint", "organisation"
+            ).dropDuplicates(["endpoint"])
+        else:
+            endpoint_dataset_df = None
+            endpoint_organisation_df = None
 
         # -- Log tasks --------------------------------------------------------
         if not log_files:
@@ -665,8 +729,20 @@ class TaskPipeline(BasePipeline):
         else:
             log_df = spark.read.option("header", "true").csv(log_files)
             log_df = normalise_column_names(log_df)
-            log_df = log_df.join(active_df, on="resource", how="left")
-            log_df = log_df.fillna("", subset=["dataset"])
+            log_df = log_df.join(
+                active_df.select("resource", "dataset", "organisation"),
+                on="resource",
+                how="left",
+            )
+            log_df = log_df.fillna("", subset=["dataset", "organisation"])
+
+            if endpoint_dataset_df is not None:
+                log_df = _backfill_dataset_from_source(log_df, endpoint_dataset_df)
+            if endpoint_organisation_df is not None:
+                log_df = _backfill_organisation_from_source(
+                    log_df, endpoint_organisation_df
+                )
+
             log_tasks = transform_log_to_tasks(log_df)
 
         # -- Issue tasks ------------------------------------------------------
@@ -677,8 +753,11 @@ class TaskPipeline(BasePipeline):
             issue_df = spark.read.option("header", "true").csv(issue_files)
             issue_df = normalise_column_names(issue_df)
             issue_df = issue_df.join(
-                active_df.select("resource"), on="resource", how="inner"
+                active_df.select("resource", "organisation", "endpoint"),
+                on="resource",
+                how="inner",
             )
+            issue_df = issue_df.fillna("", subset=["organisation", "endpoint"])
 
             issue_type_df = _load_issue_type_df(spark)
             issue_df = issue_df.join(issue_type_df, on="issue_type", how="left")

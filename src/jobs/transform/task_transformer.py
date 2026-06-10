@@ -41,7 +41,9 @@ def transform_log_to_tasks(df: DataFrame, entry_date: str = None) -> DataFrame:
 
     df = (
         df.filter(col("status") != "200")
-        .select("dataset", "endpoint", "resource", "status", "exception")
+        .select(
+            "dataset", "organisation", "endpoint", "resource", "status", "exception"
+        )
         .distinct()
     )
 
@@ -59,7 +61,6 @@ def transform_log_to_tasks(df: DataFrame, entry_date: str = None) -> DataFrame:
                 )
             ),
         )
-        .withColumn("organisation", lit(""))
         .withColumn("severity", lit("error"))
         .withColumn("responsibility", lit("external"))
         .withColumn("task_source", lit("log"))
@@ -103,6 +104,8 @@ def transform_issues_to_tasks(df: DataFrame, entry_date: str = None) -> DataFram
         count("*").alias("count"),
         first("severity").alias("severity"),
         first("responsibility").alias("responsibility"),
+        first("organisation").alias("organisation"),
+        first("endpoint").alias("endpoint"),
     )
 
     grouped = (
@@ -116,8 +119,6 @@ def transform_issues_to_tasks(df: DataFrame, entry_date: str = None) -> DataFram
                 )
             ),
         )
-        .withColumn("organisation", lit(""))
-        .withColumn("endpoint", lit(""))
         .withColumn("task_source", lit("issue"))
         .withColumn("entry_date", lit(entry_date))
     )
