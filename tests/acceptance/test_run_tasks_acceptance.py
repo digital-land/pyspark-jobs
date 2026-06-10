@@ -75,18 +75,39 @@ TREE_LOG_ROWS = [
     },
 ]
 
-RESOURCE_COLUMNS = ["resource", "datasets", "end-date"]
+RESOURCE_COLUMNS = ["resource", "datasets", "organisations", "endpoints", "end-date"]
 
 CA_RESOURCE_ROWS = [
-    {"resource": "resource-ca-aaa", "datasets": "conservation-area", "end-date": ""},
+    {
+        "resource": "resource-ca-aaa",
+        "datasets": "conservation-area",
+        "organisations": "organisation:1",
+        "endpoints": "endpoint-ca-aaa",
+        "end-date": "",
+    },
 ]
 
-SOURCE_COLUMNS = ["endpoint", "pipelines", "end-date"]
+SOURCE_COLUMNS = ["endpoint", "pipelines", "organisation", "end-date"]
 
 CA_SOURCE_ROWS = [
-    {"endpoint": "endpoint-ca-aaa", "pipelines": "conservation-area", "end-date": ""},
-    {"endpoint": "endpoint-ca-bbb", "pipelines": "conservation-area", "end-date": ""},
-    {"endpoint": "endpoint-ca-ccc", "pipelines": "conservation-area", "end-date": ""},
+    {
+        "endpoint": "endpoint-ca-aaa",
+        "pipelines": "conservation-area",
+        "organisation": "organisation:1",
+        "end-date": "",
+    },
+    {
+        "endpoint": "endpoint-ca-bbb",
+        "pipelines": "conservation-area",
+        "organisation": "organisation:1",
+        "end-date": "",
+    },
+    {
+        "endpoint": "endpoint-ca-ccc",
+        "pipelines": "conservation-area",
+        "organisation": "organisation:1",
+        "end-date": "",
+    },
 ]
 
 # endpoint-tree-aaa serves two datasets — tests the multi-dataset expansion fix
@@ -94,6 +115,7 @@ TREE_SOURCE_ROWS = [
     {
         "endpoint": "endpoint-tree-aaa",
         "pipelines": "tree-preservation-order;tree",
+        "organisation": "organisation:2",
         "end-date": "",
     },
 ]
@@ -211,13 +233,14 @@ def test_e2e_task_generation_pipeline(
         row["dataset"] != "" for row in rows
     ), "Some tasks have empty dataset: " + str([r for r in rows if r["dataset"] == ""])
 
-    # The 200 response should not have produced a task
-    endpoints_with_tasks = {row["endpoint"] for row in rows}
-    assert "endpoint-ca-aaa" not in endpoints_with_tasks
-
-    # Two failed ca endpoints → two log tasks
     log_rows = [r for r in rows if r["task_source"] == "log"]
     issue_rows = [r for r in rows if r["task_source"] == "issue"]
+
+    # The 200 response should not have produced a log task
+    log_endpoints_with_tasks = {row["endpoint"] for row in log_rows}
+    assert "endpoint-ca-aaa" not in log_endpoints_with_tasks
+
+    # Two failed ca endpoints → two log tasks
     assert len(log_rows) == 4  # 2 ca failures + 2 from the multi-dataset tree endpoint
     assert len(issue_rows) == 1
 
@@ -230,6 +253,10 @@ def test_e2e_task_generation_pipeline(
     issue_details = json.loads(issue_rows[0]["details"])
     assert issue_details["issue_type"] == "invalid-geometry"
     assert issue_details["count"] == 2
+
+    # Issue task carries organisation/endpoint from the resource it was raised against
+    assert issue_rows[0]["organisation"] == "organisation:1"
+    assert issue_rows[0]["endpoint"] == "endpoint-ca-aaa"
 
     # All references are unique across the whole output
     references = [r["reference"] for r in rows]

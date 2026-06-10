@@ -17,6 +17,7 @@ from jobs.pipeline import (
     PipelineConfig,
     TaskPipeline,
     _backfill_dataset_from_source,
+    _backfill_organisation_from_source,
 )
 
 # -- Test data ----------------------------------------------------------------
@@ -500,8 +501,16 @@ class TestTaskPipeline:
 
         _write_csv(
             os.path.join(base, "test-collection", "collection", "resource.csv"),
-            ["resource", "datasets", "end_date"],
-            [{"resource": "resource-aaa", "datasets": "dataset-a", "end_date": ""}],
+            ["resource", "datasets", "organisations", "endpoints", "end_date"],
+            [
+                {
+                    "resource": "resource-aaa",
+                    "datasets": "dataset-a",
+                    "organisations": "organisation:1",
+                    "endpoints": "http://endpoint-a",
+                    "end_date": "",
+                }
+            ],
         )
 
         # Same endpoint failing on two different dates — the key scenario.
@@ -646,3 +655,62 @@ class TestBackfillDatasetFromSource:
         rows = result.collect()
         assert len(rows) == 1
         assert rows[0]["dataset"] == ""
+
+
+class TestBackfillOrganisationFromSource:
+
+    def _make_log_df(self, spark, rows):
+        return spark.createDataFrame(
+            rows,
+            ["endpoint", "resource", "status", "exception", "dataset", "organisation"],
+        )
+
+    def _make_source_df(self, spark, rows):
+        return spark.createDataFrame(rows, ["endpoint", "organisation"])
+
+    def test_fills_in_organisation_for_failed_row(self, spark):
+        """A row with no organisation gets its organisation from the source lookup."""
+        log_df = self._make_log_df(
+            spark, [("endpoint-aaa", "", "404", "", "conservation-area", "")]
+        )
+        source_df = self._make_source_df(spark, [("endpoint-aaa", "organisation:1")])
+
+        result = _backfill_organisation_from_source(log_df, source_df)
+
+        rows = result.collect()
+        assert len(rows) == 1
+        assert rows[0]["organisation"] == "organisation:1"
+
+    def test_existing_organisation_is_not_changed(self, spark):
+        """A row that already has an organisation is left untouched."""
+        log_df = self._make_log_df(
+            spark,
+            [
+                (
+                    "endpoint-aaa",
+                    "resource-aaa",
+                    "200",
+                    "",
+                    "conservation-area",
+                    "organisation:1",
+                )
+            ],
+        )
+        source_df = self._make_source_df(spark, [("endpoint-aaa", "organisation:2")])
+
+        result = _backfill_organisation_from_source(log_df, source_df)
+
+        rows = result.collect()
+        assert len(rows) == 1
+        assert rows[0]["organisation"] == "organisation:1"
+
+    def test_endpoint_not_in_source_keeps_empty_organisation(self, spark):
+        """A failing endpoint with no source entry stays with organisation=''."""
+        log_df = self._make_log_df(spark, [("endpoint-unknown", "", "404", "", "", "")])
+        source_df = self._make_source_df(spark, [("endpoint-other", "organisation:1")])
+
+        result = _backfill_organisation_from_source(log_df, source_df)
+
+        rows = result.collect()
+        assert len(rows) == 1
+        assert rows[0]["organisation"] == ""
