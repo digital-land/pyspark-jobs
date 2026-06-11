@@ -766,8 +766,9 @@ class TaskPipeline(BasePipeline):
                     f"TaskPipeline: {issue_df.count()} issue rows for active resources after joining with issue type metadata"
                 )
                 logger.debug(
-                    f"TaskPipeline: {issue_df.filter((col('severity') == 'error') & (col('responsibility') == 'external')).count()} rows with severity=error and responsibility=external — these become issue tasks"
+                    f"TaskPipeline: {issue_df.filter(col('severity').isin('error', 'warning', 'notice')).count()} rows with severity in (error, warning, notice) — these become issue tasks"
                 )
+
             issue_tasks = transform_issues_to_tasks(issue_df)
 
         # -- Union and write --------------------------------------------------

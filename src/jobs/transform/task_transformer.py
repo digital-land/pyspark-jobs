@@ -4,13 +4,16 @@ from datetime import date
 
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import (
+    array_distinct,
     coalesce,
     col,
     concat_ws,
     count,
+    explode,
     first,
     lit,
     sha2,
+    split,
     struct,
     substring,
     to_json,
@@ -21,12 +24,14 @@ from jobs.utils.logger_config import get_logger
 logger = get_logger(__name__)
 
 
-# NOTE: This module mirrors the task transform logic in digital-land-python:
+# NOTE: This module mirrors some of the task transform logic in digital-land-python:
 # digital_land/pipeline/task.py (_transform_log_to_tasks, _transform_issues_to_tasks).
-# The two implementations use different frameworks (PySpark vs Polars) but must
-# produce identical output schemas and reference hashes for the same input data.
-# If you change filtering logic, grouping, details JSON structure, or the reference
-# hash inputs here, make the equivalent change there too (and vice versa).
+# transform_issues_to_tasks now intentionally diverges: it filters severity in
+# (error, warning, notice) with no responsibility filter, explodes ';'-separated
+# organisation values to one task row per organisation, and includes organisation
+# in the reference hash. digital-land-python's task.py still uses
+# severity=error/responsibility=external and a hash without organisation —
+# bring these back in sync if/when that implementation is updated to match.
 
 
 def transform_log_to_tasks(df: DataFrame, entry_date: str = None) -> DataFrame:
@@ -88,23 +93,28 @@ def transform_issues_to_tasks(df: DataFrame, entry_date: str = None) -> DataFram
     Transform an issue DataFrame into task rows.
 
     Expects df to already be filtered to active resources.
-    Filters to severity=error and responsibility=external, then groups
-    by dataset/resource/field/issue-type and counts rows.
     """
     entry_date = entry_date or str(date.today())
     logger.info("transform_issues_to_tasks: Starting")
 
-    df = df.filter((col("severity") == "error") & (col("responsibility") == "external"))
+    df = df.filter(col("severity").isin("error", "warning", "notice"))
 
     if df.rdd.isEmpty():
         logger.info("transform_issues_to_tasks: No matching issue rows found")
         return None
 
-    grouped = df.groupBy("dataset", "resource", "field", "issue_type").agg(
+    # array_distinct guards against an org appearing twice in the ';'-list,
+    # which would otherwise double-count this issue for that org.
+    df = df.withColumn(
+        "organisation", explode(array_distinct(split(col("organisation"), ";")))
+    )
+
+    grouped = df.groupBy(
+        "dataset", "resource", "field", "issue_type", "organisation"
+    ).agg(
         count("*").alias("count"),
         first("severity").alias("severity"),
         first("responsibility").alias("responsibility"),
-        first("organisation").alias("organisation"),
         first("endpoint").alias("endpoint"),
     )
 
@@ -140,6 +150,11 @@ def transform_issues_to_tasks(df: DataFrame, entry_date: str = None) -> DataFram
 
 
 def _add_reference(df: DataFrame) -> DataFrame:
+    """
+    Adds a `reference` column: a 16-char hex digest of dataset, organisation,
+    endpoint, resource, task_source and details. organisation is included so
+    that exploded per-organisation issue task rows.
+    """
     return df.withColumn(
         "reference",
         substring(
@@ -147,6 +162,7 @@ def _add_reference(df: DataFrame) -> DataFrame:
                 concat_ws(
                     "|",
                     coalesce(col("dataset"), lit("")),
+                    coalesce(col("organisation"), lit("")),
                     coalesce(col("endpoint"), lit("")),
                     coalesce(col("resource"), lit("")),
                     col("task_source"),
