@@ -297,7 +297,8 @@ ISSUE_COLUMNS = [
 
 class TestTransformIssuesToTasks:
 
-    def test_filters_out_warning_and_internal_rows(self, spark):
+    def test_includes_internal_responsibility_rows(self, spark):
+        """responsibility is no longer filtered — internal issues are now included."""
         df = _build_df(
             spark,
             [
@@ -316,7 +317,38 @@ class TestTransformIssuesToTasks:
                     "resource-aaa",
                     "name",
                     "missing-value",
-                    "warning",
+                    "notice",
+                    "internal",
+                    "organisation-x",
+                    "endpoint-aaa",
+                ),
+            ],
+            ISSUE_COLUMNS,
+        )
+        result = transform_issues_to_tasks(df)
+        assert result is not None
+        assert result.count() == 2
+
+    def test_excludes_info_severity_rows(self, spark):
+        df = _build_df(
+            spark,
+            [
+                (
+                    "dataset-a",
+                    "resource-aaa",
+                    "geometry",
+                    "invalid-geometry",
+                    "error",
+                    "external",
+                    "organisation-x",
+                    "endpoint-aaa",
+                ),
+                (
+                    "dataset-a",
+                    "resource-aaa",
+                    "name",
+                    "missing-value",
+                    "info",
                     "internal",
                     "organisation-x",
                     "endpoint-aaa",
@@ -337,7 +369,7 @@ class TestTransformIssuesToTasks:
                     "resource-aaa",
                     "name",
                     "missing-value",
-                    "warning",
+                    "info",
                     "internal",
                     "organisation-x",
                     "endpoint-aaa",
@@ -546,6 +578,111 @@ class TestTransformIssuesToTasks:
                     "organisation-x",
                     "endpoint-aaa",
                 ),
+            ],
+            ISSUE_COLUMNS,
+        )
+        result = transform_issues_to_tasks(df)
+        references = [row["reference"] for row in result.collect()]
+        assert len(references) == len(set(references))
+
+    def test_explodes_multi_org_into_one_task_per_organisation(self, spark):
+        df = _build_df(
+            spark,
+            [
+                (
+                    "dataset-a",
+                    "resource-aaa",
+                    "geometry",
+                    "invalid-geometry",
+                    "error",
+                    "external",
+                    "organisation-x;organisation-y",
+                    "endpoint-aaa",
+                )
+            ],
+            ISSUE_COLUMNS,
+        )
+        result = transform_issues_to_tasks(df)
+        rows = result.collect()
+        assert len(rows) == 2
+        assert {row["organisation"] for row in rows} == {
+            "organisation-x",
+            "organisation-y",
+        }
+
+    def test_duplicate_organisation_in_list_is_not_double_counted(self, spark):
+        df = _build_df(
+            spark,
+            [
+                (
+                    "dataset-a",
+                    "resource-aaa",
+                    "geometry",
+                    "invalid-geometry",
+                    "error",
+                    "external",
+                    "organisation-x;organisation-x",
+                    "endpoint-aaa",
+                )
+            ],
+            ISSUE_COLUMNS,
+        )
+        result = transform_issues_to_tasks(df)
+        rows = result.collect()
+        assert len(rows) == 1
+        assert json.loads(rows[0]["details"])["count"] == 1
+
+    def test_per_organisation_counts_after_explode(self, spark):
+        """An issue on a resource shared by two orgs, plus another issue on the
+        same resource/field affecting only one of them, should produce
+        per-organisation counts rather than one combined count."""
+        df = _build_df(
+            spark,
+            [
+                (
+                    "dataset-a",
+                    "resource-aaa",
+                    "geometry",
+                    "invalid-geometry",
+                    "error",
+                    "external",
+                    "organisation-x;organisation-y",
+                    "endpoint-aaa",
+                ),
+                (
+                    "dataset-a",
+                    "resource-aaa",
+                    "geometry",
+                    "invalid-geometry",
+                    "error",
+                    "external",
+                    "organisation-x",
+                    "endpoint-aaa",
+                ),
+            ],
+            ISSUE_COLUMNS,
+        )
+        result = transform_issues_to_tasks(df)
+        by_org = {row["organisation"]: row for row in result.collect()}
+        assert json.loads(by_org["organisation-x"]["details"])["count"] == 2
+        assert json.loads(by_org["organisation-y"]["details"])["count"] == 1
+
+    def test_exploded_org_rows_have_distinct_references(self, spark):
+        """organisation is part of the reference hash, so per-org rows from the
+        same source issue don't collide on the Postgres task_pkey."""
+        df = _build_df(
+            spark,
+            [
+                (
+                    "dataset-a",
+                    "resource-aaa",
+                    "geometry",
+                    "invalid-geometry",
+                    "error",
+                    "external",
+                    "organisation-x;organisation-y",
+                    "endpoint-aaa",
+                )
             ],
             ISSUE_COLUMNS,
         )
