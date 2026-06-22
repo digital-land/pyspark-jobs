@@ -16,6 +16,7 @@
 # ================================================================================
 
 import json
+import logging
 import time
 from datetime import datetime
 
@@ -25,9 +26,8 @@ ENTITY_TABLE_NAME = "entity"
 
 # writing to postgres db
 from jobs.utils.aws_secrets_manager import get_secret_emr_compatible  # noqa: E402
-from jobs.utils.logger_config import get_logger  # noqa: E402
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 # Optional import for direct database connections (table creation)
 try:
     import pg8000

@@ -1,5 +1,6 @@
 """Task transformer — generates task rows from log and issue DataFrames."""
 
+import logging
 from datetime import date
 
 from pyspark.sql import DataFrame
@@ -19,9 +20,7 @@ from pyspark.sql.functions import (
     to_json,
 )
 
-from jobs.utils.logger_config import get_logger
-
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 # NOTE: This module mirrors some of the task transform logic in digital-land-python:

@@ -1,6 +1,7 @@
 """Old entity transformer."""
 
 import io
+import logging
 from datetime import datetime
 
 import pandas as pd
@@ -11,9 +12,8 @@ from pyspark.sql.types import TimestampType
 
 from jobs.config.schema import get_schema
 from jobs.utils.df_utils import normalise_column_names
-from jobs.utils.logger_config import get_logger
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 _DATASET_SPEC_URL = "https://raw.githubusercontent.com/digital-land/specification/main/specification/dataset.csv"
 

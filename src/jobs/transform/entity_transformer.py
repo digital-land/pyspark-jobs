@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 
 from pyspark.sql.functions import (
@@ -20,10 +21,9 @@ from pyspark.sql.window import Window
 from jobs.config.schema import get_schema
 from jobs.utils.df_utils import show_df
 from jobs.utils.geometry_utils import calculate_centroid
-from jobs.utils.logger_config import get_logger, log_execution_time
 from jobs.utils.s3_dataset_typology import get_dataset_typology
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 _STANDARD_COLUMNS = {
     "dataset",
@@ -168,7 +168,6 @@ def _final_projection(df):
     return get_schema("entity").enforce(df).dropDuplicates(["entity"])
 
 
-@log_execution_time
 def transform_entity(df, dataset, organisation_df, env=None):
     logger.info("transform_entity: Transforming data for Entity table")
     show_df(df, 20, env)

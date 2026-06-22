@@ -58,9 +58,10 @@ Error Location Analysis:
 
 ### Step 3: Enable Debug Logging
 ```python
-# Add to your main function
-from jobs.utils.logger_config import setup_logging
-setup_logging(log_level="DEBUG", environment="development")
+# Add to your entry point command function
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
 ```
 
 ## 📊 Error Categories & Solutions

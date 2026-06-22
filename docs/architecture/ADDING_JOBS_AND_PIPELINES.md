@@ -131,7 +131,6 @@ def assemble_and_load_my_data(
     collection: str,
     database_url: str | None = None,
 ) -> None:
-    initialize_logging(env)
     # ... validate inputs, create spark session, build config, run pipelines ...
 ```
 
@@ -145,13 +144,12 @@ If the new job needs its own CLI command (e.g. for a different EMR job submissio
 
 ```python
 # entry_points/run_my_job.py
+import logging
 import sys
 import click
 from jobs import job
-from jobs.utils.logger_config import get_logger, setup_logging
 
-setup_logging(log_level="INFO", environment="production")
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @click.command()
@@ -164,6 +162,13 @@ logger = get_logger(__name__)
 @click.option("--database-url", default=None)
 def run(dataset, collection, env, collection_data_path, parquet_datasets_path, database_url):
     """ETL process for my data."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="[%(asctime)s] %(levelname)s - %(name)s:%(lineno)d - %(message)s",
+    )
+    for logger_name in ("boto3", "botocore", "urllib3", "py4j", "pyspark"):
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
+
     job.assemble_and_load_my_data(
         collection_data_path=collection_data_path or f"s3://{env}-collection-data/",
         parquet_datasets_path=parquet_datasets_path or f"s3://{env}-parquet-datasets/",

@@ -13,14 +13,17 @@ Usage:
     python examples/environment_variable_secrets_example.py
 """
 
+import json
+import logging
+import os
+import sys
 
 # Add the src directory to the path so we can import our modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from jobs.utils.aws_secrets_manager import get_secret_emr_compatible
-from jobs.utils.logger_config import get_logger
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def main():

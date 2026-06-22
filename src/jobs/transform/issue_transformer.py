@@ -1,14 +1,14 @@
 """Issue transformer."""
 
+import logging
 from datetime import datetime
 
 from pyspark.sql.functions import col, lit
 from pyspark.sql.types import TimestampType
 
 from jobs.config.schema import get_schema
-from jobs.utils.logger_config import get_logger
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def transform_issue(df, dataset):

@@ -1,5 +1,6 @@
 """Fact transformer."""
 
+import logging
 from datetime import datetime
 
 from pyspark.sql.functions import col, lit, row_number
@@ -7,9 +8,8 @@ from pyspark.sql.types import TimestampType
 from pyspark.sql.window import Window
 
 from jobs.config.schema import get_schema
-from jobs.utils.logger_config import get_logger
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def transform_fact(df, dataset):
