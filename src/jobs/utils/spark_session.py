@@ -2,12 +2,9 @@ import logging
 
 from pyspark.sql import SparkSession
 
-from jobs.utils.logger_config import log_execution_time
-
 logger = logging.getLogger(__name__)
 
 
-@log_execution_time
 def create_spark_session(app_name="EMR Transform Job"):
     try:
         logger.info(f"Creating Spark session with app name: {app_name}")
@@ -30,9 +27,6 @@ def create_spark_session(app_name="EMR Transform Job"):
             )
             .getOrCreate()
         )
-
-        # Set Spark logging level to reduce verbosity
-        # set_spark_log_level("WARN")
 
         return spark_session
 

@@ -14,15 +14,14 @@ Usage:
    - `--py-files`: S3 path to the `.whl` file
 """
 
+import logging
 import sys
 
 import click
 
 from jobs import job
-from jobs.utils.logger_config import get_logger, setup_logging
 
-setup_logging(log_level="INFO")
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @click.command()
@@ -41,6 +40,13 @@ logger = get_logger(__name__)
 )
 def run(parquet_datasets_path, retention_hours):
     """Run Delta Lake maintenance (OPTIMIZE + VACUUM) on all parquet datasets."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="[%(asctime)s] %(levelname)s - %(name)s:%(lineno)d - %(message)s",
+    )
+    for logger_name in ("boto3", "botocore", "urllib3", "py4j", "pyspark"):
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
+
     job.maintain_datasets(
         parquet_datasets_path=parquet_datasets_path,
         retention_hours=retention_hours,

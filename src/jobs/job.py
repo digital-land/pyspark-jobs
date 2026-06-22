@@ -24,7 +24,6 @@ from jobs.pipeline import (
 )
 from jobs.transform.old_entity_transformer import fetch_dataset_df, transform_old_entity
 from jobs.utils.db_url import build_database_url
-from jobs.utils.logger_config import initialize_logging
 from jobs.utils.postgres_writer_utils import write_old_entity_to_postgres
 from jobs.utils.s3_utils import list_delta_table_paths, validate_s3_path
 from jobs.utils.spark_session import create_spark_session
@@ -46,8 +45,6 @@ def assemble_and_load_entity(
     Validates inputs, creates Spark session, runs EntityPipeline
     and IssuePipeline, and handles cleanup.
     """
-    initialize_logging(env)
-
     # Validate environment
     allowed_envs = ["development", "staging", "production", "local"]
     if env not in allowed_envs:

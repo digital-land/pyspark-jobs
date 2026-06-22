@@ -22,15 +22,14 @@ Usage:
 This pattern ensures clean separation of concerns and supports scalable, maintainable job deployments.
 """
 
+import logging
 import sys
+
 import click
 
 from jobs import job
-from jobs.utils.logger_config import get_logger, setup_logging
 
-# Setup basic logging for the entry point
-setup_logging(log_level="INFO")
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @click.command()
@@ -84,6 +83,13 @@ def run(
     database_url,
 ):
     """ETL Process for Collection Data."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="[%(asctime)s] %(levelname)s - %(name)s:%(lineno)d - %(message)s",
+    )
+    for logger_name in ("boto3", "botocore", "urllib3", "py4j", "pyspark"):
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
+
     job.assemble_and_load_entity(
         collection_data_path=collection_data_path or f"s3://{env}-collection-data/",
         parquet_datasets_path=parquet_datasets_path or f"s3://{env}-parquet-datasets/",

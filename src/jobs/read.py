@@ -1,9 +1,10 @@
+import logging
+
 from pyspark.sql import DataFrame, SparkSession
 
 from jobs.utils.df_utils import normalise_column_names
-from jobs.utils.logger_config import get_logger
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def read_old_resources(spark: SparkSession, path: str) -> DataFrame:

@@ -102,7 +102,7 @@ cp dist/*.whl build_output/whl_pkg/
 pip install dist/pyspark_jobs-0.1.0-py3-none-any.whl
 
 # Test specific functionality
-python -c "from jobs.utils.logger_config import setup_logging; print('✅ Import works')"
+python -c "from jobs import job; print('Import works')"
 
 # Inspect package contents
 wheel show dist/pyspark_jobs-0.1.0-py3-none-any.whl

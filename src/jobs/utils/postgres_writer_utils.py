@@ -9,9 +9,8 @@ from pyspark.sql.types import DateType, IntegerType, LongType
 
 from jobs.utils.db_url import parse_database_url
 from jobs.utils.df_utils import show_df
-from jobs.utils.logger_config import get_logger
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # Datasets that require geometry to be subdivided and written to entity_subdivided.
 # Add dataset names here to include them in the subdivided write.

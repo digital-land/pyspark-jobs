@@ -11,7 +11,6 @@ tests/
 │       ├── test_aws_secrets_manager.py      # AWS Secrets Manager
 │       ├── test_db_url.py                   # Database URL parsing/building
 │       ├── test_df_utils.py                 # DataFrame utilities
-│       ├── test_logger_config.py            # Logger configuration
 │       └── test_s3_dataset_typology.py      # Dataset typology mapping
 ├── integration/                             # Tests with real Spark and/or database
 │   ├── test_logging_integration.py          # Logging integration

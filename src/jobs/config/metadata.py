@@ -5,12 +5,9 @@ import pkgutil
 
 import boto3
 
-from jobs.utils.logger_config import log_execution_time
-
 logger = logging.getLogger(__name__)
 
 
-@log_execution_time
 def load_metadata(uri: str) -> dict:
     """
     Load a JSON configuration file from either an S3 URI or a local file path.

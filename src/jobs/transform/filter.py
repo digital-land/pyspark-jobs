@@ -1,9 +1,9 @@
+import logging
+
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import col
 
-from jobs.utils.logger_config import get_logger
-
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def filter_old_resources(df: DataFrame, old_resources_df: DataFrame) -> DataFrame:

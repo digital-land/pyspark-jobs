@@ -14,20 +14,17 @@ def get_secret():
     region_name = os.getenv("AWS_REGION")
 
     if not secret_name or not region_name:
-        raise ValueError("Environment variables POSTGRES_SECRET_NAME and AWS_REGION must be set.")
+        raise ValueError(
+            "Environment variables POSTGRES_SECRET_NAME and AWS_REGION must be set."
+        )
 
     # Create a Secrets Manager client
     session = boto3.session.Session()
-    client = session.client(
-        service_name='secretsmanager',
-        region_name=region_name
-    )
+    client = session.client(service_name="secretsmanager", region_name=region_name)
 
     try:
-        get_secret_value_response = client.get_secret_value(
-            SecretId=secret_name
-        )
+        get_secret_value_response = client.get_secret_value(SecretId=secret_name)
     except ClientError as e:
         raise RuntimeError(f"Failed to retrieve secret: {e}")
 
-    return get_secret_value_response.get('SecretString')
+    return get_secret_value_response.get("SecretString")

@@ -1,19 +1,17 @@
 """S3 Writer utilities for data transformation and writing."""
 
+import logging
 import re
 from typing import List, Optional
 
 import boto3
 from pyspark.sql.functions import lit
 
-from jobs.utils.logger_config import get_logger, log_execution_time
-
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 df_entity = None
 
 
-@log_execution_time
 def write_delta(
     df,
     output_path: str,
