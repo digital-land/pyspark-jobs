@@ -189,10 +189,6 @@ if __name__ == "__main__":
 
 Entry points are intentionally minimal. All logic lives in the job function and pipelines — the entry point only parses CLI arguments and calls the job function.
 
-If a job needs environment-specific logging, derive the standard-library
-configuration explicitly from `env` inside the Click command. Do not configure
-logging in `src/jobs` modules.
-
 Deploy the same way as `run_main.py`: upload to S3 alongside the `.whl` and reference as the `entryPoint` in the EMR Serverless job submission.
 
 ---
