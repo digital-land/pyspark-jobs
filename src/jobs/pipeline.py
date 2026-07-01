@@ -20,8 +20,8 @@ from functools import reduce
 
 import boto3
 from cloudpathlib import AnyPath, S3Path
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, explode, split
+from pyspark.sql import SparkSession, Window
+from pyspark.sql.functions import col, explode, row_number, split
 
 from jobs.config.metadata import load_metadata
 from jobs.read import read_old_resources
@@ -650,6 +650,36 @@ def _backfill_organisation_from_source(log_df, endpoint_organisation_df):
     return log_df.filter(col("organisation") != "").unionByName(resolved_df)
 
 
+def _select_active_resources(resource_df):
+    """
+    Return the active resources: one row per endpoint — the most recently started
+    resource with no end_date.
+
+    An endpoint should have exactly one active resource (its current content). Some
+    endpoints have several resources left without an end_date (a stale-un-end-dated
+    data bug); those old rows carry issues that would otherwise be regenerated as
+    phantom tasks pointing at superseded resources. Keeping only the latest per
+    endpoint guards against that.
+    """
+    blank_end_date_df = resource_df.filter(
+        col("end_date").isNull() | (col("end_date") == "")
+    )
+    latest_per_endpoint = Window.partitionBy("endpoints").orderBy(
+        col("start_date").desc_nulls_last(), col("resource").asc()
+    )
+    return (
+        blank_end_date_df.withColumn("_rank", row_number().over(latest_per_endpoint))
+        .filter(col("_rank") == 1)
+        .select(
+            "resource",
+            col("datasets").alias("dataset"),
+            col("organisations").alias("organisation"),
+            col("endpoints").alias("endpoint"),
+        )
+        .distinct()
+    )
+
+
 class TaskPipeline(BasePipeline):
     """
     Cross-collection pipeline for generating task data from log and issue files.
@@ -686,18 +716,9 @@ class TaskPipeline(BasePipeline):
         # -- Active resources -------------------------------------------------
         resource_df = spark.read.option("header", "true").csv(resource_files)
         resource_df = normalise_column_names(resource_df)
-        active_df = (
-            resource_df.filter(col("end_date").isNull() | (col("end_date") == ""))
-            .select(
-                "resource",
-                col("datasets").alias("dataset"),
-                col("organisations").alias("organisation"),
-                col("endpoints").alias("endpoint"),
-            )
-            .distinct()
-        )
+        active_df = _select_active_resources(resource_df)
         active_df.cache()
-        logger.info("TaskPipeline: Active resources loaded")
+        logger.info("TaskPipeline: Active resources loaded (latest per endpoint)")
 
         # -- Endpoint → dataset/organisation lookups (from source.csv) ----------
         # Needed to fill in dataset for failed log entries where resource is blank.

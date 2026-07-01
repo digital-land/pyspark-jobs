@@ -18,6 +18,7 @@ from jobs.pipeline import (
     TaskPipeline,
     _backfill_dataset_from_source,
     _backfill_organisation_from_source,
+    _select_active_resources,
 )
 
 # -- Test data ----------------------------------------------------------------
@@ -501,13 +502,21 @@ class TestTaskPipeline:
 
         _write_csv(
             os.path.join(base, "test-collection", "collection", "resource.csv"),
-            ["resource", "datasets", "organisations", "endpoints", "end_date"],
+            [
+                "resource",
+                "datasets",
+                "organisations",
+                "endpoints",
+                "start_date",
+                "end_date",
+            ],
             [
                 {
                     "resource": "resource-aaa",
                     "datasets": "dataset-a",
                     "organisations": "organisation:1",
                     "endpoints": "http://endpoint-a",
+                    "start_date": "2026-01-01",
                     "end_date": "",
                 }
             ],
@@ -714,3 +723,32 @@ class TestBackfillOrganisationFromSource:
         rows = result.collect()
         assert len(rows) == 1
         assert rows[0]["organisation"] == ""
+
+
+def test_select_active_resources_keeps_latest_per_endpoint(spark):
+    """
+    An endpoint should have one active resource. Where several are left without an
+    end_date (the stale-un-end-dated bug), only the most recently started one is
+    kept — so old phantom resources don't generate tasks, while healthy single-active
+    endpoints and ended resources are handled correctly.
+    """
+    df = spark.createDataFrame(
+        [
+            ("res-current", "ds", "org", "ep-1", "2026-07-01", ""),  # current
+            ("res-phantom", "ds", "org", "ep-1", "2025-12-04", ""),  # stale, un-ended
+            ("res-other", "ds", "org", "ep-2", "2026-06-01", ""),  # single active
+            ("res-ended", "ds", "org", "ep-1", "2026-05-01", "2026-05-02"),  # ended
+        ],
+        [
+            "resource",
+            "datasets",
+            "organisations",
+            "endpoints",
+            "start_date",
+            "end_date",
+        ],
+    )
+
+    active = {row["resource"] for row in _select_active_resources(df).collect()}
+
+    assert active == {"res-current", "res-other"}

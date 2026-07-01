@@ -75,7 +75,14 @@ TREE_LOG_ROWS = [
     },
 ]
 
-RESOURCE_COLUMNS = ["resource", "datasets", "organisations", "endpoints", "end-date"]
+RESOURCE_COLUMNS = [
+    "resource",
+    "datasets",
+    "organisations",
+    "endpoints",
+    "start-date",
+    "end-date",
+]
 
 CA_RESOURCE_ROWS = [
     {
@@ -83,6 +90,7 @@ CA_RESOURCE_ROWS = [
         "datasets": "conservation-area",
         "organisations": "organisation:1",
         "endpoints": "endpoint-ca-aaa",
+        "start-date": "2026-07-01",
         "end-date": "",
     },
 ]
