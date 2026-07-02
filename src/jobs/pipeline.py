@@ -20,8 +20,8 @@ from functools import reduce
 
 import boto3
 from cloudpathlib import AnyPath, S3Path
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, explode, split
+from pyspark.sql import SparkSession, Window
+from pyspark.sql.functions import col, explode, lit, row_number, split
 
 from jobs.config.metadata import load_metadata
 from jobs.read import read_old_resources
@@ -650,6 +650,40 @@ def _backfill_organisation_from_source(log_df, endpoint_organisation_df):
     return log_df.filter(col("organisation") != "").unionByName(resolved_df)
 
 
+def _active_resources_from_log(log_df, endpoint_attrs_df):
+    """The resource each endpoint is currently serving, derived from the log.
+
+    dataset/organisation are attributed from source.csv (endpoint_attrs_df),
+    keyed on that endpoint, rather than from resource.csv's flattened sets.
+    """
+    latest_per_endpoint = Window.partitionBy("endpoint").orderBy(
+        col("entry_date").desc(), col("resource").asc()
+    )
+    current = (
+        log_df.filter(
+            (col("status") == "200")
+            & col("resource").isNotNull()
+            & (col("resource") != "")
+        )
+        .withColumn("_rank", row_number().over(latest_per_endpoint))
+        .filter(col("_rank") == 1)
+        .select("endpoint", "resource")
+    )
+
+    if endpoint_attrs_df is not None:
+        current = current.join(endpoint_attrs_df, on="endpoint", how="left")
+    else:
+        current = current.withColumn("dataset", lit("")).withColumn(
+            "organisation", lit("")
+        )
+
+    return (
+        current.select("resource", "dataset", "organisation", "endpoint")
+        .fillna("", subset=["dataset", "organisation"])
+        .distinct()
+    )
+
+
 class TaskPipeline(BasePipeline):
     """
     Cross-collection pipeline for generating task data from log and issue files.
@@ -665,11 +699,6 @@ class TaskPipeline(BasePipeline):
         base = AnyPath(self.config.collection_data_path)
 
         # -- Resolve file paths ---------------------------------------------------
-        resource_files = [
-            str(p) for p in base.glob("*-collection/collection/resource.csv")
-        ]
-        logger.info(f"TaskPipeline: Found {len(resource_files)} resource files")
-
         log_files = [str(p) for p in base.glob("*-collection/collection/log.csv")]
         logger.info(f"TaskPipeline: Found {len(log_files)} log files")
 
@@ -679,36 +708,21 @@ class TaskPipeline(BasePipeline):
         source_files = [str(p) for p in base.glob("*-collection/collection/source.csv")]
         logger.info(f"TaskPipeline: Found {len(source_files)} source files")
 
-        if not resource_files:
-            logger.warning("TaskPipeline: No resource files found — nothing to process")
-            return
-
-        # -- Active resources -------------------------------------------------
-        resource_df = spark.read.option("header", "true").csv(resource_files)
-        resource_df = normalise_column_names(resource_df)
-        active_df = (
-            resource_df.filter(col("end_date").isNull() | (col("end_date") == ""))
-            .select(
-                "resource",
-                col("datasets").alias("dataset"),
-                col("organisations").alias("organisation"),
-                col("endpoints").alias("endpoint"),
-            )
-            .distinct()
-        )
-        active_df.cache()
-        logger.info("TaskPipeline: Active resources loaded")
+        log_df = spark.read.option("header", "true").csv(log_files)
+        log_df = normalise_column_names(log_df)
 
         # -- Endpoint → dataset/organisation lookups (from source.csv) ----------
-        # Needed to fill in dataset for failed log entries where resource is blank.
-        # source.csv maps endpoint hash → pipelines (dataset name), with ';'
-        # separating multiple datasets when one endpoint serves more than one.
+        # source.csv maps endpoint hash → pipelines (dataset name) + organisation,
+        # with ';' separating multiple datasets when one endpoint serves several.
         if source_files:
             source_df = spark.read.option("header", "true").csv(source_files)
             source_df = normalise_column_names(source_df)
             active_source_df = source_df.filter(
                 col("end_date").isNull() | (col("end_date") == "")
             )
+
+            # Exploded (one row per endpoint+dataset) — backfills failed log
+            # entries, where a blank resource can't tell us the dataset.
             endpoint_dataset_df = active_source_df.select(
                 col("endpoint"),
                 explode(split(col("pipelines"), ";")).alias("dataset"),
@@ -718,32 +732,43 @@ class TaskPipeline(BasePipeline):
             endpoint_organisation_df = active_source_df.select(
                 "endpoint", "organisation"
             ).dropDuplicates(["endpoint"])
+
+            # One row per endpoint carrying its dataset(s) as the raw ';' string
+            # and organisation — attributes the active resource below. Kept as a
+            # single row per endpoint so the issue join stays one-to-one.
+            endpoint_attrs_df = active_source_df.select(
+                "endpoint",
+                col("pipelines").alias("dataset"),
+                "organisation",
+            ).dropDuplicates(["endpoint"])
         else:
             endpoint_dataset_df = None
             endpoint_organisation_df = None
+            endpoint_attrs_df = None
+
+        # -- Active resources (current resource per endpoint, from the log) ------
+        active_df = _active_resources_from_log(log_df, endpoint_attrs_df)
+        active_df.cache()
+        logger.info(
+            "TaskPipeline: Active resources loaded (current resource per endpoint from log)"
+        )
 
         # -- Log tasks --------------------------------------------------------
-        if not log_files:
-            logger.warning("TaskPipeline: No log files found — skipping log tasks")
-            log_tasks = None
-        else:
-            log_df = spark.read.option("header", "true").csv(log_files)
-            log_df = normalise_column_names(log_df)
-            log_df = log_df.join(
-                active_df.select("resource", "dataset", "organisation"),
-                on="resource",
-                how="left",
+        log_df = log_df.join(
+            active_df.select("resource", "dataset", "organisation"),
+            on="resource",
+            how="left",
+        )
+        log_df = log_df.fillna("", subset=["dataset", "organisation"])
+
+        if endpoint_dataset_df is not None:
+            log_df = _backfill_dataset_from_source(log_df, endpoint_dataset_df)
+        if endpoint_organisation_df is not None:
+            log_df = _backfill_organisation_from_source(
+                log_df, endpoint_organisation_df
             )
-            log_df = log_df.fillna("", subset=["dataset", "organisation"])
 
-            if endpoint_dataset_df is not None:
-                log_df = _backfill_dataset_from_source(log_df, endpoint_dataset_df)
-            if endpoint_organisation_df is not None:
-                log_df = _backfill_organisation_from_source(
-                    log_df, endpoint_organisation_df
-                )
-
-            log_tasks = transform_log_to_tasks(log_df)
+        log_tasks = transform_log_to_tasks(log_df)
 
         # -- Issue tasks ------------------------------------------------------
         if not issue_files:

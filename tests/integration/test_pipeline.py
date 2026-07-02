@@ -16,6 +16,7 @@ from jobs.pipeline import (
     IssuePipeline,
     PipelineConfig,
     TaskPipeline,
+    _active_resources_from_log,
     _backfill_dataset_from_source,
     _backfill_organisation_from_source,
 )
@@ -499,20 +500,6 @@ class TestTaskPipeline:
         base = str(tmp_path)
         parquet_base = os.path.join(base, "parquet-output/")
 
-        _write_csv(
-            os.path.join(base, "test-collection", "collection", "resource.csv"),
-            ["resource", "datasets", "organisations", "endpoints", "end_date"],
-            [
-                {
-                    "resource": "resource-aaa",
-                    "datasets": "dataset-a",
-                    "organisations": "organisation:1",
-                    "endpoints": "http://endpoint-a",
-                    "end_date": "",
-                }
-            ],
-        )
-
         # Same endpoint failing on two different dates — the key scenario.
         # entry-date and elapsed differ, which previously caused .distinct()
         # to keep both rows and produce duplicate reference hashes.
@@ -545,6 +532,15 @@ class TestTaskPipeline:
                     "entry-date": "2026-01-02",
                     "bytes": "200",
                     "elapsed": "1.1",
+                },
+                {
+                    "endpoint": "http://endpoint-a",
+                    "resource": "resource-aaa",
+                    "status": "200",
+                    "exception": "",
+                    "entry-date": "2026-01-03",
+                    "bytes": "200",
+                    "elapsed": "1.0",
                 },
             ],
         )
@@ -714,3 +710,33 @@ class TestBackfillOrganisationFromSource:
         rows = result.collect()
         assert len(rows) == 1
         assert rows[0]["organisation"] == ""
+
+
+def test_active_resources_from_log_uses_latest_successful_per_endpoint(spark):
+    log_df = spark.createDataFrame(
+        [
+            # endpoint-a: an older (now superseded) resource + the current one
+            ("endpoint-a", "resource-old", "200", "2026-01-01"),
+            ("endpoint-a", "resource-current", "200", "2026-02-01"),
+            # a resource that only ever failed here → must not be active
+            ("endpoint-b", "resource-fail", "404", "2026-02-01"),
+        ],
+        ["endpoint", "resource", "status", "entry_date"],
+    )
+    endpoint_attrs_df = spark.createDataFrame(
+        [
+            ("endpoint-a", "dataset-a", "org:1"),
+            ("endpoint-b", "dataset-b", "org:2"),
+        ],
+        ["endpoint", "dataset", "organisation"],
+    )
+
+    active = _active_resources_from_log(log_df, endpoint_attrs_df)
+    rows = {
+        (r["endpoint"], r["resource"], r["dataset"], r["organisation"])
+        for r in active.collect()
+    }
+
+    # Only endpoint-a's latest 200 survives; the superseded resource and the
+    # never-successful endpoint-b are both excluded.
+    assert rows == {("endpoint-a", "resource-current", "dataset-a", "org:1")}
