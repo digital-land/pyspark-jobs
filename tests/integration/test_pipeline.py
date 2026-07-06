@@ -19,6 +19,9 @@ from jobs.pipeline import (
     _active_resources_from_log,
     _backfill_dataset_from_source,
     _backfill_organisation_from_source,
+    _build_dataset_quality,
+    _build_organisation_quality,
+    _build_provision_quality,
 )
 
 # -- Test data ----------------------------------------------------------------
@@ -740,3 +743,114 @@ def test_active_resources_from_log_uses_latest_successful_per_endpoint(spark):
     # Only endpoint-a's latest 200 survives; the superseded resource and the
     # never-successful endpoint-b are both excluded.
     assert rows == {("endpoint-a", "resource-current", "dataset-a", "org:1")}
+
+
+# -- ProvisionQualityPipeline helpers -----------------------------------------
+
+PQ_DATASET = "conservation-area"
+PQ_ADU = "local-authority:ADU"
+PQ_LEW = "local-authority:LEW"
+PQ_MHCLG = "government-organisation:MHCLG"
+PQ_NEW = "local-authority:NEW"
+
+
+def _provision_quality_inputs(spark):
+    """Conservation-area style scenario covering the provider/owner mismatches:
+    - Adur  : active endpoint + owns authoritative entities            -> authoritative
+    - Lewes : no endpoint, owns entities seeded on its behalf ('some') -> some
+    - MHCLG : national seeder, has endpoint, owns nothing, seeded Lewes -> some
+    - New LA: active endpoint, owns nothing, seeds nothing (kept + flagged, null)
+    """
+    providers_df = spark.createDataFrame(
+        [(PQ_DATASET, PQ_ADU), (PQ_DATASET, PQ_MHCLG), (PQ_DATASET, PQ_NEW)],
+        ["dataset", "organisation"],
+    )
+    org_df = spark.createDataFrame(
+        [
+            (PQ_ADU, "100", "Adur DC", True),
+            (PQ_LEW, "200", "Lewes DC", True),
+            (PQ_MHCLG, "300", "MHCLG", True),
+            (PQ_NEW, "400", "New LA", True),
+        ],
+        ["organisation", "organisation_entity", "organisation_name", "org_active"],
+    )
+    entity_org_df = spark.createDataFrame(
+        [(PQ_DATASET, PQ_ADU), (PQ_DATASET, PQ_LEW)],  # designated provisions
+        ["dataset", "organisation"],
+    )
+    lookup_df = spark.createDataFrame(
+        [("3", PQ_MHCLG), ("4", PQ_MHCLG)],  # MHCLG seeded entities 3 & 4
+        ["entity", "organisation"],
+    )
+    entity_quality_df = spark.createDataFrame(
+        [
+            (PQ_DATASET, "100", "authoritative", "1"),  # owned by Adur
+            (PQ_DATASET, "100", "authoritative", "2"),  # owned by Adur
+            (PQ_DATASET, "200", "some", "3"),  # owned by Lewes (seeded)
+            (PQ_DATASET, "200", "some", "4"),  # owned by Lewes (seeded)
+        ],
+        ["dataset", "organisation_entity", "quality", "entity"],
+    )
+    return providers_df, org_df, entity_org_df, lookup_df, entity_quality_df
+
+
+class TestProvisionQuality:
+
+    def test_flags_and_quality(self, spark):
+        pq = _build_provision_quality(*_provision_quality_inputs(spark))
+        rows = {r["organisation"]: r.asDict() for r in pq.collect()}
+
+        assert set(rows) == {PQ_ADU, PQ_LEW, PQ_MHCLG, PQ_NEW}
+
+        adu = rows[PQ_ADU]
+        assert adu["has_active_endpoint"] is True
+        assert adu["owns_entities"] is True
+        assert adu["is_designated_provider"] is True
+        assert adu["quality"] == "authoritative"
+        assert adu["entity_count"] == 2
+
+        lew = rows[PQ_LEW]
+        assert lew["has_active_endpoint"] is False  # owns but never submitted
+        assert lew["owns_entities"] is True
+        assert lew["is_designated_provider"] is True
+        assert lew["quality"] == "some"
+        assert lew["entity_count"] == 2
+
+        mhclg = rows[PQ_MHCLG]
+        assert mhclg["has_active_endpoint"] is True
+        assert mhclg["owns_entities"] is False  # provider that owns nothing
+        assert mhclg["is_designated_provider"] is False
+        assert mhclg["quality"] == "some"  # via seeder detection
+        assert mhclg["entity_count"] == 2  # seeded count
+
+        new = rows[PQ_NEW]
+        assert new["has_active_endpoint"] is True
+        assert new["owns_entities"] is False
+        assert new["quality"] is None  # endpoint but no data — kept + flagged
+        assert new["entity_count"] == 0
+
+    def test_dataset_quality_rollup(self, spark):
+        pq = _build_provision_quality(*_provision_quality_inputs(spark))
+        ds = {r["dataset"]: r.asDict() for r in _build_dataset_quality(pq).collect()}
+
+        row = ds[PQ_DATASET]
+        assert row["authoritative_organisations"] == 1  # Adur
+        assert row["some_organisations"] == 2  # Lewes, MHCLG
+        assert row["total_organisations"] == 3  # New LA excluded (quality null)
+        assert row["total_entities"] == 4  # owned counts only, no double count
+
+    def test_organisation_quality_rollup(self, spark):
+        pq = _build_provision_quality(*_provision_quality_inputs(spark))
+        orgs = {
+            r["organisation"]: r.asDict()
+            for r in _build_organisation_quality(pq).collect()
+        }
+
+        assert orgs[PQ_ADU]["authoritative_datasets"] == 1
+        assert orgs[PQ_ADU]["total_entities_owned"] == 2
+
+        assert orgs[PQ_MHCLG]["some_datasets"] == 1
+        assert orgs[PQ_MHCLG]["authoritative_datasets"] == 0
+        assert orgs[PQ_MHCLG]["total_entities_owned"] == 0  # seeder owns nothing
+
+        assert PQ_NEW not in orgs  # quality null -> excluded from rollup

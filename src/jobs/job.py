@@ -20,6 +20,7 @@ from jobs.pipeline import (
     EntityPipeline,
     IssuePipeline,
     PipelineConfig,
+    ProvisionQualityPipeline,
     TaskPipeline,
 )
 from jobs.transform.old_entity_transformer import fetch_dataset_df, transform_old_entity
@@ -413,3 +414,68 @@ def generate_tasks(
                 logger.info("generate_tasks: Spark session stopped")
             except Exception as e:
                 logger.warning(f"generate_tasks: Error stopping Spark session — {e}")
+
+
+def generate_provision_quality(
+    collection_data_path: str,
+    entity_data_path: str,
+    output_path: str,
+    env: str,
+):
+    """
+    Generate provision-quality data across all collections (phase 1: CSV only).
+
+    Reads source.csv, organisation.csv, config (entity-organisation.csv / lookup.csv)
+    and the flattened per-dataset entity CSVs, classifies provider/organisation
+    quality per (dataset, organisation), and writes three CSVs to output_path:
+    provision-quality.csv, dataset-quality.csv, organisation-quality.csv.
+    """
+    allowed_envs = ["development", "staging", "production", "local"]
+    if env not in allowed_envs:
+        raise ValueError(f"Invalid env: {env}. Must be one of {allowed_envs}")
+
+    if isinstance(AnyPath(collection_data_path), S3Path):
+        validate_s3_path(collection_data_path)
+    else:
+        logger.info(
+            f"generate_provision_quality: Local collection_data_path: {collection_data_path}"
+        )
+
+    logger.info(
+        "generate_provision_quality: Starting cross-collection provision quality"
+    )
+
+    spark = None
+    try:
+        spark = create_spark_session()
+        if spark is None:
+            raise RuntimeError("Failed to create Spark session")
+
+        config = PipelineConfig(
+            spark=spark,
+            dataset="",
+            env=env,
+            collection_data_path=collection_data_path,
+            parquet_datasets_path="",  # unused in phase 1 (no Delta yet)
+            database_url="",  # unused in phase 1 (no Postgres yet)
+        )
+
+        pipeline = ProvisionQualityPipeline(config)
+        pipeline.run(entity_data_path=entity_data_path, output_path=output_path)
+
+        logger.info(f"generate_provision_quality: Result — {pipeline.result}")
+    except (ValueError, AttributeError, KeyError) as e:
+        logger.exception("generate_provision_quality: Error: %s", str(e))
+        raise
+    except Exception as e:
+        logger.exception("generate_provision_quality: Unexpected error: %s", str(e))
+        raise
+    finally:
+        if spark is not None:
+            try:
+                spark.stop()
+                logger.info("generate_provision_quality: Spark session stopped")
+            except Exception as e:
+                logger.warning(
+                    f"generate_provision_quality: Error stopping Spark — {e}"
+                )
