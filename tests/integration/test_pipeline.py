@@ -15,6 +15,7 @@ from jobs.pipeline import (
     EntityPipeline,
     IssuePipeline,
     PipelineConfig,
+    ProvisionQualityPipeline,
     TaskPipeline,
     _active_resources_from_log,
     _backfill_dataset_from_source,
@@ -854,3 +855,51 @@ class TestProvisionQuality:
         assert orgs[PQ_MHCLG]["total_entities_owned"] == 0  # seeder owns nothing
 
         assert PQ_NEW not in orgs  # quality null -> excluded from rollup
+
+    def test_load_entity_quality_reads_flattened_csvs(self, spark, tmp_path):
+        """load_entity_quality() reads the flattened per-dataset entity CSVs,
+        tags dataset from the filename, aliases organisation-entity, and skips
+        files missing the required columns. Also guards against the method
+        being dropped (it once vanished in a refactor, breaking execute())."""
+        entity_dir = tmp_path / "entity"
+        _write_csv(
+            str(entity_dir / f"{PQ_DATASET}.csv"),
+            ["entity", "organisation-entity", "quality"],
+            [
+                {
+                    "entity": "1",
+                    "organisation-entity": "100",
+                    "quality": "authoritative",
+                },
+                {"entity": "2", "organisation-entity": "200", "quality": "some"},
+            ],
+        )
+        # A file missing organisation-entity/quality must be skipped, not fail.
+        _write_csv(
+            str(entity_dir / "no-quality.csv"),
+            ["entity", "name"],
+            [{"entity": "9", "name": "irrelevant"}],
+        )
+
+        config = PipelineConfig(
+            spark=spark,
+            dataset="",
+            env="local",
+            collection_data_path=f"{tmp_path}/",
+            parquet_datasets_path=str(tmp_path / "parquet-output/"),
+        )
+        df = ProvisionQualityPipeline(config).load_entity_quality(
+            spark, str(entity_dir)
+        )
+
+        assert set(df.columns) == {
+            "entity",
+            "organisation_entity",
+            "quality",
+            "dataset",
+        }
+        rows = {r["entity"]: r.asDict() for r in df.collect()}
+        assert set(rows) == {"1", "2"}  # no-quality.csv skipped
+        assert rows["1"]["organisation_entity"] == "100"
+        assert rows["1"]["quality"] == "authoritative"
+        assert rows["1"]["dataset"] == PQ_DATASET

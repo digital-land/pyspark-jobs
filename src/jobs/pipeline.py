@@ -28,6 +28,7 @@ from pyspark.sql.functions import (
     explode,
     first,
     lit,
+    lower,
     row_number,
     split,
 )
@@ -1039,8 +1040,8 @@ class ProvisionQualityPipeline(BasePipeline):
         # Non-empty endpoint, empty end_date; `pipelines` (';'-split) = dataset(s).
         source_files = [str(p) for p in base.glob("*-collection/collection/source.csv")]
         logger.info(f"ProvisionQuality: Found {len(source_files)} source files")
-        source_df = normalise_column_names(
-            spark.read.option("header", "true").csv(source_files)
+        source_df = self._read_csvs_by_name(
+            spark, source_files, ["endpoint", "end_date", "organisation", "pipelines"]
         )
         providers_df = (
             source_df.filter(
@@ -1073,17 +1074,13 @@ class ProvisionQualityPipeline(BasePipeline):
         eo_files = [
             str(p) for p in base.glob("config/pipeline/*/entity-organisation.csv")
         ]
-        entity_org_df = (
-            normalise_column_names(spark.read.option("header", "true").csv(eo_files))
-            .select("dataset", "organisation")
-            .distinct()
-        )  # designated (dataset, org)
+        entity_org_df = self._read_csvs_by_name(
+            spark, eo_files, ["dataset", "organisation"]
+        ).distinct()  # designated (dataset, org)
 
         lookup_files = [str(p) for p in base.glob("config/pipeline/*/lookup.csv")]
-        lookup_df = normalise_column_names(
-            spark.read.option("header", "true").csv(lookup_files)
-        ).select(
-            "entity", "organisation"
+        lookup_df = self._read_csvs_by_name(
+            spark, lookup_files, ["entity", "organisation"]
         )  # who seeded each entity
 
         # -- Entity + quality (SWAPPABLE SEAM) ----------------------------------
@@ -1092,16 +1089,51 @@ class ProvisionQualityPipeline(BasePipeline):
         # -- Classification + rollups (todo 3/4 — port of Sian's logic) ---------
         provision_quality = _build_provision_quality(
             providers_df, org_df, entity_org_df, lookup_df, entity_quality_df
-        )
+        ).cache()
+        provision_quality.count()  # materialise once; the 3 writes reuse the cache
+
         dataset_quality = _build_dataset_quality(provision_quality)
         organisation_quality = _build_organisation_quality(provision_quality)
 
         # -- Write (phase 1: CSV) ----------------------------------------------
-        self._write_single_csv(provision_quality, output_path, "provision-quality")
-        self._write_single_csv(dataset_quality, output_path, "dataset-quality")
         self._write_single_csv(
-            organisation_quality, output_path, "organisation-quality"
+            provision_quality.orderBy(
+                col("dataset"),
+                lower(col("organisation_name")).asc_nulls_last(),
+            ),
+            output_path,
+            "provision-quality",
         )
+        self._write_single_csv(
+            dataset_quality.orderBy("dataset"), output_path, "dataset-quality"
+        )
+        self._write_single_csv(
+            organisation_quality.orderBy(lower(col("organisation_name"))),
+            output_path,
+            "organisation-quality",
+        )
+
+    def _read_csvs_by_name(self, spark, files, columns):
+        """Read many CSVs per-file and unionByName on the named columns.
+
+        A single spark.read.csv([...]) maps columns by POSITION and uses one
+        file's header for all files, so a file whose column SET differs — e.g.
+        prod tree-preservation-order's source.csv is missing the leading
+        `source` column — gets shifted (its `pipelines` value lands in the
+        `organisation` slot, producing phantom provider rows). Reading each
+        file against its OWN header and selecting by name removes that risk.
+        Mirrors load_entity_quality's guard.
+        """
+        frames = []
+        for f in files:
+            df = normalise_column_names(spark.read.option("header", "true").csv(f))
+            if not all(c in df.columns for c in columns):
+                logger.warning(f"ProvisionQuality: {f} missing {columns} — skipping")
+                continue
+            frames.append(df.select(*columns))
+        if not frames:
+            raise ValueError(f"No usable CSVs with columns {columns}")
+        return reduce(lambda a, b: a.unionByName(b), frames)
 
     def load_entity_quality(self, spark, entity_data_path):
         """SWAPPABLE SEAM. Phase 1: read the flattened per-dataset entity CSVs
