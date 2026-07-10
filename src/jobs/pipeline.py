@@ -1089,8 +1089,9 @@ class ProvisionQualityPipeline(BasePipeline):
         # -- Classification + rollups (todo 3/4 — port of Sian's logic) ---------
         provision_quality = _build_provision_quality(
             providers_df, org_df, entity_org_df, lookup_df, entity_quality_df
-        ).cache()
-        provision_quality.count()  # materialise once; the 3 writes reuse the cache
+        ).localCheckpoint(
+            eager=True
+        )  # materialise once AND truncate the huge plan
 
         dataset_quality = _build_dataset_quality(provision_quality)
         organisation_quality = _build_organisation_quality(provision_quality)
