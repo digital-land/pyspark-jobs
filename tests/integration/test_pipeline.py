@@ -760,11 +760,15 @@ def _provision_quality_inputs(spark):
     - Adur  : active endpoint + owns authoritative entities            -> authoritative
     - Lewes : no endpoint, owns entities seeded on its behalf ('some') -> some
     - MHCLG : national seeder, has endpoint, owns nothing, seeded Lewes -> some
-    - New LA: active endpoint, owns nothing, seeds nothing (kept + flagged, null)
+    - New LA: active endpoint but nothing arriving (kept + flagged, null)
     """
     providers_df = spark.createDataFrame(
-        [(PQ_DATASET, PQ_ADU), (PQ_DATASET, PQ_MHCLG), (PQ_DATASET, PQ_NEW)],
-        ["dataset", "organisation"],
+        [
+            (PQ_DATASET, PQ_ADU, True),
+            (PQ_DATASET, PQ_MHCLG, True),
+            (PQ_DATASET, PQ_NEW, None),  # endpoint configured, no resource arriving
+        ],
+        ["dataset", "organisation", "has_active_resource"],
     )
     org_df = spark.createDataFrame(
         [
@@ -805,6 +809,7 @@ class TestProvisionQuality:
 
         adu = rows[PQ_ADU]
         assert adu["has_active_endpoint"] is True
+        assert adu["has_active_resource"] is True
         assert adu["owns_entities"] is True
         assert adu["is_designated_provider"] is True
         assert adu["quality"] == "authoritative"
@@ -812,6 +817,7 @@ class TestProvisionQuality:
 
         lew = rows[PQ_LEW]
         assert lew["has_active_endpoint"] is False  # owns but never submitted
+        assert lew["has_active_resource"] is False  # no endpoint, so nothing arriving
         assert lew["owns_entities"] is True
         assert lew["is_designated_provider"] is True
         assert lew["quality"] == "some"
@@ -819,6 +825,7 @@ class TestProvisionQuality:
 
         mhclg = rows[PQ_MHCLG]
         assert mhclg["has_active_endpoint"] is True
+        assert mhclg["has_active_resource"] is True
         assert mhclg["owns_entities"] is False  # provider that owns nothing
         assert mhclg["is_designated_provider"] is False
         assert mhclg["quality"] == "some"  # via seeder detection
@@ -826,6 +833,8 @@ class TestProvisionQuality:
 
         new = rows[PQ_NEW]
         assert new["has_active_endpoint"] is True
+        # endpoint is configured but its resource has stopped arriving
+        assert new["has_active_resource"] is False
         assert new["owns_entities"] is False
         assert new["quality"] is None  # endpoint but no data — kept + flagged
         assert new["entity_count"] == 0

@@ -968,7 +968,7 @@ def _build_provision_quality(
 
     pq = (
         keys.join(
-            providers.withColumn("has_active_endpoint", lit(True)),
+            providers_df.withColumn("has_active_endpoint", lit(True)),
             on=["dataset", "organisation"],
             how="left",
         )
@@ -991,6 +991,7 @@ def _build_provision_quality(
         "organisation",
         "organisation_name",
         coalesce(col("has_active_endpoint"), lit(False)).alias("has_active_endpoint"),
+        coalesce(col("has_active_resource"), lit(False)).alias("has_active_resource"),
         coalesce(col("owns_entities"), lit(False)).alias("owns_entities"),
         coalesce(col("is_designated_provider"), lit(False)).alias(
             "is_designated_provider"
@@ -1067,7 +1068,7 @@ class ProvisionQualityPipeline(BasePipeline):
         source_df = self._read_csvs_by_name(
             spark, source_files, ["endpoint", "end_date", "organisation", "pipelines"]
         )
-        providers_df = (
+        active_sources = (
             source_df.filter(
                 (col("endpoint").isNotNull() & (col("endpoint") != ""))
                 & (col("end_date").isNull() | (col("end_date") == ""))
@@ -1075,8 +1076,44 @@ class ProvisionQualityPipeline(BasePipeline):
             .select(
                 explode(split(col("pipelines"), ";")).alias("dataset"),
                 col("organisation"),
+                col("endpoint"),
             )
             .distinct()
+        )
+
+        # -- Active resources (resource.csv → is data still arriving) -----------
+        # A resource's end-date is the last date the collector saw it, so blank
+        # means it was fetched today. An endpoint can be configured and active
+        # while nothing actually arrives. `endpoints` is ';'-joined where
+        # several endpoints produced identical content.
+        resource_files = [
+            str(p) for p in base.glob("*-collection/collection/resource.csv")
+        ]
+        logger.info(f"ProvisionQuality: Found {len(resource_files)} resource files")
+        resource_df = self._read_csvs_by_name(
+            spark, resource_files, ["endpoints", "end_date"]
+        )
+        delivering_endpoints = (
+            resource_df.filter(col("end_date").isNull() | (col("end_date") == ""))
+            .select(explode(split(col("endpoints"), ";")).alias("endpoint"))
+            .distinct()
+        )
+
+        # an organisation is still delivering a dataset if ANY of its active
+        # endpoints for it still has a resource arriving
+        delivering = (
+            active_sources.join(delivering_endpoints, on="endpoint", how="left_semi")
+            .select("dataset", "organisation")
+            .distinct()
+        )
+        providers_df = (
+            active_sources.select("dataset", "organisation")
+            .distinct()
+            .join(
+                delivering.withColumn("has_active_resource", lit(True)),
+                on=["dataset", "organisation"],
+                how="left",
+            )
         )
 
         # -- Organisation reference (organisation.csv) --------------------------
