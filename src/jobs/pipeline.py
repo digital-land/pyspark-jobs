@@ -863,9 +863,9 @@ def _owner_side(eq):
 
 
 def _seeder_alt_sources(eq, lookup_df, entity_org_df, active_orgs):
-    """Seeder (alt-source) detection, per Sian's step 5. An active org that seeded
-    'some'-quality entities it does NOT own and is NOT designated for counts as a
-    'some' contributor. LA-type orgs must have seeded for >1 distinct owner to
+    """Seeder (alt-source) detection. An active org that seeded 'some'-quality
+    entities it does NOT own and is NOT designated for counts as a 'some'
+    contributor. LA-type orgs must have seeded for >1 distinct owner to
     count (stale-lookup guard); other org types need >=1."""
     some_ent = eq.filter(col("quality") == "some").select(
         "dataset", "entity", col("organisation").alias("owner_org")
@@ -916,12 +916,36 @@ def _seeder_alt_sources(eq, lookup_df, entity_org_df, active_orgs):
     )
 
 
+def _live_datasets(dataset_df, env):
+    """The datasets the platform builds in `env` and has not retired.
+
+    Mirrors is_dataset_available in airflow-dags (dags/utils.py): a
+    `production` dataset is built in every environment, `staging` only in
+    staging and development, `development` only in development, and a blank
+    environment is not built anywhere. An end-dated dataset is retired
+    whatever its environment (e.g. development-plan-document, which is
+    production but was end-dated in February).
+    """
+    available = col("environment") == "production"
+    if env in ("staging", "development"):
+        available = available | (col("environment") == "staging")
+    if env == "development":
+        available = available | (col("environment") == "development")
+
+    return (
+        dataset_df.filter(available)
+        .filter(col("end_date").isNull() | (col("end_date") == ""))
+        .select("dataset")
+        .distinct()
+    )
+
+
 def _build_provision_quality(
     providers_df, org_df, entity_org_df, lookup_df, entity_quality_df
 ):
     """Base table: one row per (dataset, organisation) that has an active endpoint
     OR owns entities OR is a detected seeder. Nothing dropped; flags distinguish
-    the cases. Ports Sian's owner/provider classification + seeder detection."""
+    the cases. Owner/provider classification + seeder detection."""
     # map each owned entity to its owner organisation reference
     eq = entity_quality_df.join(
         org_df.select("organisation", "organisation_entity"),
@@ -1028,8 +1052,8 @@ class ProvisionQualityPipeline(BasePipeline):
     Cross-collection pipeline computing provider/organisation quality per
     (dataset, organisation). Reads across all collections at once (wildcard S3
     paths) like TaskPipeline. Phase 1 writes three CSVs; phase 2 will add Delta
-    + Postgres. Classification is ported from the Data Design analysis
-    (jupyter-analysis: count_organisations_providers_platform).
+    + Postgres. Classification follows the agreed provider/organisation
+    quality definitions (see the Provision Quality technical documentation).
     """
 
     def execute(self, entity_data_path, output_path):
@@ -1083,15 +1107,41 @@ class ProvisionQualityPipeline(BasePipeline):
             spark, lookup_files, ["entity", "organisation"]
         )  # who seeded each entity
 
+        # -- Live datasets (specification/dataset.csv) --------------------------
+        # Restrict to datasets the platform still builds in this environment;
+        # retired ones linger in the CSVs (e.g. local-plan-timetable) in s3.
+        dataset_path = str(base / "specification" / "dataset.csv")
+        dataset_df = normalise_column_names(
+            spark.read.option("header", "true").csv(dataset_path)
+        )
+        live_datasets_df = _live_datasets(dataset_df, self.config.env)
+
         # -- Entity + quality (SWAPPABLE SEAM) ----------------------------------
         entity_quality_df = self.load_entity_quality(spark, entity_data_path)
 
-        # -- Classification + rollups (todo 3/4 — port of Sian's logic) ---------
+        # -- Classification + rollups ------------------------------------------
         provision_quality = _build_provision_quality(
             providers_df, org_df, entity_org_df, lookup_df, entity_quality_df
         ).localCheckpoint(
             eager=True
         )  # materialise once AND truncate the huge plan
+
+        # Log what the specification filter removes before applying it, so a
+        # dataset disappearing from the output is never silent.
+        dropped = (
+            provision_quality.select("dataset")
+            .distinct()
+            .join(live_datasets_df, on="dataset", how="left_anti")
+        )
+        dropped_names = sorted(row["dataset"] for row in dropped.collect())
+        if dropped_names:
+            logger.info(
+                f"ProvisionQuality: excluding {len(dropped_names)} dataset(s) not live "
+                f"in {self.config.env}: {', '.join(dropped_names)}"
+            )
+        provision_quality = provision_quality.join(
+            live_datasets_df, on="dataset", how="left_semi"
+        )
 
         dataset_quality = _build_dataset_quality(provision_quality)
         organisation_quality = _build_organisation_quality(provision_quality)
