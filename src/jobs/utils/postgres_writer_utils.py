@@ -820,3 +820,134 @@ def write_task_to_postgres(df, database_url):
         conn.close()
     except Exception as e:
         logger.warning(f"write_task_to_postgres: Cleanup failed: {e}")
+
+
+def write_table_to_postgres(df, table_name, column_types, database_url):
+    """Write a DataFrame to a Postgres table via a staging table + atomic swap.
+
+    Generic form of write_task_to_postgres: the whole table is replaced
+    atomically (TRUNCATE + INSERT from staging), so there is never a partial
+    state. The staging DDL and the INSERT column list are built from
+    column_types, so one function serves several tables. The target table must
+    already exist (created by an Alembic migration); this only fills it.
+
+    Args:
+        df: Spark DataFrame whose columns cover every name in column_types.
+        table_name: Target table to replace.
+        column_types: ordered list of (column_name, postgres_type) tuples,
+            matching the target table's columns.
+        database_url: postgresql://user:pass@host:port/dbname
+    """
+    conn_params = parse_database_url(database_url)
+    columns = [name for name, _ in column_types]
+
+    # JDBC append is positional, so align the DataFrame to the staging DDL order
+    df = df.select(*columns)
+    row_count = df.count()
+    logger.info(f"write_table_to_postgres: Writing {row_count:,} rows to {table_name}")
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    hash_suffix = hashlib.md5(f"{table_name}_{timestamp}".encode()).hexdigest()[:8]
+    staging_table = f"{table_name}_staging_{hash_suffix}_{timestamp}"
+
+    # Step 1: create staging table with the same columns/types as the target
+    ddl_cols = ", ".join(f"{name} {sql_type}" for name, sql_type in column_types)
+    try:
+        conn_params["timeout"] = 1800
+        conn = pg8000.connect(**conn_params)
+        cur = conn.cursor()
+        cur.execute(f"CREATE TABLE {staging_table} ({ddl_cols});")
+        conn.commit()
+        cur.close()
+        conn.close()
+        logger.info(f"write_table_to_postgres: Created staging table {staging_table}")
+    except Exception as e:
+        logger.error(f"write_table_to_postgres: Failed to create staging table: {e}")
+        raise
+
+    # Step 2: JDBC write to staging, with retry
+    url = f"jdbc:postgresql://{conn_params['host']}:{conn_params['port']}/{conn_params['database']}"
+    num_partitions = max(1, min(10, row_count // 50000))
+    max_attempts = 3
+    attempt = 0
+    while attempt < max_attempts:
+        try:
+            df.repartition(num_partitions).write.jdbc(
+                url=url,
+                table=staging_table,
+                mode="append",
+                properties={
+                    "user": conn_params["user"],
+                    "password": conn_params["password"],
+                    "driver": "org.postgresql.Driver",
+                    "stringtype": "unspecified",
+                    "batchsize": "5000",
+                    "reWriteBatchedInserts": "true",
+                },
+            )
+            logger.info(
+                f"write_table_to_postgres: JDBC write successful on attempt {attempt + 1}"
+            )
+            break
+        except Exception as e:
+            attempt += 1
+            logger.warning(
+                f"write_table_to_postgres: JDBC write failed (attempt {attempt}): {e}"
+            )
+            if attempt < max_attempts:
+                time.sleep(5 * attempt)
+            else:
+                raise
+
+    # Step 3: atomic swap — TRUNCATE target, INSERT from staging
+    col_list = ", ".join(columns)
+    attempt = 0
+    while attempt < max_attempts:
+        try:
+            conn_params["timeout"] = 1800
+            conn = pg8000.connect(**conn_params)
+            cur = conn.cursor()
+            cur.execute("SET statement_timeout = '1800000';")
+            cur.execute("BEGIN;")
+            cur.execute(f"TRUNCATE TABLE {table_name};")
+            cur.execute(
+                f"INSERT INTO {table_name} ({col_list}) "
+                f"SELECT {col_list} FROM {staging_table};"
+            )
+            inserted = cur.rowcount
+            cur.execute(f"DROP TABLE {staging_table};")
+            cur.execute("COMMIT;")
+            logger.info(
+                f"write_table_to_postgres: Inserted {inserted:,} rows into {table_name}"
+            )
+            break
+        except Exception as e:
+            try:
+                cur.execute("ROLLBACK;")
+            except Exception:
+                pass
+            attempt += 1
+            logger.warning(
+                f"write_table_to_postgres: Atomic commit failed (attempt {attempt}): {e}"
+            )
+            if attempt < max_attempts:
+                time.sleep(5 * attempt)
+            else:
+                raise
+        finally:
+            try:
+                cur.close()
+                conn.close()
+            except Exception:
+                pass
+
+    # Step 4: safety cleanup
+    try:
+        conn = pg8000.connect(**conn_params)
+        cur = conn.cursor()
+        cur.execute(f"DROP TABLE IF EXISTS {staging_table};")
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        logger.warning(f"write_table_to_postgres: Cleanup failed: {e}")

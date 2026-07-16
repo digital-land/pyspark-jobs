@@ -23,6 +23,7 @@ from jobs.pipeline import (
     _build_dataset_quality,
     _build_organisation_quality,
     _build_provision_quality,
+    _drop_blank_organisations,
 )
 
 # -- Test data ----------------------------------------------------------------
@@ -912,3 +913,17 @@ class TestProvisionQuality:
         assert rows["1"]["organisation_entity"] == "100"
         assert rows["1"]["quality"] == "authoritative"
         assert rows["1"]["dataset"] == PQ_DATASET
+
+    def test_drop_blank_organisations(self, spark):
+        # A blank or null organisation can't key the table (organisation is a
+        # NOT NULL PK), so execute() drops these rows before writing.
+        df = spark.createDataFrame(
+            [
+                (PQ_DATASET, PQ_ADU),
+                (PQ_DATASET, ""),
+                (PQ_DATASET, None),
+            ],
+            ["dataset", "organisation"],
+        )
+        result = {r["organisation"] for r in _drop_blank_organisations(df).collect()}
+        assert result == {PQ_ADU}

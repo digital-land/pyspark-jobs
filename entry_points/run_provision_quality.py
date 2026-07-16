@@ -3,10 +3,11 @@ run_provision_quality.py
 
 Entry point for the provision-quality job on Amazon EMR Serverless.
 
-Computes provider/organisation quality per dataset across all collections and
-writes three CSVs (provision-quality, dataset-quality, organisation-quality) to
-the collection-data bucket. Phase 1: CSV only (for review). Phase 2 will add
-Delta + serving Postgres writes.
+Computes provider/organisation quality per (dataset, organisation) across all
+collections and writes each of the three tables (provision-quality,
+dataset-quality, organisation-quality) three ways: CSV to the collection-data
+bucket (public download), Delta to the parquet-datasets bucket, and serving
+Postgres.
 
 Usage:
 1. Package code into a .whl using setup.py.
@@ -24,6 +25,7 @@ import click
 from jobs import job
 
 logger = logging.getLogger(__name__)
+
 
 @click.command()
 @click.option(
@@ -50,9 +52,27 @@ logger = logging.getLogger(__name__)
     default=None,
     help="Where the CSVs are written (default: s3://{env}-collection-data/dataset/)",
 )
+@click.option(
+    "--parquet-datasets-path",
+    default=None,
+    help="Output path for the Delta tables (default: s3://{env}-parquet-datasets/)",
+)
+@click.option(
+    "--database-url",
+    default=None,
+    help="PostgreSQL connection URL (default: resolved from AWS Secrets Manager)",
+)
 @click.option("--debug", is_flag=True, default=False, help="Enable DEBUG logging")
-def run(env, collection_data_path, entity_data_path, output_path, debug):
-    """Generate provision-quality CSVs across all collections."""
+def run(
+    env,
+    collection_data_path,
+    entity_data_path,
+    output_path,
+    parquet_datasets_path,
+    database_url,
+    debug,
+):
+    """Generate provision-quality outputs (CSV + Delta + Postgres)."""
     logging.basicConfig(
         level=logging.DEBUG if debug else logging.INFO,
         format="[%(asctime)s] %(levelname)s - %(name)s:%(lineno)d - %(message)s",
@@ -65,8 +85,11 @@ def run(env, collection_data_path, entity_data_path, output_path, debug):
         entity_data_path=entity_data_path
         or f"s3://digital-land-{env}-collection-dataset-hoisted/data/",
         output_path=output_path or f"s3://{env}-collection-data/dataset/",
+        parquet_datasets_path=parquet_datasets_path or f"s3://{env}-parquet-datasets/",
         env=env,
+        database_url=database_url,
     )
+
 
 if __name__ == "__main__":
     try:
