@@ -1063,7 +1063,8 @@ class ProvisionQualityPipeline(BasePipeline):
 
         # -- Active providers (source.csv → who submits) ------------------------
         # Non-empty endpoint, empty end_date; `pipelines` (';'-split) = dataset(s).
-        source_files = [str(p) for p in base.glob("*-collection/collection/source.csv")]
+        collections = self._collection_names(base)
+        source_files = self._collection_files(base, collections, "source.csv")
         logger.info(f"ProvisionQuality: Found {len(source_files)} source files")
         source_df = self._read_csvs_by_name(
             spark, source_files, ["endpoint", "end_date", "organisation", "pipelines"]
@@ -1086,9 +1087,7 @@ class ProvisionQualityPipeline(BasePipeline):
         # means it was fetched today. An endpoint can be configured and active
         # while nothing actually arrives. `endpoints` is ';'-joined where
         # several endpoints produced identical content.
-        resource_files = [
-            str(p) for p in base.glob("*-collection/collection/resource.csv")
-        ]
+        resource_files = self._collection_files(base, collections, "resource.csv")
         logger.info(f"ProvisionQuality: Found {len(resource_files)} resource files")
         resource_df = self._read_csvs_by_name(
             spark, resource_files, ["endpoints", "end_date"]
@@ -1132,14 +1131,13 @@ class ProvisionQualityPipeline(BasePipeline):
         )
 
         # -- Config: designated provisions + seeding lookup ---------------------
-        eo_files = [
-            str(p) for p in base.glob("config/pipeline/*/entity-organisation.csv")
-        ]
+        config_base = base / "config" / "pipeline"
+        eo_files = [str(p) for p in config_base.glob("*/entity-organisation.csv")]
         entity_org_df = self._read_csvs_by_name(
             spark, eo_files, ["dataset", "organisation"]
         ).distinct()  # designated (dataset, org)
 
-        lookup_files = [str(p) for p in base.glob("config/pipeline/*/lookup.csv")]
+        lookup_files = [str(p) for p in config_base.glob("*/lookup.csv")]
         lookup_df = self._read_csvs_by_name(
             spark, lookup_files, ["entity", "organisation"]
         )  # who seeded each entity
@@ -1222,6 +1220,18 @@ class ProvisionQualityPipeline(BasePipeline):
         if not frames:
             raise ValueError(f"No usable CSVs with columns {columns}")
         return reduce(lambda a, b: a.unionByName(b), frames)
+
+    def _collection_names(self, base):
+        """Top-level {collection}-collection folder names via one delimited
+        listing. glob() with a '/' in the pattern lists the whole bucket and
+        filters client-side; iterdir() is a single Delimiter='/' call."""
+        return sorted(p.name for p in base.iterdir() if p.name.endswith("-collection"))
+
+    def _collection_files(self, base, collections, filename):
+        """Build the known {collection}/collection/{filename} paths directly and
+        keep the ones that exist, avoiding a full-bucket glob per file."""
+        paths = [base / c / "collection" / filename for c in collections]
+        return [str(p) for p in paths if p.exists()]
 
     def load_entity_quality(self, spark, entity_data_path):
         """SWAPPABLE SEAM. Phase 1: read the flattened per-dataset entity CSVs
