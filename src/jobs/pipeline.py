@@ -207,6 +207,17 @@ class EntityPipeline(BasePipeline):
         else:
             logger.warning("EntityPipeline: Some fields missing from transformed data")
 
+        # -- DEBUG: entity 12000000008 ------------------------------------------
+        debug_entity_df = transformed_df.filter(col("entity") == "12000000008")
+        debug_entity_count = debug_entity_df.count()
+        debug_resources = [
+            row["resource"] for row in debug_entity_df.select("resource").collect()
+        ]
+        logger.info(
+            f"DEBUG: entity=12000000008 row count = {debug_entity_count}"
+        )
+        logger.info(f"DEBUG: entity=12000000008 resources = {debug_resources}")
+
         # -- Transform --------------------------------------------------------
         fact_resource_df = transform_fact_resource(transformed_df, dataset)
         logger.info("EntityPipeline: fact_resource transform completed")
