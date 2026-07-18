@@ -213,9 +213,7 @@ class EntityPipeline(BasePipeline):
         debug_resources = [
             row["resource"] for row in debug_entity_df.select("resource").collect()
         ]
-        logger.info(
-            f"DEBUG: entity=12000000008 row count = {debug_entity_count}"
-        )
+        logger.info(f"DEBUG: entity=12000000008 row count = {debug_entity_count}")
         logger.info(f"DEBUG: entity=12000000008 resources = {debug_resources}")
 
         # -- Transform --------------------------------------------------------
