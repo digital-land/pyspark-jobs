@@ -27,6 +27,7 @@ from pyspark.sql.functions import (
     countDistinct,
     explode,
     first,
+    input_file_name,
     lit,
     lower,
     row_number,
@@ -166,6 +167,9 @@ class EntityPipeline(BasePipeline):
 
         logger.info(f"EntityPipeline: Reading transformed data from {transformed_path}")
         transformed_df = spark.read.option("header", "true").csv(transformed_path)
+        transformed_df = transformed_df.withColumn(
+            "_debug_source_file", input_file_name()
+        )
         transformed_df.cache()
         transformed_df.printSchema()
         show_df(transformed_df, 5, env)
@@ -202,7 +206,7 @@ class EntityPipeline(BasePipeline):
         transformed_df = normalise_column_names(transformed_df)
         logger.info(f"EntityPipeline: Columns after renaming: {transformed_df.columns}")
 
-        if set(fields) == set(transformed_df.columns):
+        if set(fields) == set(transformed_df.columns) - {"_debug_source_file"}:
             logger.info("EntityPipeline: All expected fields present")
         else:
             logger.warning("EntityPipeline: Some fields missing from transformed data")
@@ -215,6 +219,20 @@ class EntityPipeline(BasePipeline):
         ]
         logger.info(f"DEBUG: entity=12000000008 row count = {debug_entity_count}")
         logger.info(f"DEBUG: entity=12000000008 resources = {debug_resources}")
+
+        debug_rows = debug_entity_df.collect()
+        for i, row in enumerate(debug_rows):
+            logger.info(f"DEBUG: entity=12000000008 row[{i}] = {row.asDict()}")
+
+        debug_source_files = [
+            row["_debug_source_file"]
+            for row in debug_entity_df.select("_debug_source_file").distinct().collect()
+        ]
+        logger.info(
+            f"DEBUG: entity=12000000008 came from source file(s) = {debug_source_files}"
+        )
+
+        transformed_df = transformed_df.drop("_debug_source_file")
 
         # -- Transform --------------------------------------------------------
         fact_resource_df = transform_fact_resource(transformed_df, dataset)
