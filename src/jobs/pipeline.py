@@ -175,11 +175,7 @@ class EntityPipeline(BasePipeline):
 
         # -- Filter old resources ---------------------------------------------
         old_resource_path = (
-            base
-            / "config"
-            / "collection"
-            / f"{collection}-collection"
-            / "old-resource.csv"
+            base / "config" / "collection" / f"{collection}" / "old-resource.csv"
         )
         try:
             if old_resource_path.exists():
