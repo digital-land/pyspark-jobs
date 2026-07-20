@@ -8,6 +8,8 @@ and verify the CLI interface works correctly.
 import csv
 import os
 
+from pyspark.sql.types import StringType, StructField, StructType
+
 
 def test_missing_required_args_returns_nonzero(cli_runner, run_main_cmd):
     """Running with no arguments should fail with a non-zero exit code."""
@@ -292,6 +294,14 @@ def _write_csv(path, fieldnames, rows):
         writer.writerows(rows)
 
 
+def _write_parquet(spark, path, fieldnames, rows):
+    """Write rows as a parquet dataset at path (a directory), mirroring how
+    EntityPipeline reads transformed data as {dataset}/*.parquet."""
+    schema = StructType([StructField(f, StringType(), True) for f in fieldnames])
+    data = [tuple(row.get(f, "") for f in fieldnames) for row in rows]
+    spark.createDataFrame(data, schema=schema).write.mode("overwrite").parquet(path)
+
+
 def test_e2e_full_load_pipeline(cli_runner, run_main_cmd, spark, tmp_path, mocker):
     """Run the full ETL pipeline end-to-end.
 
@@ -305,9 +315,10 @@ def test_e2e_full_load_pipeline(cli_runner, run_main_cmd, spark, tmp_path, mocke
     collection_dir = os.path.join(base, f"{dataset}-collection")
     parquet_base = os.path.join(base, "parquet-output/")
 
-    # Write transformed CSV (source for fact, fact_resource, entity)
-    _write_csv(
-        os.path.join(collection_dir, "transformed", dataset, "data.csv"),
+    # Write transformed parquet (source for fact, fact_resource, entity)
+    _write_parquet(
+        spark,
+        os.path.join(collection_dir, "transformed", dataset),
         TRANSFORMED_COLUMNS,
         TRANSFORMED_ROWS,
     )
