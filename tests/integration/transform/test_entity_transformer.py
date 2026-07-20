@@ -64,7 +64,7 @@ def test_transform_entity_point_preserved_when_geometry_absent(spark, mocker):
     assert "point" in result.columns
     assert row["point"] == "POINT(-0.1234 51.5678)"
     assert row["geometry"] is None
-    assert row["quality"] == "same"
+    assert row["quality"] == "some"
 
 
 def test_transform_entity_dataset_column_set(spark, mocker):
@@ -80,11 +80,11 @@ def test_transform_entity_dataset_column_set(spark, mocker):
 
     assert "dataset" in result.columns
     assert row["dataset"] == "my-dataset"
-    assert row["quality"] == "same"
+    assert row["quality"] == "some"
 
 
-def test_transform_entity_quality_same_when_priority_one(spark, mocker):
-    """priority=1 produces quality='same'."""
+def test_transform_entity_quality_some_when_priority_one(spark, mocker):
+    """priority=1 produces quality='some'."""
     mocker.patch(
         "jobs.transform.entity_transformer.get_dataset_typology",
         return_value="geography",
@@ -93,7 +93,7 @@ def test_transform_entity_quality_same_when_priority_one(spark, mocker):
     df = spark.createDataFrame(_base_rows("3001", priority="1"))
     result = transform_entity(df, "test-dataset", _build_organisation_df(spark))
 
-    assert result.collect()[0]["quality"] == "same"
+    assert result.collect()[0]["quality"] == "some"
 
 
 def test_transform_entity_quality_authoritative_when_priority_two(spark, mocker):

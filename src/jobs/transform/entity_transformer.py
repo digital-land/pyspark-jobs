@@ -79,7 +79,7 @@ def _add_quality_column(pivot_df):
 
     return pivot_df.withColumn(
         "quality",
-        when(col("priority") == 1, lit("same"))
+        when(col("priority") == 1, lit("some"))
         .when(col("priority") == 2, lit("authoritative"))
         .otherwise(lit("")),
     ).drop("priority")
