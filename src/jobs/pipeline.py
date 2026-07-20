@@ -155,7 +155,8 @@ class EntityPipeline(BasePipeline):
             base / "organisation-collection" / "dataset" / "organisation.csv"
         )
         transformed_path = (
-            str(base / f"{collection}-collection" / "transformed" / dataset) + "/*.csv"
+            str(base / f"{collection}-collection" / "transformed" / dataset)
+            + "/*.parquet"
         )
 
         logger.info(
@@ -165,7 +166,7 @@ class EntityPipeline(BasePipeline):
         organisation_df.cache()
 
         logger.info(f"EntityPipeline: Reading transformed data from {transformed_path}")
-        transformed_df = spark.read.option("header", "true").csv(transformed_path)
+        transformed_df = spark.read.parquet(transformed_path)
         transformed_df.cache()
         transformed_df.printSchema()
         show_df(transformed_df, 5, env)
@@ -202,6 +203,15 @@ class EntityPipeline(BasePipeline):
             logger.info("EntityPipeline: All expected fields present")
         else:
             logger.warning("EntityPipeline: Some fields missing from transformed data")
+
+        # -- Filter rows with no resource --------------------------------------
+        has_resource = col("resource").isNotNull() & (col("resource") != "")
+        dropped_count = transformed_df.filter(~has_resource).count()
+        if dropped_count:
+            logger.warning(
+                f"EntityPipeline: Dropping {dropped_count} row(s) with no resource"
+            )
+        transformed_df = transformed_df.filter(has_resource)
 
         # -- Transform --------------------------------------------------------
         fact_resource_df = transform_fact_resource(transformed_df, dataset)
@@ -511,11 +521,7 @@ class IssuePipeline(BasePipeline):
 
         # -- Filter old resources ---------------------------------------------
         old_resource_path = (
-            base
-            / "config"
-            / "collection"
-            / f"{collection}-collection"
-            / "old-resource.csv"
+            base / "config" / "collection" / f"{collection}" / "old-resource.csv"
         )
         try:
             if old_resource_path.exists():

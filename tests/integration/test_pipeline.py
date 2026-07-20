@@ -10,6 +10,7 @@ import csv
 import os
 
 import pytest
+from pyspark.sql.types import StringType, StructField, StructType
 
 from jobs.pipeline import (
     EntityPipeline,
@@ -164,6 +165,14 @@ def _write_csv(path, fieldnames, rows):
         writer.writerows(rows)
 
 
+def _write_parquet(spark, path, fieldnames, rows):
+    """Write rows as a parquet dataset at path (a directory), mirroring how
+    EntityPipeline reads transformed data as {dataset}/*.parquet."""
+    schema = StructType([StructField(f, StringType(), True) for f in fieldnames])
+    data = [tuple(row.get(f, "") for f in fieldnames) for row in rows]
+    spark.createDataFrame(data, schema=schema).write.mode("overwrite").parquet(path)
+
+
 # -- EntityPipeline tests ----------------------------------------------------
 
 
@@ -178,8 +187,9 @@ class TestEntityPipeline:
         collection_dir = os.path.join(base, f"{collection}-collection")
         parquet_base = os.path.join(base, "parquet-output/")
 
-        _write_csv(
-            os.path.join(collection_dir, "transformed", dataset, "data.csv"),
+        _write_parquet(
+            spark,
+            os.path.join(collection_dir, "transformed", dataset),
             TRANSFORMED_COLUMNS,
             TRANSFORMED_ROWS,
         )
@@ -236,8 +246,9 @@ class TestEntityPipeline:
         collection_dir = os.path.join(base, f"{collection}-collection")
         parquet_base = os.path.join(base, "parquet-output/")
 
-        _write_csv(
-            os.path.join(collection_dir, "transformed", dataset, "data.csv"),
+        _write_parquet(
+            spark,
+            os.path.join(collection_dir, "transformed", dataset),
             TRANSFORMED_COLUMNS,
             TRANSFORMED_ROWS,
         )
@@ -293,8 +304,9 @@ class TestEntityPipeline:
         collection_dir = os.path.join(base, f"{collection}-collection")
         parquet_base = os.path.join(base, "parquet-output/")
 
-        _write_csv(
-            os.path.join(collection_dir, "transformed", dataset, "data.csv"),
+        _write_parquet(
+            spark,
+            os.path.join(collection_dir, "transformed", dataset),
             TRANSFORMED_COLUMNS,
             TRANSFORMED_ROWS,
         )
@@ -352,8 +364,9 @@ class TestEntityPipeline:
         collection_dir = os.path.join(base, f"{collection}-collection")
         parquet_base = os.path.join(base, "parquet-output/")
 
-        _write_csv(
-            os.path.join(collection_dir, "transformed", dataset, "data.csv"),
+        _write_parquet(
+            spark,
+            os.path.join(collection_dir, "transformed", dataset),
             TRANSFORMED_COLUMNS,
             TRANSFORMED_ROWS,
         )
@@ -406,8 +419,9 @@ class TestEntityPipeline:
         base = str(tmp_path)
         collection_dir = os.path.join(base, f"{collection}-collection")
 
-        _write_csv(
-            os.path.join(collection_dir, "transformed", dataset, "data.csv"),
+        _write_parquet(
+            spark,
+            os.path.join(collection_dir, "transformed", dataset),
             TRANSFORMED_COLUMNS,
             [],
         )
