@@ -249,7 +249,7 @@ class EntityPipeline(BasePipeline):
         self._write_postgres(entity_df)
 
     def _write_consumer_formats(self, entity_df):
-        """Write CSV, JSON, GeoJSON consumer formats for entity data."""
+        """Write CSV, parquet, JSON, GeoJSON consumer formats for entity data."""
         dataset = self.config.dataset
         env = self.config.env
         collection_data_path = self.config.collection_data_path
@@ -275,6 +275,8 @@ class EntityPipeline(BasePipeline):
             temp_output_path
         )
 
+        self._write_single_parquet(temp_df, base / "dataset", dataset)
+
         if _is_s3:
             s3_rename_and_move(dataset, "csv", f"{env}-collection-data")
             s3_client = boto3.client("s3")
@@ -283,6 +285,23 @@ class EntityPipeline(BasePipeline):
         else:
             self._write_json_local(temp_df, dataset, base)
             self._write_geojson_local(temp_df, dataset, base)
+
+    def _write_single_parquet(self, df, output_path, name):
+        """Write df as a single parquet file at output_path/name.parquet.
+
+        Spark writes a directory of part-files, so we coalesce(1) into a temp
+        dir, then move the one part-file to the target name. Uses AnyPath
+        throughout so it works uniformly for local and S3 output_paths.
+        """
+        tmp_dir = AnyPath(output_path) / f"_tmp_{name}_parquet"
+        df.coalesce(1).write.mode("overwrite").parquet(str(tmp_dir))
+        part = next(p for p in tmp_dir.glob("part-*.parquet"))
+        target = AnyPath(output_path) / f"{name}.parquet"
+        target.write_bytes(part.read_bytes())
+        for p in tmp_dir.glob("*"):
+            p.unlink()
+        tmp_dir.rmdir()
+        logger.info(f"EntityPipeline: Wrote {target}")
 
     def _write_json_s3(self, s3_client, temp_df, dataset, env):
         """Write entity JSON to S3."""

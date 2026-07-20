@@ -378,6 +378,7 @@ def test_e2e_full_load_pipeline(cli_runner, run_main_cmd, spark, tmp_path, mocke
     mock_consumer_df.repartition.return_value.toLocalIterator.return_value = iter([])
     mocker.patch("jobs.pipeline.flatten_json_column", return_value=mock_consumer_df)
     mocker.patch("jobs.pipeline.ensure_schema_fields", return_value=mock_consumer_df)
+    mocker.patch("jobs.pipeline.EntityPipeline._write_single_parquet")
 
     result = cli_runner.invoke(
         run_main_cmd,
