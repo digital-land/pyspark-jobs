@@ -56,6 +56,7 @@ from jobs.utils.postgres_writer_utils import (
     SUBDIVIDED_DATASETS,
     write_dataframe_to_postgres_jdbc,
     write_entity_subdivided_to_postgres,
+    write_table_to_postgres,
     write_task_to_postgres,
 )
 from jobs.utils.s3_writer_utils import (
@@ -1048,6 +1049,45 @@ def _build_organisation_quality(provision_quality):
     )
 
 
+def _drop_blank_organisations(df):
+    """Drop rows with no organisation — a blank org can't key a table
+    (organisation is a NOT NULL primary key). Rollups already exclude them."""
+    return df.filter(col("organisation").isNotNull() & (col("organisation") != ""))
+
+
+PROVISION_QUALITY_PG_TYPES = [
+    ("dataset", "TEXT"),
+    ("organisation", "TEXT"),
+    ("organisation_name", "TEXT"),
+    ("has_active_endpoint", "BOOLEAN"),
+    ("has_active_resource", "BOOLEAN"),
+    ("owns_entities", "BOOLEAN"),
+    ("is_designated_provider", "BOOLEAN"),
+    ("quality", "TEXT"),
+    ("entity_count", "BIGINT"),
+    ("quality_score", "DOUBLE PRECISION"),
+]
+
+DATASET_QUALITY_PG_TYPES = [
+    ("dataset", "TEXT"),
+    ("authoritative_organisations", "INTEGER"),
+    ("some_organisations", "INTEGER"),
+    ("total_organisations", "INTEGER"),
+    ("total_entities", "BIGINT"),
+    ("quality_score", "DOUBLE PRECISION"),
+]
+
+ORGANISATION_QUALITY_PG_TYPES = [
+    ("organisation", "TEXT"),
+    ("organisation_name", "TEXT"),
+    ("authoritative_datasets", "INTEGER"),
+    ("some_datasets", "INTEGER"),
+    ("total_datasets", "INTEGER"),
+    ("total_entities_owned", "BIGINT"),
+    ("quality_score", "DOUBLE PRECISION"),
+]
+
+
 class ProvisionQualityPipeline(BasePipeline):
     """
     Cross-collection pipeline computing provider/organisation quality per
@@ -1178,6 +1218,8 @@ class ProvisionQualityPipeline(BasePipeline):
             live_datasets_df, on="dataset", how="left_semi"
         )
 
+        provision_quality = _drop_blank_organisations(provision_quality)
+
         dataset_quality = _build_dataset_quality(provision_quality)
         organisation_quality = _build_organisation_quality(provision_quality)
 
@@ -1198,6 +1240,32 @@ class ProvisionQualityPipeline(BasePipeline):
             output_path,
             "organisation-quality",
         )
+
+        # -- Write Delta (canonical) + Postgres (serving) ----------------------
+        outputs = [
+            ("provision_quality", provision_quality, PROVISION_QUALITY_PG_TYPES),
+            ("dataset_quality", dataset_quality, DATASET_QUALITY_PG_TYPES),
+            (
+                "organisation_quality",
+                organisation_quality,
+                ORGANISATION_QUALITY_PG_TYPES,
+            ),
+        ]
+        for name, frame, _ in outputs:
+            delta_path = str(AnyPath(self.config.parquet_datasets_path) / name)
+            logger.info(f"ProvisionQuality: Writing Delta table to {delta_path}")
+            frame.write.format("delta").mode("overwrite").option(
+                "overwriteSchema", "true"
+            ).save(delta_path)
+
+        if self.config.database_url:
+            for name, frame, pg_types in outputs:
+                logger.info(f"ProvisionQuality: Writing {name} to Postgres")
+                write_table_to_postgres(frame, name, pg_types, self.config.database_url)
+        else:
+            logger.info(
+                "ProvisionQuality: No database_url provided — skipping Postgres writes"
+            )
 
     def _read_csvs_by_name(self, spark, files, columns):
         """Read many CSVs per-file and unionByName on the named columns.

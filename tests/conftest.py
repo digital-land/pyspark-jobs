@@ -197,3 +197,91 @@ def clean_entity_subdivided_table(db_conn):
     )
     db_conn.commit()
     cur.close()
+
+
+@pytest.fixture()
+def clean_provision_quality_table(db_conn):
+    """Create the provision_quality table before each test, truncate after."""
+    cur = db_conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS provision_quality (
+            dataset TEXT NOT NULL,
+            organisation TEXT NOT NULL,
+            organisation_name TEXT,
+            has_active_endpoint BOOLEAN NOT NULL,
+            has_active_resource BOOLEAN NOT NULL,
+            owns_entities BOOLEAN NOT NULL,
+            is_designated_provider BOOLEAN NOT NULL,
+            quality TEXT,
+            entity_count BIGINT NOT NULL,
+            quality_score DOUBLE PRECISION,
+            PRIMARY KEY (dataset, organisation)
+        );
+        """
+    )
+    db_conn.commit()
+    cur.close()
+
+    yield
+
+    cur = db_conn.cursor()
+    cur.execute("TRUNCATE TABLE provision_quality;")
+    cur.execute(
+        """
+        DO $$
+        DECLARE t TEXT;
+        BEGIN
+            FOR t IN SELECT tablename FROM pg_tables
+                     WHERE schemaname = 'public'
+                       AND tablename LIKE 'provision_quality_staging_%'
+            LOOP
+                EXECUTE 'DROP TABLE IF EXISTS ' || t;
+            END LOOP;
+        END $$;
+        """
+    )
+    db_conn.commit()
+    cur.close()
+
+
+@pytest.fixture()
+def clean_dataset_quality_table(db_conn):
+    """Create the dataset_quality table before each test, truncate after."""
+    cur = db_conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dataset_quality (
+            dataset TEXT NOT NULL,
+            authoritative_organisations INTEGER NOT NULL,
+            some_organisations INTEGER NOT NULL,
+            total_organisations INTEGER NOT NULL,
+            total_entities BIGINT NOT NULL,
+            quality_score DOUBLE PRECISION,
+            PRIMARY KEY (dataset)
+        );
+        """
+    )
+    db_conn.commit()
+    cur.close()
+
+    yield
+
+    cur = db_conn.cursor()
+    cur.execute("TRUNCATE TABLE dataset_quality;")
+    cur.execute(
+        """
+        DO $$
+        DECLARE t TEXT;
+        BEGIN
+            FOR t IN SELECT tablename FROM pg_tables
+                     WHERE schemaname = 'public'
+                       AND tablename LIKE 'dataset_quality_staging_%'
+            LOOP
+                EXECUTE 'DROP TABLE IF EXISTS ' || t;
+            END LOOP;
+        END $$;
+        """
+    )
+    db_conn.commit()
+    cur.close()

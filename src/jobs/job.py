@@ -420,15 +420,19 @@ def generate_provision_quality(
     collection_data_path: str,
     entity_data_path: str,
     output_path: str,
+    parquet_datasets_path: str,
     env: str,
+    database_url: str = None,
 ):
     """
-    Generate provision-quality data across all collections (phase 1: CSV only).
+    Generate provision-quality data across all collections.
 
     Reads source.csv, organisation.csv, config (entity-organisation.csv / lookup.csv)
     and the flattened per-dataset entity CSVs, classifies provider/organisation
-    quality per (dataset, organisation), and writes three CSVs to output_path:
-    provision-quality.csv, dataset-quality.csv, organisation-quality.csv.
+    quality per (dataset, organisation), and writes each of the three tables three
+    ways: CSVs to output_path (public download), Delta to parquet_datasets_path,
+    and serving Postgres. database_url resolves from AWS Secrets Manager if not
+    passed.
     """
     allowed_envs = ["development", "staging", "production", "local"]
     if env not in allowed_envs:
@@ -440,6 +444,15 @@ def generate_provision_quality(
         logger.info(
             f"generate_provision_quality: Local collection_data_path: {collection_data_path}"
         )
+
+    if database_url is None:
+        logger.info(
+            "generate_provision_quality: No database_url provided, resolving from AWS Secrets Manager"
+        )
+        conn_params = get_aws_secret(env)
+        database_url = build_database_url(conn_params)
+    else:
+        logger.info("generate_provision_quality: Using provided database_url")
 
     logger.info(
         "generate_provision_quality: Starting cross-collection provision quality"
@@ -456,8 +469,8 @@ def generate_provision_quality(
             dataset="",
             env=env,
             collection_data_path=collection_data_path,
-            parquet_datasets_path="",  # unused in phase 1 (no Delta yet)
-            database_url="",  # unused in phase 1 (no Postgres yet)
+            parquet_datasets_path=parquet_datasets_path,
+            database_url=database_url,
         )
 
         pipeline = ProvisionQualityPipeline(config)

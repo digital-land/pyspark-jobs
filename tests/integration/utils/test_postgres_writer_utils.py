@@ -10,7 +10,9 @@ from datetime import date
 import pytest
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.types import (
+    BooleanType,
     DateType,
+    DoubleType,
     IntegerType,
     LongType,
     StringType,
@@ -18,10 +20,12 @@ from pyspark.sql.types import (
     StructType,
 )
 
+from jobs.pipeline import DATASET_QUALITY_PG_TYPES, PROVISION_QUALITY_PG_TYPES
 from jobs.utils.postgres_writer_utils import (
     write_dataframe_to_postgres_jdbc,
     write_entity_subdivided_to_postgres,
     write_old_entity_to_postgres,
+    write_table_to_postgres,
 )
 
 
@@ -564,3 +568,138 @@ def test_write_old_entity_handles_nulls(spark, db_url, db_conn, clean_old_entity
     assert row[2] is None  # entity
     assert row[3] is None  # notes
     assert _count_tables_matching(db_conn, "old_entity_staging_%") == 0
+
+
+@pytest.mark.database
+def test_write_table_to_postgres_provision_quality(
+    spark, db_url, db_conn, clean_provision_quality_table
+):
+    """Writer fills provision_quality; nulls preserved; a second write replaces."""
+    schema = StructType(
+        [
+            StructField("dataset", StringType(), True),
+            StructField("organisation", StringType(), True),
+            StructField("organisation_name", StringType(), True),
+            StructField("has_active_endpoint", BooleanType(), True),
+            StructField("has_active_resource", BooleanType(), True),
+            StructField("owns_entities", BooleanType(), True),
+            StructField("is_designated_provider", BooleanType(), True),
+            StructField("quality", StringType(), True),
+            StructField("entity_count", LongType(), True),
+            StructField("quality_score", DoubleType(), True),
+        ]
+    )
+    rows = [
+        (
+            "conservation-area",
+            "local-authority:ADU",
+            "Adur",
+            True,
+            True,
+            True,
+            True,
+            "authoritative",
+            42,
+            None,
+        ),
+        (
+            "conservation-area",
+            "government-organisation:MHCLG",
+            None,
+            True,
+            False,
+            False,
+            False,
+            None,
+            0,
+            None,
+        ),
+    ]
+    df = spark.createDataFrame(rows, schema)
+
+    write_table_to_postgres(df, "provision_quality", PROVISION_QUALITY_PG_TYPES, db_url)
+
+    cur = db_conn.cursor()
+    cur.execute(
+        "SELECT organisation, organisation_name, has_active_endpoint, quality, "
+        "entity_count, quality_score FROM provision_quality ORDER BY organisation;"
+    )
+    result = cur.fetchall()
+    cur.close()
+    # Release the read lock (pg8000 autocommit is off) before the next write's
+    # TRUNCATE, or it blocks on this connection's open transaction.
+    db_conn.rollback()
+
+    assert len(result) == 2
+    by_org = {r[0]: r for r in result}
+    adu = by_org["local-authority:ADU"]
+    assert adu[1] == "Adur"
+    assert adu[2] is True
+    assert adu[3] == "authoritative"
+    assert adu[4] == 42
+    assert adu[5] is None
+    mhclg = by_org["government-organisation:MHCLG"]
+    assert mhclg[1] is None  # organisation_name null preserved
+    assert mhclg[3] is None  # quality null preserved
+
+    # A second write replaces (TRUNCATE + INSERT), it does not append.
+    df2 = spark.createDataFrame(
+        [
+            (
+                "green-belt",
+                "local-authority:XYZ",
+                "XYZ Council",
+                False,
+                False,
+                True,
+                False,
+                "some",
+                5,
+                None,
+            )
+        ],
+        schema,
+    )
+    write_table_to_postgres(
+        df2, "provision_quality", PROVISION_QUALITY_PG_TYPES, db_url
+    )
+    cur = db_conn.cursor()
+    cur.execute("SELECT dataset FROM provision_quality;")
+    after = cur.fetchall()
+    cur.close()
+    db_conn.rollback()
+    assert len(after) == 1
+    assert after[0][0] == "green-belt"
+    assert _count_tables_matching(db_conn, "provision_quality_staging_%") == 0
+
+
+@pytest.mark.database
+def test_write_table_to_postgres_dataset_quality_integer_counts(
+    spark, db_url, db_conn, clean_dataset_quality_table
+):
+    """Spark Long count columns land correctly in INTEGER columns."""
+    schema = StructType(
+        [
+            StructField("dataset", StringType(), True),
+            StructField("authoritative_organisations", LongType(), True),
+            StructField("some_organisations", LongType(), True),
+            StructField("total_organisations", LongType(), True),
+            StructField("total_entities", LongType(), True),
+            StructField("quality_score", DoubleType(), True),
+        ]
+    )
+    df = spark.createDataFrame(
+        [("conservation-area", 131, 175, 306, 10941, None)], schema
+    )
+    write_table_to_postgres(df, "dataset_quality", DATASET_QUALITY_PG_TYPES, db_url)
+
+    cur = db_conn.cursor()
+    cur.execute(
+        "SELECT dataset, authoritative_organisations, some_organisations, "
+        "total_organisations, total_entities FROM dataset_quality;"
+    )
+    result = cur.fetchall()
+    cur.close()
+    db_conn.rollback()
+    assert len(result) == 1
+    assert list(result[0]) == ["conservation-area", 131, 175, 306, 10941]
