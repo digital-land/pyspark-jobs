@@ -10,6 +10,7 @@ import csv
 import os
 
 import pytest
+from pyspark.sql.types import StringType, StructField, StructType
 
 from jobs.pipeline import (
     EntityPipeline,
@@ -165,6 +166,14 @@ def _write_csv(path, fieldnames, rows):
         writer.writerows(rows)
 
 
+def _write_parquet(spark, path, fieldnames, rows):
+    """Write rows as a parquet dataset at path (a directory), mirroring how
+    EntityPipeline reads transformed data as {dataset}/*.parquet."""
+    schema = StructType([StructField(f, StringType(), True) for f in fieldnames])
+    data = [tuple(row.get(f, "") for f in fieldnames) for row in rows]
+    spark.createDataFrame(data, schema=schema).write.mode("overwrite").parquet(path)
+
+
 # -- EntityPipeline tests ----------------------------------------------------
 
 
@@ -179,8 +188,9 @@ class TestEntityPipeline:
         collection_dir = os.path.join(base, f"{collection}-collection")
         parquet_base = os.path.join(base, "parquet-output/")
 
-        _write_csv(
-            os.path.join(collection_dir, "transformed", dataset, "data.csv"),
+        _write_parquet(
+            spark,
+            os.path.join(collection_dir, "transformed", dataset),
             TRANSFORMED_COLUMNS,
             TRANSFORMED_ROWS,
         )
@@ -212,6 +222,7 @@ class TestEntityPipeline:
             return_value=mock_consumer_df,
         )
         mocker.patch("jobs.pipeline.write_dataframe_to_postgres_jdbc")
+        mocker.patch("jobs.pipeline.EntityPipeline._write_single_parquet")
 
         config = PipelineConfig(
             spark=spark,
@@ -237,8 +248,9 @@ class TestEntityPipeline:
         collection_dir = os.path.join(base, f"{collection}-collection")
         parquet_base = os.path.join(base, "parquet-output/")
 
-        _write_csv(
-            os.path.join(collection_dir, "transformed", dataset, "data.csv"),
+        _write_parquet(
+            spark,
+            os.path.join(collection_dir, "transformed", dataset),
             TRANSFORMED_COLUMNS,
             TRANSFORMED_ROWS,
         )
@@ -270,6 +282,7 @@ class TestEntityPipeline:
             return_value=mock_consumer_df,
         )
         mocker.patch("jobs.pipeline.write_dataframe_to_postgres_jdbc")
+        mocker.patch("jobs.pipeline.EntityPipeline._write_single_parquet")
 
         config = PipelineConfig(
             spark=spark,
@@ -294,8 +307,9 @@ class TestEntityPipeline:
         collection_dir = os.path.join(base, f"{collection}-collection")
         parquet_base = os.path.join(base, "parquet-output/")
 
-        _write_csv(
-            os.path.join(collection_dir, "transformed", dataset, "data.csv"),
+        _write_parquet(
+            spark,
+            os.path.join(collection_dir, "transformed", dataset),
             TRANSFORMED_COLUMNS,
             TRANSFORMED_ROWS,
         )
@@ -327,6 +341,7 @@ class TestEntityPipeline:
             return_value=mock_consumer_df,
         )
         mocker.patch("jobs.pipeline.write_dataframe_to_postgres_jdbc")
+        mocker.patch("jobs.pipeline.EntityPipeline._write_single_parquet")
 
         config = PipelineConfig(
             spark=spark,
@@ -353,8 +368,9 @@ class TestEntityPipeline:
         collection_dir = os.path.join(base, f"{collection}-collection")
         parquet_base = os.path.join(base, "parquet-output/")
 
-        _write_csv(
-            os.path.join(collection_dir, "transformed", dataset, "data.csv"),
+        _write_parquet(
+            spark,
+            os.path.join(collection_dir, "transformed", dataset),
             TRANSFORMED_COLUMNS,
             TRANSFORMED_ROWS,
         )
@@ -386,6 +402,7 @@ class TestEntityPipeline:
             return_value=mock_consumer_df,
         )
         mock_pg = mocker.patch("jobs.pipeline.write_dataframe_to_postgres_jdbc")
+        mocker.patch("jobs.pipeline.EntityPipeline._write_single_parquet")
 
         config = PipelineConfig(
             spark=spark,
@@ -407,8 +424,9 @@ class TestEntityPipeline:
         base = str(tmp_path)
         collection_dir = os.path.join(base, f"{collection}-collection")
 
-        _write_csv(
-            os.path.join(collection_dir, "transformed", dataset, "data.csv"),
+        _write_parquet(
+            spark,
+            os.path.join(collection_dir, "transformed", dataset),
             TRANSFORMED_COLUMNS,
             [],
         )
@@ -434,6 +452,37 @@ class TestEntityPipeline:
             pipeline.run(collection=collection)
 
         assert pipeline.result["status"] == "failed"
+
+    def test_write_single_parquet_writes_one_file_with_correct_data(
+        self, spark, tmp_path
+    ):
+        """_write_single_parquet writes exactly one parquet file, readable
+        back with the same rows as the source DataFrame."""
+        config = PipelineConfig(
+            spark=spark,
+            dataset="test-dataset",
+            env="local",
+            collection_data_path=str(tmp_path),
+            parquet_datasets_path=os.path.join(str(tmp_path), "parquet-output/"),
+        )
+        pipeline = EntityPipeline(config)
+
+        df = spark.createDataFrame(
+            [{"entity": "1001", "name": "Test Property A"}],
+        )
+        output_path = os.path.join(str(tmp_path), "dataset")
+
+        pipeline._write_single_parquet(df, output_path, "test-dataset")
+
+        target = os.path.join(output_path, "test-dataset.parquet")
+        assert os.path.isfile(target)
+
+        result_df = spark.read.parquet(target)
+        assert result_df.count() == 1
+        assert result_df.collect()[0]["entity"] == "1001"
+
+        tmp_dir = os.path.join(output_path, "_tmp_test-dataset_parquet")
+        assert not os.path.exists(tmp_dir), "temp directory was not cleaned up"
 
 
 # -- IssuePipeline tests ------------------------------------------------------

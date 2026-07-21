@@ -156,7 +156,8 @@ class EntityPipeline(BasePipeline):
             base / "organisation-collection" / "dataset" / "organisation.csv"
         )
         transformed_path = (
-            str(base / f"{collection}-collection" / "transformed" / dataset) + "/*.csv"
+            str(base / f"{collection}-collection" / "transformed" / dataset)
+            + "/*.parquet"
         )
 
         logger.info(
@@ -166,7 +167,7 @@ class EntityPipeline(BasePipeline):
         organisation_df.cache()
 
         logger.info(f"EntityPipeline: Reading transformed data from {transformed_path}")
-        transformed_df = spark.read.option("header", "true").csv(transformed_path)
+        transformed_df = spark.read.parquet(transformed_path)
         transformed_df.cache()
         transformed_df.printSchema()
         show_df(transformed_df, 5, env)
@@ -176,11 +177,7 @@ class EntityPipeline(BasePipeline):
 
         # -- Filter old resources ---------------------------------------------
         old_resource_path = (
-            base
-            / "config"
-            / "collection"
-            / f"{collection}-collection"
-            / "old-resource.csv"
+            base / "config" / "collection" / f"{collection}" / "old-resource.csv"
         )
         try:
             if old_resource_path.exists():
@@ -207,6 +204,15 @@ class EntityPipeline(BasePipeline):
             logger.info("EntityPipeline: All expected fields present")
         else:
             logger.warning("EntityPipeline: Some fields missing from transformed data")
+
+        # -- Filter rows with no resource --------------------------------------
+        has_resource = col("resource").isNotNull() & (col("resource") != "")
+        dropped_count = transformed_df.filter(~has_resource).count()
+        if dropped_count:
+            logger.warning(
+                f"EntityPipeline: Dropping {dropped_count} row(s) with no resource"
+            )
+        transformed_df = transformed_df.filter(has_resource)
 
         # -- Transform --------------------------------------------------------
         fact_resource_df = transform_fact_resource(transformed_df, dataset)
@@ -244,7 +250,7 @@ class EntityPipeline(BasePipeline):
         self._write_postgres(entity_df)
 
     def _write_consumer_formats(self, entity_df):
-        """Write CSV, JSON, GeoJSON consumer formats for entity data."""
+        """Write CSV, parquet, JSON, GeoJSON consumer formats for entity data."""
         dataset = self.config.dataset
         env = self.config.env
         collection_data_path = self.config.collection_data_path
@@ -270,6 +276,8 @@ class EntityPipeline(BasePipeline):
             temp_output_path
         )
 
+        self._write_single_parquet(temp_df, base / "dataset", dataset)
+
         if _is_s3:
             s3_rename_and_move(dataset, "csv", f"{env}-collection-data")
             s3_client = boto3.client("s3")
@@ -278,6 +286,23 @@ class EntityPipeline(BasePipeline):
         else:
             self._write_json_local(temp_df, dataset, base)
             self._write_geojson_local(temp_df, dataset, base)
+
+    def _write_single_parquet(self, df, output_path, name):
+        """Write df as a single parquet file at output_path/name.parquet.
+
+        Spark writes a directory of part-files, so we coalesce(1) into a temp
+        dir, then move the one part-file to the target name. Uses AnyPath
+        throughout so it works uniformly for local and S3 output_paths.
+        """
+        tmp_dir = AnyPath(output_path) / f"_tmp_{name}_parquet"
+        df.coalesce(1).write.mode("overwrite").parquet(str(tmp_dir))
+        part = next(p for p in tmp_dir.glob("part-*.parquet"))
+        target = AnyPath(output_path) / f"{name}.parquet"
+        target.write_bytes(part.read_bytes())
+        for p in tmp_dir.glob("*"):
+            p.unlink()
+        tmp_dir.rmdir()
+        logger.info(f"EntityPipeline: Wrote {target}")
 
     def _write_json_s3(self, s3_client, temp_df, dataset, env):
         """Write entity JSON to S3."""
@@ -516,11 +541,7 @@ class IssuePipeline(BasePipeline):
 
         # -- Filter old resources ---------------------------------------------
         old_resource_path = (
-            base
-            / "config"
-            / "collection"
-            / f"{collection}-collection"
-            / "old-resource.csv"
+            base / "config" / "collection" / f"{collection}" / "old-resource.csv"
         )
         try:
             if old_resource_path.exists():
