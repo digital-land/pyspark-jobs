@@ -99,7 +99,10 @@ def transform_issues_to_tasks(df: DataFrame, entry_date: str = None) -> DataFram
     df = df.filter(col("severity").isin("error", "warning", "notice"))
 
     if df.rdd.isEmpty():
-        logger.info("transform_issues_to_tasks: No matching issue rows found")
+        logger.warning(
+            "transform_issues_to_tasks: no issue rows survived the severity "
+            "filter — no issue tasks will be produced"
+        )
         return None
 
     # array_distinct guards against an org appearing twice in the ';'-list,
