@@ -24,6 +24,7 @@ from pyspark.sql import SparkSession, Window
 from pyspark.sql.functions import (
     coalesce,
     col,
+    count,
     countDistinct,
     explode,
     first,
@@ -38,7 +39,7 @@ from pyspark.sql.functions import (
 )
 
 from jobs.config.metadata import load_metadata
-from jobs.read import read_csvs_by_name, read_old_resources
+from jobs.read import read_csvs_by_name, read_issue_csvs, read_old_resources
 from jobs.transform.column_field_transformer import transform_column_field
 from jobs.transform.dataset_resource_transformer import transform_dataset_resource
 from jobs.transform.entity_transformer import transform_entity
@@ -50,7 +51,11 @@ from jobs.transform.task_transformer import (
     transform_issues_to_tasks,
     transform_log_to_tasks,
 )
-from jobs.utils.collection_paths import collection_files, collection_names
+from jobs.utils.collection_paths import (
+    collection_files,
+    collection_names,
+    issue_files_for_resources,
+)
 from jobs.utils.df_utils import count_df, normalise_column_names, show_df
 from jobs.utils.flatten_csv import flatten_json_column
 from jobs.utils.postgres_writer_utils import (
@@ -736,13 +741,15 @@ class TaskPipeline(BasePipeline):
         base = AnyPath(self.config.collection_data_path)
 
         # -- Resolve file paths ---------------------------------------------------
-        log_files = [str(p) for p in base.glob("*-collection/collection/log.csv")]
+        # Targeted listings rather than base.glob("*-collection/..."): a glob with
+        # a '/' in the pattern lists the WHOLE bucket and filters client-side.
+        collections = collection_names(base)
+        logger.info(f"TaskPipeline: Found {len(collections)} collections")
+
+        log_files = collection_files(base, collections, "log.csv")
         logger.info(f"TaskPipeline: Found {len(log_files)} log files")
 
-        issue_files = [str(p) for p in base.glob("*-collection/issue/*/*.csv")]
-        logger.info(f"TaskPipeline: Found {len(issue_files)} issue files")
-
-        source_files = [str(p) for p in base.glob("*-collection/collection/source.csv")]
+        source_files = collection_files(base, collections, "source.csv")
         logger.info(f"TaskPipeline: Found {len(source_files)} source files")
 
         log_df = spark.read.option("header", "true").csv(log_files)
@@ -790,6 +797,20 @@ class TaskPipeline(BasePipeline):
             "TaskPipeline: Active resources loaded (current resource per endpoint from log)"
         )
 
+        # -- Issue files (only for resources that survive the join below) --------
+        # The issue join is an inner join on active_df, so files for any other
+        # resource are read and then thrown away — ~26,450 files read to use
+        # ~3,000. Restricting discovery here also keeps most legacy-layout issue
+        # CSVs out of the read; read_issue_csvs handles any that remain.
+        active_resources = {
+            row["resource"] for row in active_df.select("resource").distinct().collect()
+        }
+        issue_files = issue_files_for_resources(base, collections, active_resources)
+        logger.info(
+            f"TaskPipeline: Found {len(issue_files)} issue files for "
+            f"{len(active_resources)} active resources"
+        )
+
         # -- Log tasks --------------------------------------------------------
         log_df = log_df.join(
             active_df.select("resource", "dataset", "organisation"),
@@ -812,8 +833,7 @@ class TaskPipeline(BasePipeline):
             logger.warning("TaskPipeline: No issue files found — skipping issue tasks")
             issue_tasks = None
         else:
-            issue_df = spark.read.option("header", "true").csv(issue_files)
-            issue_df = normalise_column_names(issue_df)
+            issue_df = read_issue_csvs(spark, issue_files)
             issue_df = issue_df.join(
                 active_df.select("resource", "organisation", "endpoint"),
                 on="resource",
@@ -823,12 +843,25 @@ class TaskPipeline(BasePipeline):
 
             issue_type_df = _load_issue_type_df(spark)
             issue_df = issue_df.join(issue_type_df, on="issue_type", how="left")
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(
-                    f"TaskPipeline: {issue_df.count()} issue rows for active resources after joining with issue type metadata"
-                )
-                logger.debug(
-                    f"TaskPipeline: {issue_df.filter(col('severity').isin('error', 'warning', 'notice')).count()} rows with severity in (error, warning, notice) — these become issue tasks"
+
+            # One pass, logged at INFO: this pipeline's failure mode was every
+            # issue row being dropped here silently, which DEBUG-only counts hid.
+            stats = issue_df.agg(
+                count("*").alias("rows"),
+                count(when(col("severity").isNotNull(), True)).alias("matched"),
+                count(
+                    when(col("severity").isin("error", "warning", "notice"), True)
+                ).alias("surviving"),
+            ).collect()[0]
+            logger.info(
+                f"TaskPipeline: {stats['rows']} issue rows for active resources, "
+                f"{stats['matched']} matched an issue-type, "
+                f"{stats['surviving']} survive the severity filter"
+            )
+            if stats["rows"] and not stats["surviving"]:
+                logger.error(
+                    "TaskPipeline: every issue row was dropped by the severity "
+                    "filter — issue CSVs are likely being misparsed"
                 )
 
             issue_tasks = transform_issues_to_tasks(issue_df)

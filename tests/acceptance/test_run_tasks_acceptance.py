@@ -128,21 +128,41 @@ TREE_SOURCE_ROWS = [
     },
 ]
 
-ISSUE_COLUMNS = ["resource", "dataset", "field", "issue-type"]
+ISSUE_COLUMNS = [
+    "dataset",
+    "resource",
+    "line-number",
+    "entry-number",
+    "field",
+    "entity",
+    "issue-type",
+    "value",
+    "message",
+]
 
 # Two rows for the same issue — should group into one task with count=2
 CA_ISSUE_ROWS = [
     {
-        "resource": "resource-ca-aaa",
         "dataset": "conservation-area",
+        "resource": "resource-ca-aaa",
+        "line-number": "1",
+        "entry-number": "1",
         "field": "geometry",
+        "entity": "4400001",
         "issue-type": "invalid-geometry",
+        "value": "POLYGON((0 0))",
+        "message": "invalid geometry",
     },
     {
-        "resource": "resource-ca-aaa",
         "dataset": "conservation-area",
+        "resource": "resource-ca-aaa",
+        "line-number": "2",
+        "entry-number": "2",
         "field": "geometry",
+        "entity": "4400002",
         "issue-type": "invalid-geometry",
+        "value": "POLYGON((1 1))",
+        "message": "invalid geometry",
     },
 ]
 

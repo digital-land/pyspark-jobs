@@ -603,14 +603,28 @@ class TestTaskPipeline:
             os.path.join(
                 base, "test-collection", "issue", "dataset-a", "resource-aaa.csv"
             ),
-            ["resource", "issue_type", "field", "value", "dataset"],
+            [
+                "dataset",
+                "resource",
+                "line-number",
+                "entry-number",
+                "field",
+                "entity",
+                "issue-type",
+                "value",
+                "message",
+            ],
             [
                 {
-                    "resource": "resource-aaa",
-                    "issue_type": "invalid-geometry",
-                    "field": "geometry",
-                    "value": "POLYGON((0 0))",
                     "dataset": "dataset-a",
+                    "resource": "resource-aaa",
+                    "line-number": "1",
+                    "entry-number": "1",
+                    "field": "geometry",
+                    "entity": "4400001",
+                    "issue-type": "invalid-geometry",
+                    "value": "POLYGON((0 0))",
+                    "message": "invalid",
                 }
             ],
         )
@@ -638,6 +652,114 @@ class TestTaskPipeline:
         assert len(references) == len(
             set(references)
         ), f"{len(references) - len(set(references))} duplicate references found"
+
+    def test_mixed_issue_csv_layouts_all_produce_tasks(self, spark, tmp_path, mocker):
+        """Issue CSVs exist in 7-, 8- and 9-column layouts. All three must
+        produce tasks — a single positional multi-file read applies one file's
+        header to the others and silently drops the mismatched ones."""
+        base = str(tmp_path)
+        parquet_base = os.path.join(base, "parquet-output/")
+
+        _write_csv(
+            os.path.join(base, "test-collection", "collection", "log.csv"),
+            ["endpoint", "resource", "status", "exception", "entry-date"],
+            [
+                {
+                    "endpoint": f"http://endpoint-{n}",
+                    "resource": f"resource-{n}",
+                    "status": "200",
+                    "exception": "",
+                    "entry-date": "2026-01-01",
+                }
+                for n in ("7", "8", "9")
+            ],
+        )
+
+        issue_dir = os.path.join(base, "test-collection", "issue", "dataset-a")
+        common = {
+            "dataset": "dataset-a",
+            "line-number": "1",
+            "entry-number": "1",
+            "field": "geometry",
+            "issue-type": "OSGB flipped",
+            "value": "POLYGON((0 0))",
+        }
+
+        _write_csv(
+            os.path.join(issue_dir, "resource-7.csv"),
+            [
+                "dataset",
+                "resource",
+                "line-number",
+                "entry-number",
+                "field",
+                "issue-type",
+                "value",
+            ],
+            [{**common, "resource": "resource-7"}],
+        )
+        _write_csv(
+            os.path.join(issue_dir, "resource-8.csv"),
+            [
+                "dataset",
+                "resource",
+                "line-number",
+                "entry-number",
+                "field",
+                "issue-type",
+                "value",
+                "message",
+            ],
+            [{**common, "resource": "resource-8", "message": "flipped"}],
+        )
+        _write_csv(
+            os.path.join(issue_dir, "resource-9.csv"),
+            [
+                "dataset",
+                "resource",
+                "line-number",
+                "entry-number",
+                "field",
+                "entity",
+                "issue-type",
+                "value",
+                "message",
+            ],
+            [
+                {
+                    **common,
+                    "resource": "resource-9",
+                    "entity": "4400001",
+                    "message": "flipped",
+                }
+            ],
+        )
+
+        mocker.patch(
+            "jobs.pipeline._load_issue_type_df",
+            return_value=spark.createDataFrame(
+                [("OSGB flipped", "warning", "external")],
+                ["issue_type", "severity", "responsibility"],
+            ),
+        )
+
+        config = PipelineConfig(
+            spark=spark,
+            dataset="",
+            env="local",
+            collection_data_path=f"{base}/",
+            parquet_datasets_path=parquet_base,
+        )
+
+        TaskPipeline(config).run()
+
+        tasks_df = spark.read.format("delta").load(os.path.join(parquet_base, "task"))
+        issue_tasks = tasks_df.filter(tasks_df.task_source == "issue")
+        assert {row["resource"] for row in issue_tasks.collect()} == {
+            "resource-7",
+            "resource-8",
+            "resource-9",
+        }
 
 
 class TestBackfillDatasetFromSource:
