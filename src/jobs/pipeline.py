@@ -38,7 +38,7 @@ from pyspark.sql.functions import (
 )
 
 from jobs.config.metadata import load_metadata
-from jobs.read import read_old_resources
+from jobs.read import read_csvs_by_name, read_old_resources
 from jobs.transform.column_field_transformer import transform_column_field
 from jobs.transform.dataset_resource_transformer import transform_dataset_resource
 from jobs.transform.entity_transformer import transform_entity
@@ -50,6 +50,7 @@ from jobs.transform.task_transformer import (
     transform_issues_to_tasks,
     transform_log_to_tasks,
 )
+from jobs.utils.collection_paths import collection_files, collection_names
 from jobs.utils.df_utils import count_df, normalise_column_names, show_df
 from jobs.utils.flatten_csv import flatten_json_column
 from jobs.utils.postgres_writer_utils import (
@@ -1124,10 +1125,10 @@ class ProvisionQualityPipeline(BasePipeline):
 
         # -- Active providers (source.csv → who submits) ------------------------
         # Non-empty endpoint, empty end_date; `pipelines` (';'-split) = dataset(s).
-        collections = self._collection_names(base)
-        source_files = self._collection_files(base, collections, "source.csv")
+        collections = collection_names(base)
+        source_files = collection_files(base, collections, "source.csv")
         logger.info(f"ProvisionQuality: Found {len(source_files)} source files")
-        source_df = self._read_csvs_by_name(
+        source_df = read_csvs_by_name(
             spark, source_files, ["endpoint", "end_date", "organisation", "pipelines"]
         )
         active_sources = (
@@ -1148,9 +1149,9 @@ class ProvisionQualityPipeline(BasePipeline):
         # means it was fetched today. An endpoint can be configured and active
         # while nothing actually arrives. `endpoints` is ';'-joined where
         # several endpoints produced identical content.
-        resource_files = self._collection_files(base, collections, "resource.csv")
+        resource_files = collection_files(base, collections, "resource.csv")
         logger.info(f"ProvisionQuality: Found {len(resource_files)} resource files")
-        resource_df = self._read_csvs_by_name(
+        resource_df = read_csvs_by_name(
             spark, resource_files, ["endpoints", "end_date"]
         )
         delivering_endpoints = (
@@ -1194,12 +1195,12 @@ class ProvisionQualityPipeline(BasePipeline):
         # -- Config: designated provisions + seeding lookup ---------------------
         config_base = base / "config" / "pipeline"
         eo_files = [str(p) for p in config_base.glob("*/entity-organisation.csv")]
-        entity_org_df = self._read_csvs_by_name(
+        entity_org_df = read_csvs_by_name(
             spark, eo_files, ["dataset", "organisation"]
         ).distinct()  # designated (dataset, org)
 
         lookup_files = [str(p) for p in config_base.glob("*/lookup.csv")]
-        lookup_df = self._read_csvs_by_name(
+        lookup_df = read_csvs_by_name(
             spark, lookup_files, ["entity", "organisation"]
         )  # who seeded each entity
 
@@ -1287,40 +1288,6 @@ class ProvisionQualityPipeline(BasePipeline):
             logger.info(
                 "ProvisionQuality: No database_url provided — skipping Postgres writes"
             )
-
-    def _read_csvs_by_name(self, spark, files, columns):
-        """Read many CSVs per-file and unionByName on the named columns.
-
-        A single spark.read.csv([...]) maps columns by POSITION and uses one
-        file's header for all files, so a file whose column SET differs — e.g.
-        prod tree-preservation-order's source.csv is missing the leading
-        `source` column — gets shifted (its `pipelines` value lands in the
-        `organisation` slot, producing phantom provider rows). Reading each
-        file against its OWN header and selecting by name removes that risk.
-        Mirrors load_entity_quality's guard.
-        """
-        frames = []
-        for f in files:
-            df = normalise_column_names(spark.read.option("header", "true").csv(f))
-            if not all(c in df.columns for c in columns):
-                logger.warning(f"ProvisionQuality: {f} missing {columns} — skipping")
-                continue
-            frames.append(df.select(*columns))
-        if not frames:
-            raise ValueError(f"No usable CSVs with columns {columns}")
-        return reduce(lambda a, b: a.unionByName(b), frames)
-
-    def _collection_names(self, base):
-        """Top-level {collection}-collection folder names via one delimited
-        listing. glob() with a '/' in the pattern lists the whole bucket and
-        filters client-side; iterdir() is a single Delimiter='/' call."""
-        return sorted(p.name for p in base.iterdir() if p.name.endswith("-collection"))
-
-    def _collection_files(self, base, collections, filename):
-        """Build the known {collection}/collection/{filename} paths directly and
-        keep the ones that exist, avoiding a full-bucket glob per file."""
-        paths = [base / c / "collection" / filename for c in collections]
-        return [str(p) for p in paths if p.exists()]
 
     def load_entity_quality(self, spark, entity_data_path):
         """SWAPPABLE SEAM. Phase 1: read the flattened per-dataset entity CSVs
