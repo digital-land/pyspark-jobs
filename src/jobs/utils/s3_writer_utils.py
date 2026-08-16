@@ -109,21 +109,41 @@ def _sanitize_json_row(row) -> dict:
 def _upload_json_entities_partition(
     bucket, key, upload_id, first_nonempty_idx, last_nonempty_idx, partition_index, rows
 ):
-    """Executor-side callback for mapPartitionsWithIndex.
+    """Reference implementation of the per-partition JSON-assembly logic --
+    kept only so it's directly unit-testable, NOT called by
+    write_json_entities_s3 in production.
 
-    Serializes this partition's rows and uploads them as a single S3
-    multipart part directly from the executor -- the driver never sees row
-    data. The partition at first_nonempty_idx opens the
-    `{"entities":[...]}` array and the one at last_nonempty_idx closes it, so
-    the closing bracket lands in the true final part of the upload, which is
-    the only part exempt from S3's 5MB-per-part minimum.
+    write_json_entities_s3 instead defines an inline, self-contained nested
+    closure with the same logic, because this function's identity is
+    resolvable via a plain module attribute lookup (getattr(jobs.utils.
+    s3_writer_utils, "_upload_json_entities_partition")), which makes
+    cloudpickle ship a *reference* to it -- requiring the `jobs` package to
+    be importable in whatever Python process unpickles it. On the driver
+    that's fine, but Spark runs mapPartitionsWithIndex closures in executor
+    worker subprocesses, and this codebase's executors are not guaranteed to
+    have the `jobs` wheel on their PYTHONPATH (a real EMR Serverless
+    `--py-files` gap, driver-only in practice), so a shipped reference to
+    this function fails with `ModuleNotFoundError: No module named 'jobs'`.
+    A nested function defined inside write_json_entities_s3 isn't reachable
+    via module attribute lookup, so cloudpickle ships it by value (embedded
+    bytecode) instead, and it only touches builtins/stdlib/boto3, all
+    guaranteed present without `jobs`.
 
-    first/last_nonempty_idx must be the *actual* non-empty partition
-    boundaries, not assumed to be 0 and (partition count - 1): Spark's
-    round-robin repartitioning starts from a random offset per *input*
-    partition, so when the requested output partition count is large
-    relative to the number of partitions already present, it can leave any
-    partition -- including the first or last -- empty.
+    If you change the assembly logic here (header/footer/comma placement),
+    make the identical change in write_json_entities_s3's nested closure --
+    they must stay in sync, and this function is what the tests below
+    actually exercise.
+
+    The partition at first_nonempty_idx opens the `{"entities":[...]}` array
+    and the one at last_nonempty_idx closes it, so the closing bracket lands
+    in the true final part of the upload, which is the only part exempt from
+    S3's 5MB-per-part minimum. first/last_nonempty_idx must be the *actual*
+    non-empty partition boundaries, not assumed to be 0 and
+    (partition count - 1): Spark's round-robin repartitioning starts from a
+    random offset per *input* partition, so when the requested output
+    partition count is large relative to the number of partitions already
+    present, it can leave any partition -- including the first or last --
+    empty.
     """
     pieces = [json.dumps(_sanitize_json_row(row)) for row in rows]
     if not pieces:
@@ -225,10 +245,51 @@ def write_json_entities_s3(
             partitioned.rdd
         )
 
-        uploaded_parts = partitioned.rdd.mapPartitionsWithIndex(
-            lambda idx, rows: _upload_json_entities_partition(
-                bucket, key, upload_id, first_nonempty_idx, last_nonempty_idx, idx, rows
+        def _upload_partition(partition_index, rows):
+            # Nested (not module-level) on purpose: this closure is shipped
+            # by Spark to run inside executor Python worker subprocesses,
+            # which don't reliably have the `jobs` package on PYTHONPATH.
+            # A nested function can't be reached via module attribute lookup,
+            # so cloudpickle ships it by value instead of by reference -- it
+            # must therefore only touch builtins/stdlib/boto3 (all present
+            # without `jobs`), never a module-level jobs.* name. Mirrors
+            # _upload_json_entities_partition / _sanitize_json_row above,
+            # which exist purely so this logic is directly unit-testable --
+            # keep both in sync; see that function's docstring for why the
+            # duplication is necessary.
+            pieces = []
+            for row in rows:
+                row_dict = row.asDict()
+                for field, value in row_dict.items():
+                    if isinstance(value, (date, datetime)):
+                        row_dict[field] = value.isoformat() if value else ""
+                    elif value is None:
+                        row_dict[field] = ""
+                pieces.append(json.dumps(row_dict))
+            if not pieces:
+                return iter([])
+
+            body = ",".join(pieces)
+            if partition_index == first_nonempty_idx:
+                body = '{"entities":[' + body
+            else:
+                body = "," + body
+            if partition_index == last_nonempty_idx:
+                body += "]}"
+
+            s3 = boto3.client("s3")
+            part_number = partition_index + 1
+            part = s3.upload_part(
+                Bucket=bucket,
+                Key=key,
+                PartNumber=part_number,
+                UploadId=upload_id,
+                Body=body,
             )
+            return iter([(part_number, part["ETag"])])
+
+        uploaded_parts = partitioned.rdd.mapPartitionsWithIndex(
+            _upload_partition
         ).collect()
 
         parts = [
