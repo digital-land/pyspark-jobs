@@ -1,4 +1,4 @@
-"""Integration tests for s3_writer_utils.write_delta."""
+"""Integration tests for s3_writer_utils write functions that need a real Spark session."""
 
 import os
 
@@ -6,7 +6,11 @@ import pytest
 from pyspark.sql import Row
 from pyspark.sql.types import IntegerType, StringType, StructField, StructType
 
-from jobs.utils.s3_writer_utils import write_delta
+from jobs.utils.s3_writer_utils import (
+    _nonempty_partition_bounds,
+    write_delta,
+    write_json_entities_s3,
+)
 
 
 def _read_delta(spark, path):
@@ -107,3 +111,61 @@ def test_write_delta_raises_on_non_delta_existing_files(spark, tmp_path):
     df = spark.createDataFrame([Row(dataset="ds-a", value="x")])
     with pytest.raises(ValueError, match="not a Delta table"):
         write_delta(df, str(output), dataset="ds-a", partition_by=["dataset"])
+
+
+def test_nonempty_partition_bounds_covers_all_rows_when_evenly_distributed(spark):
+    """The common case: bounds are simply (0, num_partitions - 1)."""
+    df = spark.range(1000).toDF("id")
+    partitioned = df.repartition(4)
+    first_idx, last_idx = _nonempty_partition_bounds(partitioned.rdd)
+    assert (first_idx, last_idx) == (0, 3)
+
+
+def test_nonempty_partition_bounds_handles_partitions_left_empty_by_repartition(spark):
+    """Regression case for the bug write_json_entities_s3 hit in practice:
+    df.repartition(n) with n close to the row count can leave partitions --
+    including the first and/or last -- empty, because Spark's round-robin
+    partitioning starts from a random offset per *input* partition rather
+    than cycling through output partitions across the whole dataset. This
+    confirms _nonempty_partition_bounds finds the true bounds regardless."""
+    df = spark.range(50).toDF("id")
+    partitioned = df.repartition(50)
+    counts = partitioned.rdd.mapPartitionsWithIndex(
+        lambda idx, rows: [(idx, sum(1 for _ in rows))]
+    ).collect()
+    truly_nonempty = [idx for idx, count in counts if count > 0]
+
+    first_idx, last_idx = _nonempty_partition_bounds(partitioned.rdd)
+
+    assert first_idx == min(truly_nonempty)
+    assert last_idx == max(truly_nonempty)
+
+
+class FakeS3Client:
+    """Records put_object calls; no other S3 methods are needed for the
+    row_count == 0 path, which never reaches the distributed upload."""
+
+    def __init__(self):
+        self.put_calls = []
+
+    def put_object(self, Bucket, Key, Body):
+        self.put_calls.append({"Bucket": Bucket, "Key": Key, "Body": Body})
+
+
+def test_write_json_entities_s3_empty_dataframe_writes_empty_entities_array(spark):
+    """An empty DataFrame short-circuits to a plain put_object -- this is
+    the only path of write_json_entities_s3 testable without a real S3
+    endpoint, since the non-empty path uploads from Spark executor
+    subprocesses where a mocked boto3 client can't be observed."""
+    df = spark.createDataFrame([], "id: int")
+    fake_client = FakeS3Client()
+
+    write_json_entities_s3(df, fake_client, "test-bucket", "dataset/test.json")
+
+    assert fake_client.put_calls == [
+        {
+            "Bucket": "test-bucket",
+            "Key": "dataset/test.json",
+            "Body": '{"entities":[]}',
+        }
+    ]
