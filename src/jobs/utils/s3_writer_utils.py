@@ -1,13 +1,17 @@
 """S3 Writer utilities for data transformation and writing."""
 
+import json
 import logging
 import re
+from datetime import date, datetime
 from typing import List, Optional
 
 import boto3
 from pyspark.sql.functions import lit
 
 logger = logging.getLogger(__name__)
+
+JSON_MULTIPART_TARGET_PARTITION_BYTES = 64 * 1024 * 1024
 
 df_entity = None
 
@@ -89,6 +93,160 @@ def cleanup_temp_path(env, dataset_name):
             objects = [{"Key": obj["Key"]} for obj in page["Contents"]]
             s3_client.delete_objects(Bucket=bucket_name, Delete={"Objects": objects})
             logger.info(f"Deleted {len(objects)} objects from {prefix}")
+
+
+def _sanitize_json_row(row) -> dict:
+    """Convert a Row to a JSON-safe dict: dates/datetimes to ISO strings, None to ''."""
+    row_dict = row.asDict()
+    for key, value in row_dict.items():
+        if isinstance(value, (date, datetime)):
+            row_dict[key] = value.isoformat() if value else ""
+        elif value is None:
+            row_dict[key] = ""
+    return row_dict
+
+
+def _upload_json_entities_partition(
+    bucket, key, upload_id, first_nonempty_idx, last_nonempty_idx, partition_index, rows
+):
+    """Executor-side callback for mapPartitionsWithIndex.
+
+    Serializes this partition's rows and uploads them as a single S3
+    multipart part directly from the executor -- the driver never sees row
+    data. The partition at first_nonempty_idx opens the
+    `{"entities":[...]}` array and the one at last_nonempty_idx closes it, so
+    the closing bracket lands in the true final part of the upload, which is
+    the only part exempt from S3's 5MB-per-part minimum.
+
+    first/last_nonempty_idx must be the *actual* non-empty partition
+    boundaries, not assumed to be 0 and (partition count - 1): Spark's
+    round-robin repartitioning starts from a random offset per *input*
+    partition, so when the requested output partition count is large
+    relative to the number of partitions already present, it can leave any
+    partition -- including the first or last -- empty.
+    """
+    pieces = [json.dumps(_sanitize_json_row(row)) for row in rows]
+    if not pieces:
+        return iter([])
+
+    body = ",".join(pieces)
+    if partition_index == first_nonempty_idx:
+        body = '{"entities":[' + body
+    else:
+        # separates this partition's first item from the previous
+        # partition's last item -- the join above only handles commas
+        # *within* a partition's own rows.
+        body = "," + body
+    if partition_index == last_nonempty_idx:
+        body += "]}"
+
+    s3 = boto3.client("s3")
+    part_number = partition_index + 1
+    part = s3.upload_part(
+        Bucket=bucket,
+        Key=key,
+        PartNumber=part_number,
+        UploadId=upload_id,
+        Body=body,
+    )
+    return iter([(part_number, part["ETag"])])
+
+
+def _nonempty_partition_bounds(rdd):
+    """Return (first_nonempty_idx, last_nonempty_idx) for an RDD's partitions.
+
+    Spark's round-robin repartitioning starts from a random offset per
+    *input* partition, so when the requested output partition count is large
+    relative to the number of partitions already present, it can leave
+    arbitrary partitions -- including the first or last -- empty. Callers
+    that need to know which physical partition is truly first/last (e.g. to
+    place an opening/closing bracket) must use this instead of assuming
+    indices 0 and rdd.getNumPartitions() - 1.
+    """
+    partition_counts = rdd.mapPartitionsWithIndex(
+        lambda idx, rows: [(idx, sum(1 for _ in rows))]
+    ).collect()
+    nonempty_indices = [idx for idx, count in partition_counts if count > 0]
+    return min(nonempty_indices), max(nonempty_indices)
+
+
+def write_json_entities_s3(
+    df,
+    s3_client,
+    bucket: str,
+    key: str,
+    target_partition_bytes: int = JSON_MULTIPART_TARGET_PARTITION_BYTES,
+):
+    """Write `df` as `{"entities": [...]}` JSON to S3 via a distributed multipart upload.
+
+    Each partition serializes and uploads its own rows directly to S3 from
+    the executor that holds them, so the driver only orchestrates the
+    multipart upload rather than collecting every row itself. Partitions are
+    sized (via a byte-size estimate from a random sample) well above S3's
+    5MB-per-part minimum so that, in the common case, every partition except
+    the last produces a part large enough to be valid on its own. This is a
+    heuristic, not a guarantee: a sample that misses extreme outliers (e.g.
+    a few rows with unusually large geometries) could still under-size a
+    partition and fail the upload.
+    """
+    row_count = df.count()
+    if row_count == 0:
+        s3_client.put_object(Bucket=bucket, Key=key, Body='{"entities":[]}')
+        logger.info(f"write_json_entities_s3: wrote empty entities array to {key}")
+        return
+
+    try:
+        s3_client.head_object(Bucket=bucket, Key=key)
+        s3_client.delete_object(Bucket=bucket, Key=key)
+    except s3_client.exceptions.ClientError:
+        pass
+
+    sample = df.rdd.takeSample(False, min(200, row_count), seed=42)
+    avg_row_bytes = max(
+        1,
+        sum(len(json.dumps(_sanitize_json_row(r)).encode("utf-8")) for r in sample)
+        // len(sample),
+    )
+    estimated_total_bytes = avg_row_bytes * row_count
+    num_partitions = max(
+        1, min(row_count, estimated_total_bytes // target_partition_bytes)
+    )
+
+    # Cached because it drives two actions below (the row-count pass and the
+    # upload pass) -- without caching, everything upstream of temp_df would
+    # be recomputed a second time.
+    partitioned = df.repartition(num_partitions).cache()
+
+    mpu = s3_client.create_multipart_upload(Bucket=bucket, Key=key)
+    upload_id = mpu["UploadId"]
+
+    try:
+        first_nonempty_idx, last_nonempty_idx = _nonempty_partition_bounds(
+            partitioned.rdd
+        )
+
+        uploaded_parts = partitioned.rdd.mapPartitionsWithIndex(
+            lambda idx, rows: _upload_json_entities_partition(
+                bucket, key, upload_id, first_nonempty_idx, last_nonempty_idx, idx, rows
+            )
+        ).collect()
+
+        parts = [
+            {"PartNumber": num, "ETag": etag} for num, etag in sorted(uploaded_parts)
+        ]
+        s3_client.complete_multipart_upload(
+            Bucket=bucket,
+            Key=key,
+            UploadId=upload_id,
+            MultipartUpload={"Parts": parts},
+        )
+        logger.info(f"write_json_entities_s3: wrote {row_count:,} entities to {key}")
+    except Exception as e:
+        logger.error(f"write_json_entities_s3: multipart upload failed: {e}")
+        s3_client.abort_multipart_upload(Bucket=bucket, Key=key, UploadId=upload_id)
+        raise
+    finally:
+        partitioned.unpersist()
 
 
 def resolve_geometry(

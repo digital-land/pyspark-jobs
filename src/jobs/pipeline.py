@@ -71,6 +71,7 @@ from jobs.utils.s3_writer_utils import (
     resolve_geometry,
     s3_rename_and_move,
     write_delta,
+    write_json_entities_s3,
 )
 
 logger = logging.getLogger(__name__)
@@ -311,35 +312,17 @@ class EntityPipeline(BasePipeline):
         logger.info(f"EntityPipeline: Wrote {target}")
 
     def _write_json_s3(self, s3_client, temp_df, dataset, env):
-        """Write entity JSON to S3."""
-        json_buffer = '{"entities":['
-        first = True
-        for row in temp_df.toLocalIterator():
-            if not first:
-                json_buffer += ","
-            first = False
-            row_dict = row.asDict()
-            for key, value in row_dict.items():
-                if isinstance(value, (date, datetime)):
-                    row_dict[key] = value.isoformat() if value else ""
-                elif value is None:
-                    row_dict[key] = ""
-            json_buffer += json.dumps(row_dict)
-        json_buffer += "]}"
+        """Write entity JSON to S3.
 
+        Delegates to write_json_entities_s3, which uploads each partition's
+        rows directly from the executor that holds them rather than routing
+        every row through the driver -- see that function's docstring for
+        why this avoids both the EntityTooLarge failure (a single put_object
+        holding the whole document exceeds S3's 5GB limit once the dataset
+        is big enough) and the driver bottleneck of a sequential row loop.
+        """
         target_key = f"dataset/{dataset}.json"
-        try:
-            s3_client.head_object(Bucket=f"{env}-collection-data", Key=target_key)
-            s3_client.delete_object(Bucket=f"{env}-collection-data", Key=target_key)
-        except s3_client.exceptions.ClientError:
-            pass
-
-        s3_client.put_object(
-            Bucket=f"{env}-collection-data",
-            Key=target_key,
-            Body=json_buffer,
-        )
-        logger.info(f"EntityPipeline: JSON file written to {target_key}")
+        write_json_entities_s3(temp_df, s3_client, f"{env}-collection-data", target_key)
 
     def _write_geojson_s3(self, s3_client, temp_df, dataset, env):
         """Write entity GeoJSON to S3 using multipart upload."""
