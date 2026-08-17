@@ -227,9 +227,11 @@ def test_e2e_task_generation_pipeline(
         [("invalid-geometry", "error", "external")],
         ["issue_type", "severity", "responsibility"],
     )
-    mocker.patch("jobs.pipeline._load_issue_type_df", return_value=mock_issue_type_df)
+    mocker.patch(
+        "jobs.pipeline.task._load_issue_type_df", return_value=mock_issue_type_df
+    )
 
-    mock_pg = mocker.patch("jobs.pipeline.write_task_to_postgres")
+    mock_pg = mocker.patch("jobs.pipeline.task.write_task_to_postgres")
 
     # -- Run ------------------------------------------------------------------
 
