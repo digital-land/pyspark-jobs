@@ -364,7 +364,7 @@ def test_e2e_full_load_pipeline(cli_runner, run_main_cmd, spark, tmp_path, mocke
         },
     )
     mocker.patch.object(spark, "stop")  # prevent finally block killing shared session
-    mock_pg = mocker.patch("jobs.pipeline.write_dataframe_to_postgres_jdbc")
+    mock_pg = mocker.patch("jobs.pipeline.entity.write_dataframe_to_postgres_jdbc")
     mocker.patch(
         "jobs.transform.entity_transformer.get_dataset_typology",
         return_value="geography",
@@ -376,9 +376,13 @@ def test_e2e_full_load_pipeline(cli_runner, run_main_cmd, spark, tmp_path, mocke
     mock_consumer_df.count.return_value = 0
     mock_consumer_df.toLocalIterator.return_value = iter([])
     mock_consumer_df.repartition.return_value.toLocalIterator.return_value = iter([])
-    mocker.patch("jobs.pipeline.flatten_json_column", return_value=mock_consumer_df)
-    mocker.patch("jobs.pipeline.ensure_schema_fields", return_value=mock_consumer_df)
-    mocker.patch("jobs.pipeline.EntityPipeline._write_single_parquet")
+    mocker.patch(
+        "jobs.pipeline.entity.flatten_json_column", return_value=mock_consumer_df
+    )
+    mocker.patch(
+        "jobs.pipeline.entity.ensure_schema_fields", return_value=mock_consumer_df
+    )
+    mocker.patch("jobs.pipeline.entity.EntityPipeline._write_single_parquet")
 
     result = cli_runner.invoke(
         run_main_cmd,

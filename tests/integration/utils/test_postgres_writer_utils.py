@@ -20,7 +20,10 @@ from pyspark.sql.types import (
     StructType,
 )
 
-from jobs.pipeline import DATASET_QUALITY_PG_TYPES, PROVISION_QUALITY_PG_TYPES
+from jobs.pipeline.provision_quality import (
+    DATASET_QUALITY_PG_TYPES,
+    PROVISION_QUALITY_PG_TYPES,
+)
 from jobs.utils.postgres_writer_utils import (
     write_dataframe_to_postgres_jdbc,
     write_entity_subdivided_to_postgres,

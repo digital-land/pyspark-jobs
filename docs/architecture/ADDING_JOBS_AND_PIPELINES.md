@@ -10,7 +10,7 @@ entry_points/run_main.py      CLI (click) — minimal, decoupled from logic
 src/jobs/job.py               Job function — validates inputs, creates Spark session,
         |                     builds PipelineConfig, runs pipelines in order
         |
-src/jobs/pipeline.py          Pipeline classes — ETL logic wired together
+src/jobs/pipeline/             Pipeline classes — ETL logic wired together, one file per pipeline
         |
 src/jobs/transform/           Transformer classes — pure DataFrame transformations
 src/jobs/utils/               Utilities — S3, Postgres, logging, etc.
@@ -43,7 +43,7 @@ Write unit tests in `tests/unit/` — transformers are pure functions and easy t
 
 ### 2. Create a pipeline class
 
-Add the new pipeline to `src/jobs/pipeline.py` by extending `BasePipeline`:
+Add the new pipeline as its own module in `src/jobs/pipeline/` (e.g. `src/jobs/pipeline/my_pipeline.py`), extending `BasePipeline` from `jobs.pipeline.base`, and re-export the class from `src/jobs/pipeline/__init__.py` so it's reachable as `from jobs.pipeline import MyPipeline`:
 
 ```python
 class MyPipeline(BasePipeline):
@@ -98,7 +98,7 @@ report = [entity_pipeline.result, issue_pipeline.result, my_pipeline.result]
 
 ### 4. Add integration tests
 
-Integration tests live in `tests/integration/test_pipeline.py`. Follow the existing pattern: write CSV fixtures to `tmp_path`, run the pipeline, and assert on the parquet output.
+Integration tests live under `tests/integration/pipeline/`, one file per pipeline (e.g. `test_entity.py`, `test_task.py`). Add `test_my_pipeline.py` there. Follow the existing pattern: write CSV fixtures to `tmp_path`, run the pipeline, and assert on the parquet output. Shared fixtures live in `tests/integration/pipeline/_test_helpers.py`.
 
 ```python
 def test_my_pipeline_writes_correct_row_count(self, spark, tmp_path, mocker):
@@ -199,7 +199,7 @@ Deploy the same way as `run_main.py`: upload to S3 alongside the `.whl` and refe
 |------|---------------|
 | `entry_points/run_main.py` | CLI argument parsing, calls job function |
 | `src/jobs/job.py` | Input validation, Spark session, PipelineConfig, pipeline orchestration |
-| `src/jobs/pipeline.py` | ETL wiring (extract → transform → load), `BasePipeline`, `PipelineConfig` |
+| `src/jobs/pipeline/` | ETL wiring (extract → transform → load), one module per pipeline; `base.py` has `BasePipeline`, `PipelineConfig` |
 | `src/jobs/transform/` | DataFrame transformations (stateless, independently testable) |
 | `src/jobs/utils/s3_utils.py` | S3 cleanup and path validation |
 | `src/jobs/utils/s3_writer_utils.py` | Parquet writing, CSV/JSON/GeoJSON consumer format writing |

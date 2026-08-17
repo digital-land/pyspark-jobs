@@ -7,7 +7,7 @@ of the base class without Spark or filesystem dependencies.
 
 import pytest
 
-from jobs.pipeline import BasePipeline, PipelineConfig
+from jobs.pipeline.base import BasePipeline, PipelineConfig
 
 
 @pytest.fixture
