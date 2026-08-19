@@ -11,7 +11,7 @@ from pyspark.sql.functions import lit
 
 logger = logging.getLogger(__name__)
 
-JSON_MULTIPART_TARGET_PARTITION_BYTES = 64 * 1024 * 1024
+MULTIPART_TARGET_PARTITION_BYTES = 64 * 1024 * 1024
 
 df_entity = None
 
@@ -195,7 +195,7 @@ def write_json_entities_s3(
     s3_client,
     bucket: str,
     key: str,
-    target_partition_bytes: int = JSON_MULTIPART_TARGET_PARTITION_BYTES,
+    target_partition_bytes: int = MULTIPART_TARGET_PARTITION_BYTES,
 ):
     """Write `df` as `{"entities": [...]}` JSON to S3 via a distributed multipart upload.
 
@@ -304,6 +304,283 @@ def write_json_entities_s3(
         logger.info(f"write_json_entities_s3: wrote {row_count:,} entities to {key}")
     except Exception as e:
         logger.error(f"write_json_entities_s3: multipart upload failed: {e}")
+        s3_client.abort_multipart_upload(Bucket=bucket, Key=key, UploadId=upload_id)
+        raise
+    finally:
+        partitioned.unpersist()
+
+
+def _upload_geojson_entities_partition(
+    bucket,
+    key,
+    upload_id,
+    dataset_name,
+    first_nonempty_idx,
+    last_nonempty_idx,
+    partition_index,
+    rows,
+):
+    """Reference implementation of the per-partition GeoJSON-assembly logic --
+    kept only so it's directly unit-testable, NOT called by
+    write_geojson_entities_s3 in production. See
+    _upload_json_entities_partition's docstring for why: this function is
+    resolvable via a plain module attribute lookup, so cloudpickle would ship
+    a reference to it that fails to unpickle on an executor without the
+    `jobs` package. write_geojson_entities_s3 instead defines an inline,
+    self-contained nested closure with the same logic (including its own
+    copy of the WKT-to-GeoJSON parsing below, rather than calling
+    resolve_geometry/wkt_to_geojson) -- keep both in sync.
+
+    Same header/footer/comma placement rules as _upload_json_entities_partition,
+    wrapping in a GeoJSON FeatureCollection instead of an entities array.
+    """
+    pieces = []
+    for row in rows:
+        row_dict = row.asDict()
+        geometry_wkt = row_dict.pop("geometry", None)
+        point_wkt = row_dict.pop("point", None)
+        for field, value in row_dict.items():
+            if isinstance(value, (date, datetime)):
+                row_dict[field] = value.isoformat() if value else ""
+            elif value is None:
+                row_dict[field] = ""
+        feature = {
+            "type": "Feature",
+            "properties": row_dict,
+            "geometry": resolve_geometry(geometry_wkt, point_wkt),
+        }
+        pieces.append(json.dumps(feature))
+    if not pieces:
+        return iter([])
+
+    body = ",".join(pieces)
+    if partition_index == first_nonempty_idx:
+        body = (
+            '{"type":"FeatureCollection","name":"' + dataset_name + '","features":['
+        ) + body
+    else:
+        body = "," + body
+    if partition_index == last_nonempty_idx:
+        body += "]}"
+
+    s3 = boto3.client("s3")
+    part_number = partition_index + 1
+    part = s3.upload_part(
+        Bucket=bucket,
+        Key=key,
+        PartNumber=part_number,
+        UploadId=upload_id,
+        Body=body,
+    )
+    return iter([(part_number, part["ETag"])])
+
+
+def _sample_avg_geojson_feature_bytes(sample):
+    """Driver-side only -- safe to call resolve_geometry/wkt_to_geojson here
+    since this never runs on an executor."""
+    sizes = []
+    for row in sample:
+        row_dict = row.asDict()
+        geometry_wkt = row_dict.pop("geometry", None)
+        point_wkt = row_dict.pop("point", None)
+        for field, value in row_dict.items():
+            if isinstance(value, (date, datetime)):
+                row_dict[field] = value.isoformat() if value else ""
+            elif value is None:
+                row_dict[field] = ""
+        feature = {
+            "type": "Feature",
+            "properties": row_dict,
+            "geometry": resolve_geometry(geometry_wkt, point_wkt),
+        }
+        sizes.append(len(json.dumps(feature).encode("utf-8")))
+    return max(1, sum(sizes) // len(sizes))
+
+
+def write_geojson_entities_s3(
+    df,
+    s3_client,
+    bucket: str,
+    key: str,
+    dataset_name: str,
+    target_partition_bytes: int = MULTIPART_TARGET_PARTITION_BYTES,
+):
+    """Write `df` as a GeoJSON FeatureCollection to S3 via a distributed
+    multipart upload. See write_json_entities_s3's docstring for the general
+    approach (each partition uploads its own rows directly from its
+    executor; partitions are sized well above S3's 5MB-per-part minimum via
+    a sampled byte-size estimate, a heuristic rather than a guarantee).
+
+    geometry/point WKT columns are popped from each row and converted to a
+    GeoJSON geometry, same as the driver-side writers this replaces.
+    """
+    row_count = df.count()
+    if row_count == 0:
+        s3_client.put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=(
+                '{"type":"FeatureCollection","name":"'
+                + dataset_name
+                + '","features":[]}'
+            ),
+        )
+        logger.info(
+            f"write_geojson_entities_s3: wrote empty feature collection to {key}"
+        )
+        return
+
+    try:
+        s3_client.head_object(Bucket=bucket, Key=key)
+        s3_client.delete_object(Bucket=bucket, Key=key)
+    except s3_client.exceptions.ClientError:
+        pass
+
+    sample = df.rdd.takeSample(False, min(200, row_count), seed=42)
+    avg_row_bytes = _sample_avg_geojson_feature_bytes(sample)
+    estimated_total_bytes = avg_row_bytes * row_count
+    num_partitions = max(
+        1, min(row_count, estimated_total_bytes // target_partition_bytes)
+    )
+
+    # Cached because it drives two actions below (the row-count pass and the
+    # upload pass) -- without caching, everything upstream of df would be
+    # recomputed a second time.
+    partitioned = df.repartition(num_partitions).cache()
+
+    mpu = s3_client.create_multipart_upload(Bucket=bucket, Key=key)
+    upload_id = mpu["UploadId"]
+
+    try:
+        first_nonempty_idx, last_nonempty_idx = _nonempty_partition_bounds(
+            partitioned.rdd
+        )
+
+        def _upload_partition(partition_index, rows):
+            # Nested (not module-level) on purpose -- see
+            # _upload_geojson_entities_partition's docstring. Only
+            # builtins/stdlib/boto3 (via the module-level `re`, `json`,
+            # `boto3`, `date`, `datetime` imports) are touched here, never a
+            # module-level jobs.* name -- including resolve_geometry/
+            # wkt_to_geojson, which is why the WKT parsing is duplicated
+            # inline below instead of calling them.
+            def wkt_to_geojson(wkt_string):
+                if not wkt_string:
+                    return None
+                wkt_string = wkt_string.strip()
+
+                if wkt_string.startswith("POINT"):
+                    coords = re.findall(r"[-\d.]+", wkt_string)
+                    return {
+                        "type": "Point",
+                        "coordinates": [float(coords[0]), float(coords[1])],
+                    }
+
+                elif wkt_string.startswith("POLYGON"):
+                    rings = re.findall(r"\(([^()]+)\)", wkt_string)
+                    coordinates = []
+                    for ring in rings:
+                        points = []
+                        coords = re.findall(r"([-\d.]+)\s+([-\d.]+)", ring)
+                        for lon, lat in coords:
+                            points.append([float(lon), float(lat)])
+                        coordinates.append(points)
+                    return {"type": "Polygon", "coordinates": coordinates}
+
+                elif wkt_string.startswith("MULTIPOLYGON"):
+                    wkt_string = wkt_string.replace("MULTIPOLYGON ", "").strip()
+                    polygons = []
+                    depth = 0
+                    current_polygon = ""
+
+                    for char in wkt_string:
+                        if char == "(":
+                            depth += 1
+                            if depth > 1:
+                                current_polygon += char
+                        elif char == ")":
+                            depth -= 1
+                            if depth > 0:
+                                current_polygon += char
+                            elif depth == 0 and current_polygon:
+                                rings = re.findall(r"\(([^()]+)\)", current_polygon)
+                                coordinates = []
+                                for ring in rings:
+                                    points = []
+                                    coords = re.findall(r"([-\d.]+)\s+([-\d.]+)", ring)
+                                    for lon, lat in coords:
+                                        points.append([float(lon), float(lat)])
+                                    coordinates.append(points)
+                                polygons.append(coordinates)
+                                current_polygon = ""
+                        elif depth > 0:
+                            current_polygon += char
+
+                    if len(polygons) == 1:
+                        return {"type": "Polygon", "coordinates": polygons[0]}
+                    return {"type": "MultiPolygon", "coordinates": polygons}
+
+                return None
+
+            pieces = []
+            for row in rows:
+                row_dict = row.asDict()
+                geometry_wkt = row_dict.pop("geometry", None)
+                point_wkt = row_dict.pop("point", None)
+                for field, value in row_dict.items():
+                    if isinstance(value, (date, datetime)):
+                        row_dict[field] = value.isoformat() if value else ""
+                    elif value is None:
+                        row_dict[field] = ""
+                wkt = geometry_wkt or point_wkt
+                feature = {
+                    "type": "Feature",
+                    "properties": row_dict,
+                    "geometry": wkt_to_geojson(wkt) if wkt else None,
+                }
+                pieces.append(json.dumps(feature))
+            if not pieces:
+                return iter([])
+
+            body = ",".join(pieces)
+            if partition_index == first_nonempty_idx:
+                body = (
+                    '{"type":"FeatureCollection","name":"'
+                    + dataset_name
+                    + '","features":['
+                ) + body
+            else:
+                body = "," + body
+            if partition_index == last_nonempty_idx:
+                body += "]}"
+
+            s3 = boto3.client("s3")
+            part_number = partition_index + 1
+            part = s3.upload_part(
+                Bucket=bucket,
+                Key=key,
+                PartNumber=part_number,
+                UploadId=upload_id,
+                Body=body,
+            )
+            return iter([(part_number, part["ETag"])])
+
+        uploaded_parts = partitioned.rdd.mapPartitionsWithIndex(
+            _upload_partition
+        ).collect()
+
+        parts = [
+            {"PartNumber": num, "ETag": etag} for num, etag in sorted(uploaded_parts)
+        ]
+        s3_client.complete_multipart_upload(
+            Bucket=bucket,
+            Key=key,
+            UploadId=upload_id,
+            MultipartUpload={"Parts": parts},
+        )
+        logger.info(f"write_geojson_entities_s3: wrote {row_count:,} features to {key}")
+    except Exception as e:
+        logger.error(f"write_geojson_entities_s3: multipart upload failed: {e}")
         s3_client.abort_multipart_upload(Bucket=bucket, Key=key, UploadId=upload_id)
         raise
     finally:

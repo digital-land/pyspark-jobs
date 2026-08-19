@@ -9,7 +9,13 @@ from pyspark.sql.types import IntegerType, StringType, StructField, StructType
 from jobs.utils.s3_writer_utils import (
     _nonempty_partition_bounds,
     write_delta,
+    write_geojson_entities_s3,
     write_json_entities_s3,
+)
+
+from ._closure_test_helpers import (
+    capture_upload_closure,
+    run_closure_without_jobs_importable,
 )
 
 
@@ -169,3 +175,182 @@ def test_write_json_entities_s3_empty_dataframe_writes_empty_entities_array(spar
             "Body": '{"entities":[]}',
         }
     ]
+
+
+def test_write_geojson_entities_s3_empty_dataframe_writes_empty_feature_collection(
+    spark,
+):
+    """An empty DataFrame short-circuits to a plain put_object -- same
+    reasoning as the JSON writer's equivalent test above."""
+    df = spark.createDataFrame([], "id: int")
+    fake_client = FakeS3Client()
+
+    write_geojson_entities_s3(
+        df, fake_client, "test-bucket", "dataset/test.geojson", "test-dataset"
+    )
+
+    assert fake_client.put_calls == [
+        {
+            "Bucket": "test-bucket",
+            "Key": "dataset/test.geojson",
+            "Body": '{"type":"FeatureCollection","name":"test-dataset","features":[]}',
+        }
+    ]
+
+
+class _NoopMultipartS3Client:
+    """Enough of the boto3 S3 client surface for write_*_entities_s3 to run
+    its driver-side orchestration (head/create/abort) without hitting real
+    S3. Used only to get far enough to capture the real upload closure --
+    the upload itself is expected to fail (see capture_upload_closure)."""
+
+    class exceptions:
+        ClientError = Exception
+
+    def head_object(self, Bucket, Key):
+        raise self.exceptions.ClientError("not found")
+
+    def delete_object(self, Bucket, Key):
+        pass
+
+    def create_multipart_upload(self, Bucket, Key):
+        return {"UploadId": "u1"}
+
+    def abort_multipart_upload(self, Bucket, Key, UploadId):
+        pass
+
+
+def test_write_json_entities_s3_closure_preserves_all_fields(spark, monkeypatch):
+    """Regression test for the actual closure write_json_entities_s3 ships
+    to executors (not the reference implementation _upload_json_entities_
+    partition, which the closure duplicates rather than calls -- see
+    _closure_test_helpers for why). Every property field must survive,
+    dates must become ISO strings, and None must become '' -- the exact
+    output shape the pre-refactor sequential toLocalIterator writer
+    produced."""
+    capture_df = spark.createDataFrame([Row(id=0)])
+    fn = capture_upload_closure(
+        monkeypatch,
+        lambda: write_json_entities_s3(
+            capture_df, _NoopMultipartS3Client(), "bucket", "key"
+        ),
+    )
+
+    child_body = """
+from datetime import date
+
+class FakeRow:
+    def __init__(self, d):
+        self._d = d
+    def asDict(self):
+        return dict(self._d)
+
+rows = [
+    FakeRow({
+        "id": 1, "name": "Alpha", "score": 3.5, "active": True,
+        "entry-date": date(2024, 1, 2), "note": None,
+    }),
+    FakeRow({
+        "id": 2, "name": "Beta", "score": None, "active": False,
+        "entry-date": None, "note": "hello",
+    }),
+]
+list(fn(0, iter(rows)))
+"""
+    bodies = run_closure_without_jobs_importable(fn, child_body)
+    assert len(bodies) == 1
+    entities = {e["id"]: e for e in bodies[0]["entities"]}
+
+    assert entities[1] == {
+        "id": 1,
+        "name": "Alpha",
+        "score": 3.5,
+        "active": True,
+        "entry-date": "2024-01-02",
+        "note": "",
+    }
+    assert entities[2] == {
+        "id": 2,
+        "name": "Beta",
+        "score": "",
+        "active": False,
+        "entry-date": "",
+        "note": "hello",
+    }
+
+
+def test_write_geojson_entities_s3_closure_preserves_all_fields_and_geometry(
+    spark, monkeypatch
+):
+    """Same regression coverage as the JSON test above, plus geometry/point
+    WKT conversion -- the actual closure write_geojson_entities_s3 ships to
+    executors duplicates the WKT parser inline rather than calling
+    resolve_geometry/wkt_to_geojson (see that closure's own comment for
+    why), so only running the real shipped closure proves it still matches."""
+    capture_df = spark.createDataFrame(
+        [Row(id=0, geometry=None, point=None)],
+        "id: int, geometry: string, point: string",
+    )
+    fn = capture_upload_closure(
+        monkeypatch,
+        lambda: write_geojson_entities_s3(
+            capture_df, _NoopMultipartS3Client(), "bucket", "key", "my-dataset"
+        ),
+    )
+
+    child_body = """
+from datetime import date
+
+class FakeRow:
+    def __init__(self, d):
+        self._d = d
+    def asDict(self):
+        return dict(self._d)
+
+rows = [
+    FakeRow({
+        "id": 1, "name": "Alpha", "entry-date": date(2024, 1, 2), "note": None,
+        "geometry": "POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))", "point": None,
+    }),
+    FakeRow({
+        "id": 2, "name": "Beta", "entry-date": None, "note": "hello",
+        "geometry": None, "point": "POINT(9.0 9.0)",
+    }),
+    FakeRow({
+        "id": 3, "name": "Gamma", "entry-date": None, "note": None,
+        "geometry": None, "point": None,
+    }),
+]
+list(fn(0, iter(rows)))
+"""
+    bodies = run_closure_without_jobs_importable(fn, child_body)
+    assert len(bodies) == 1
+    doc = bodies[0]
+    assert doc["type"] == "FeatureCollection"
+    assert doc["name"] == "my-dataset"
+
+    features = {f["properties"]["id"]: f for f in doc["features"]}
+
+    assert features[1]["type"] == "Feature"
+    assert features[1]["properties"] == {
+        "id": 1,
+        "name": "Alpha",
+        "entry-date": "2024-01-02",
+        "note": "",
+    }
+    assert "geometry" not in features[1]["properties"]
+    assert "point" not in features[1]["properties"]
+    assert features[1]["geometry"] == {
+        "type": "Polygon",
+        "coordinates": [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]]],
+    }
+
+    assert features[2]["properties"] == {
+        "id": 2,
+        "name": "Beta",
+        "entry-date": "",
+        "note": "hello",
+    }
+    assert features[2]["geometry"] == {"type": "Point", "coordinates": [9.0, 9.0]}
+
+    assert features[3]["geometry"] is None

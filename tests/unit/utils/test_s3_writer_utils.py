@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from jobs.utils.s3_writer_utils import (
     _sanitize_json_row,
+    _upload_geojson_entities_partition,
     _upload_json_entities_partition,
     resolve_geometry,
 )
@@ -202,3 +203,174 @@ def test_upload_json_entities_partition_handles_empty_first_last_and_middle_gap(
     body = _assemble(partitions, first_idx=1, last_idx=3)
     parsed = json.loads(body)
     assert sorted(e["id"] for e in parsed["entities"]) == [0, 1, 2]
+
+
+def _upload_geojson_partition(partition_index, rows, first_idx, last_idx, dataset="ds"):
+    """Call _upload_geojson_entities_partition with boto3 mocked out,
+    returning (part_number, body) instead of (part_number, etag)."""
+    captured = {}
+
+    class FakeS3:
+        def upload_part(self, Bucket, Key, PartNumber, UploadId, Body):
+            captured["part_number"] = PartNumber
+            captured["body"] = Body
+            return {"ETag": "fake-etag"}
+
+    with patch("jobs.utils.s3_writer_utils.boto3") as mock_boto3:
+        mock_boto3.client.return_value = FakeS3()
+        result = list(
+            _upload_geojson_entities_partition(
+                "bucket",
+                "key",
+                "upload-1",
+                dataset,
+                first_idx,
+                last_idx,
+                partition_index,
+                rows,
+            )
+        )
+    return result, captured.get("body")
+
+
+def test_upload_geojson_entities_partition_empty_partition_uploads_nothing():
+    """An empty partition contributes no part."""
+    result, body = _upload_geojson_partition(1, [], first_idx=0, last_idx=2)
+    assert result == []
+    assert body is None
+
+
+def test_upload_geojson_entities_partition_single_partition_wraps_full_document():
+    """A lone partition gets both the FeatureCollection header and footer."""
+    rows = [FakeRow({"id": 1, "geometry": "POINT(1.0 2.0)", "point": None})]
+    result, body = _upload_geojson_partition(
+        0, rows, first_idx=0, last_idx=0, dataset="my-ds"
+    )
+    assert result == [(1, "fake-etag")]
+    parsed = json.loads(body)
+    assert parsed == {
+        "type": "FeatureCollection",
+        "name": "my-ds",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {"id": 1},
+                "geometry": {"type": "Point", "coordinates": [1.0, 2.0]},
+            }
+        ],
+    }
+
+
+def test_upload_geojson_entities_partition_pops_geometry_and_point_from_properties():
+    """geometry/point WKT columns are consumed for the geometry, not left in properties."""
+    rows = [
+        FakeRow({"id": 1, "name": "x", "geometry": "POINT(1.0 2.0)", "point": None})
+    ]
+    _, body = _upload_geojson_partition(0, rows, first_idx=0, last_idx=0)
+    feature = json.loads(body)["features"][0]
+    assert feature["properties"] == {"id": 1, "name": "x"}
+
+
+def test_upload_geojson_entities_partition_falls_back_to_point_when_geometry_absent():
+    """Matches resolve_geometry's fallback: point WKT used when geometry is missing."""
+    rows = [FakeRow({"id": 1, "geometry": None, "point": "POINT(3.0 4.0)"})]
+    _, body = _upload_geojson_partition(0, rows, first_idx=0, last_idx=0)
+    feature = json.loads(body)["features"][0]
+    assert feature["geometry"] == {"type": "Point", "coordinates": [3.0, 4.0]}
+
+
+def test_upload_geojson_entities_partition_converts_polygon():
+    rows = [
+        FakeRow(
+            {
+                "id": 1,
+                "geometry": "POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))",
+                "point": None,
+            }
+        )
+    ]
+    _, body = _upload_geojson_partition(0, rows, first_idx=0, last_idx=0)
+    feature = json.loads(body)["features"][0]
+    assert feature["geometry"] == {
+        "type": "Polygon",
+        "coordinates": [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]]],
+    }
+
+
+def test_upload_geojson_entities_partition_null_geometry_when_both_absent():
+    rows = [FakeRow({"id": 1, "geometry": None, "point": None})]
+    _, body = _upload_geojson_partition(0, rows, first_idx=0, last_idx=0)
+    feature = json.loads(body)["features"][0]
+    assert feature["geometry"] is None
+
+
+def test_upload_geojson_entities_partition_first_partition_opens_without_leading_comma():
+    rows = [FakeRow({"id": 1, "geometry": None, "point": None})]
+    _, body = _upload_geojson_partition(0, rows, first_idx=0, last_idx=3, dataset="ds")
+    assert body.startswith('{"type":"FeatureCollection","name":"ds","features":[{')
+    assert not body.startswith('{"type":"FeatureCollection","name":"ds","features":[,')
+
+
+def test_upload_geojson_entities_partition_middle_partition_gets_leading_comma_only():
+    rows = [FakeRow({"id": 5, "geometry": None, "point": None})]
+    _, body = _upload_geojson_partition(2, rows, first_idx=0, last_idx=3)
+    assert body.startswith(",")
+    assert "FeatureCollection" not in body
+
+
+def test_upload_geojson_entities_partition_last_partition_closes_document():
+    rows = [FakeRow({"id": 9, "geometry": None, "point": None})]
+    _, body = _upload_geojson_partition(3, rows, first_idx=0, last_idx=3)
+    assert body.endswith("]}")
+
+
+def _assemble_geojson(partitions, first_idx, last_idx, dataset="ds"):
+    """Run every partition through _upload_geojson_entities_partition (boto3
+    mocked) and stitch the resulting parts back together in part-number
+    order, mirroring what S3's complete_multipart_upload does."""
+    parts = []
+    with patch("jobs.utils.s3_writer_utils.boto3") as mock_boto3:
+        bodies = {}
+
+        class FakeS3:
+            def upload_part(self, Bucket, Key, PartNumber, UploadId, Body):
+                bodies[PartNumber] = Body
+                return {"ETag": f"etag-{PartNumber}"}
+
+        mock_boto3.client.return_value = FakeS3()
+        for idx, rows in enumerate(partitions):
+            result = list(
+                _upload_geojson_entities_partition(
+                    "bucket",
+                    "key",
+                    "upload-1",
+                    dataset,
+                    first_idx,
+                    last_idx,
+                    idx,
+                    rows,
+                )
+            )
+            parts.extend(result)
+
+    ordered = sorted(parts)
+    return "".join(bodies[num] for num, _ in ordered)
+
+
+def test_upload_geojson_entities_partition_handles_empty_first_last_and_middle_gap():
+    """Same pathological layout regression as the JSON writer: empty
+    partitions at both ends plus a gap in the middle."""
+    partitions = [
+        [],
+        [FakeRow({"id": 0, "geometry": None, "point": None})],
+        [],
+        [
+            FakeRow({"id": 1, "geometry": None, "point": None}),
+            FakeRow({"id": 2, "geometry": None, "point": None}),
+        ],
+        [],
+    ]
+    body = _assemble_geojson(partitions, first_idx=1, last_idx=3)
+    parsed = json.loads(body)
+    assert parsed["type"] == "FeatureCollection"
+    assert sorted(f["properties"]["id"] for f in parsed["features"]) == [0, 1, 2]
