@@ -28,6 +28,7 @@ from jobs.utils.s3_writer_utils import (
     resolve_geometry,
     s3_rename_and_move,
     write_delta,
+    write_geojson_entities_s3,
     write_json_entities_s3,
 )
 
@@ -227,96 +228,19 @@ class EntityPipeline(BasePipeline):
         write_json_entities_s3(temp_df, s3_client, f"{env}-collection-data", target_key)
 
     def _write_geojson_s3(self, s3_client, temp_df, dataset, env):
-        """Write entity GeoJSON to S3 using multipart upload."""
-        row_count = temp_df.count()
-        target_key_geojson = f"dataset/{dataset}.geojson"
+        """Write entity GeoJSON to S3.
 
-        try:
-            s3_client.head_object(
-                Bucket=f"{env}-collection-data", Key=target_key_geojson
-            )
-            s3_client.delete_object(
-                Bucket=f"{env}-collection-data", Key=target_key_geojson
-            )
-        except s3_client.exceptions.ClientError:
-            pass
-
-        mpu = s3_client.create_multipart_upload(
-            Bucket=f"{env}-collection-data", Key=target_key_geojson
+        Delegates to write_geojson_entities_s3, which uploads each
+        partition's rows directly from the executor that holds them --
+        including the WKT-to-GeoJSON geometry conversion, previously the
+        most expensive per-row work in this pipeline -- instead of a
+        sequential toLocalIterator() loop on the driver. See that
+        function's docstring and write_json_entities_s3's for why.
+        """
+        target_key = f"dataset/{dataset}.geojson"
+        write_geojson_entities_s3(
+            temp_df, s3_client, f"{env}-collection-data", target_key, dataset
         )
-        parts = []
-        part_num = 1
-
-        try:
-            header = '{"type":"FeatureCollection","name":"' + dataset + '","features":['
-            buffer = header
-
-            batch_size = 10000
-            num_partitions = max(1, row_count // batch_size)
-
-            first_row = True
-            for partition_id, rows in enumerate(
-                temp_df.repartition(num_partitions).toLocalIterator()
-            ):
-                row_dict = rows.asDict()
-                geometry_wkt = row_dict.pop("geometry", None)
-                point_wkt = row_dict.pop("point", None)
-
-                for key, value in row_dict.items():
-                    if isinstance(value, (date, datetime)):
-                        row_dict[key] = value.isoformat() if value else ""
-                    elif value is None:
-                        row_dict[key] = ""
-
-                geojson_geom = resolve_geometry(geometry_wkt, point_wkt)
-                feature = {
-                    "type": "Feature",
-                    "properties": row_dict,
-                    "geometry": geojson_geom,
-                }
-
-                if not first_row:
-                    buffer += ","
-                first_row = False
-                buffer += json.dumps(feature)
-
-                if len(buffer.encode("utf-8")) > 5 * 1024 * 1024:
-                    part = s3_client.upload_part(
-                        Bucket=f"{env}-collection-data",
-                        Key=target_key_geojson,
-                        PartNumber=part_num,
-                        UploadId=mpu["UploadId"],
-                        Body=buffer,
-                    )
-                    parts.append({"PartNumber": part_num, "ETag": part["ETag"]})
-                    part_num += 1
-                    buffer = ""
-
-            buffer += "]}"
-            part = s3_client.upload_part(
-                Bucket=f"{env}-collection-data",
-                Key=target_key_geojson,
-                PartNumber=part_num,
-                UploadId=mpu["UploadId"],
-                Body=buffer,
-            )
-            parts.append({"PartNumber": part_num, "ETag": part["ETag"]})
-
-            s3_client.complete_multipart_upload(
-                Bucket=f"{env}-collection-data",
-                Key=target_key_geojson,
-                UploadId=mpu["UploadId"],
-                MultipartUpload={"Parts": parts},
-            )
-            logger.info(f"EntityPipeline: GeoJSON file written to {target_key_geojson}")
-        except Exception as e:
-            logger.error(f"Error during GeoJSON multipart upload: {e}")
-            s3_client.abort_multipart_upload(
-                Bucket=f"{env}-collection-data",
-                Key=target_key_geojson,
-                UploadId=mpu["UploadId"],
-            )
-            raise
 
     def _write_json_local(self, temp_df, dataset, base):
         """Write entity JSON to local filesystem."""
