@@ -4,11 +4,15 @@ import json
 from datetime import date
 from unittest.mock import patch
 
+import pytest
+
+from jobs.utils import s3_writer_utils
 from jobs.utils.s3_writer_utils import (
     _sanitize_json_row,
     _upload_geojson_entities_partition,
     _upload_json_entities_partition,
     resolve_geometry,
+    s3_rename_and_move,
 )
 
 
@@ -374,3 +378,137 @@ def test_upload_geojson_entities_partition_handles_empty_first_last_and_middle_g
     parsed = json.loads(body)
     assert parsed["type"] == "FeatureCollection"
     assert sorted(f["properties"]["id"] for f in parsed["features"]) == [0, 1, 2]
+
+
+class FakeS3RenameClient:
+    """Fake boto3 S3 client covering exactly the calls s3_rename_and_move
+    and _copy_large_s3_object make."""
+
+    class exceptions:
+        ClientError = Exception
+
+    def __init__(self, target_key, temp_files, target_exists=False):
+        self.target_key = target_key
+        self.temp_files = dict(temp_files)  # key -> size_bytes
+        self.target_exists = target_exists
+        self.copy_calls = []
+        self.copy_part_calls = []
+        self.deleted = []
+        self.completed_parts = None
+        self.aborted = False
+        self.fail_upload_part_copy_after = None
+
+    def head_object(self, Bucket, Key):
+        if Key == self.target_key:
+            if self.target_exists:
+                return {}
+            raise self.exceptions.ClientError("not found")
+        if Key in self.temp_files:
+            return {"ContentLength": self.temp_files[Key]}
+        raise self.exceptions.ClientError("not found")
+
+    def delete_object(self, Bucket, Key):
+        self.deleted.append(Key)
+        self.target_exists = False
+
+    def list_objects_v2(self, Bucket, Prefix):
+        return {
+            "Contents": [
+                {"Key": key} for key in self.temp_files if key.startswith(Prefix)
+            ]
+        }
+
+    def copy_object(self, Bucket, CopySource, Key):
+        self.copy_calls.append({"CopySource": CopySource, "Key": Key})
+
+    def create_multipart_upload(self, Bucket, Key):
+        return {"UploadId": "upload-1"}
+
+    def upload_part_copy(
+        self, Bucket, Key, PartNumber, UploadId, CopySource, CopySourceRange
+    ):
+        if self.fail_upload_part_copy_after is not None and (
+            PartNumber > self.fail_upload_part_copy_after
+        ):
+            raise RuntimeError("simulated copy failure")
+        self.copy_part_calls.append(
+            {"PartNumber": PartNumber, "CopySourceRange": CopySourceRange}
+        )
+        return {"CopyPartResult": {"ETag": f"etag-{PartNumber}"}}
+
+    def complete_multipart_upload(self, Bucket, Key, UploadId, MultipartUpload):
+        self.completed_parts = MultipartUpload["Parts"]
+
+    def abort_multipart_upload(self, Bucket, Key, UploadId):
+        self.aborted = True
+
+
+def test_s3_rename_and_move_uses_simple_copy_under_the_5gb_limit():
+    """Files at or under CopyObject's 5GB limit use the simple, cheap copy."""
+    fake = FakeS3RenameClient(
+        target_key="dataset/ds.csv",
+        temp_files={"dataset/temp/ds/part-0.csv": 100},
+    )
+    with patch.object(s3_writer_utils, "boto3") as mock_boto3:
+        mock_boto3.client.return_value = fake
+        s3_rename_and_move("ds", "csv", "bucket")
+
+    assert fake.copy_calls == [
+        {
+            "CopySource": {"Bucket": "bucket", "Key": "dataset/temp/ds/part-0.csv"},
+            "Key": "dataset/ds.csv",
+        }
+    ]
+    assert fake.copy_part_calls == []
+    assert fake.deleted == ["dataset/temp/ds/part-0.csv"]
+
+
+def test_s3_rename_and_move_uses_multipart_copy_over_the_5gb_limit(monkeypatch):
+    """Files over CopyObject's 5GB limit fall back to a multipart
+    UploadPartCopy, split into correctly-bounded byte ranges."""
+    monkeypatch.setattr(s3_writer_utils, "S3_COPY_OBJECT_MAX_BYTES", 20)
+    monkeypatch.setattr(s3_writer_utils, "S3_MULTIPART_COPY_PART_BYTES", 10)
+
+    fake = FakeS3RenameClient(
+        target_key="dataset/ds.csv",
+        temp_files={"dataset/temp/ds/part-0.csv": 25},
+    )
+    with patch.object(s3_writer_utils, "boto3") as mock_boto3:
+        mock_boto3.client.return_value = fake
+        s3_rename_and_move("ds", "csv", "bucket")
+
+    assert fake.copy_calls == []
+    assert fake.copy_part_calls == [
+        {"PartNumber": 1, "CopySourceRange": "bytes=0-9"},
+        {"PartNumber": 2, "CopySourceRange": "bytes=10-19"},
+        {"PartNumber": 3, "CopySourceRange": "bytes=20-24"},
+    ]
+    assert fake.completed_parts == [
+        {"PartNumber": 1, "ETag": "etag-1"},
+        {"PartNumber": 2, "ETag": "etag-2"},
+        {"PartNumber": 3, "ETag": "etag-3"},
+    ]
+    assert not fake.aborted
+    assert fake.deleted == ["dataset/temp/ds/part-0.csv"]
+
+
+def test_s3_rename_and_move_aborts_multipart_copy_on_failure(monkeypatch):
+    """A failed part copy aborts the multipart upload and propagates."""
+    monkeypatch.setattr(s3_writer_utils, "S3_COPY_OBJECT_MAX_BYTES", 20)
+    monkeypatch.setattr(s3_writer_utils, "S3_MULTIPART_COPY_PART_BYTES", 10)
+
+    fake = FakeS3RenameClient(
+        target_key="dataset/ds.csv",
+        temp_files={"dataset/temp/ds/part-0.csv": 25},
+    )
+    fake.fail_upload_part_copy_after = 1
+
+    with patch.object(s3_writer_utils, "boto3") as mock_boto3:
+        mock_boto3.client.return_value = fake
+        with pytest.raises(RuntimeError, match="simulated copy failure"):
+            s3_rename_and_move("ds", "csv", "bucket")
+
+    assert fake.aborted
+    assert fake.completed_parts is None
+    # the failed copy means the source temp file must NOT be deleted
+    assert fake.deleted == []
