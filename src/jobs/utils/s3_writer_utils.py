@@ -653,6 +653,49 @@ def wkt_to_geojson(wkt_string):
     return None
 
 
+S3_COPY_OBJECT_MAX_BYTES = 5 * 1024 * 1024 * 1024  # CopyObject's hard limit
+S3_MULTIPART_COPY_PART_BYTES = 1 * 1024 * 1024 * 1024  # comfortably within [5MB, 5GB]
+
+
+def _copy_large_s3_object(s3_client, bucket_name, source_key, target_key, size_bytes):
+    """Copy an S3 object larger than CopyObject's 5GB limit via a multipart
+    upload using UploadPartCopy, which copies byte ranges (server-side, no
+    data through this process) instead of one atomic copy."""
+    mpu = s3_client.create_multipart_upload(Bucket=bucket_name, Key=target_key)
+    upload_id = mpu["UploadId"]
+    try:
+        parts = []
+        part_number = 1
+        start = 0
+        while start < size_bytes:
+            end = min(start + S3_MULTIPART_COPY_PART_BYTES, size_bytes) - 1
+            part = s3_client.upload_part_copy(
+                Bucket=bucket_name,
+                Key=target_key,
+                PartNumber=part_number,
+                UploadId=upload_id,
+                CopySource={"Bucket": bucket_name, "Key": source_key},
+                CopySourceRange=f"bytes={start}-{end}",
+            )
+            parts.append(
+                {"PartNumber": part_number, "ETag": part["CopyPartResult"]["ETag"]}
+            )
+            part_number += 1
+            start = end + 1
+
+        s3_client.complete_multipart_upload(
+            Bucket=bucket_name,
+            Key=target_key,
+            UploadId=upload_id,
+            MultipartUpload={"Parts": parts},
+        )
+    except Exception:
+        s3_client.abort_multipart_upload(
+            Bucket=bucket_name, Key=target_key, UploadId=upload_id
+        )
+        raise
+
+
 def s3_rename_and_move(dataset_name, file_type, bucket_name):
     """Rename and move files in S3."""
     s3_client = boto3.client("s3")
@@ -676,11 +719,23 @@ def s3_rename_and_move(dataset_name, file_type, bucket_name):
     ]
 
     for data_file in data_files:
-        s3_client.copy_object(
-            Bucket=bucket_name,
-            CopySource={"Bucket": bucket_name, "Key": data_file},
-            Key=target_key,
-        )
+        size_bytes = s3_client.head_object(Bucket=bucket_name, Key=data_file)[
+            "ContentLength"
+        ]
+        if size_bytes > S3_COPY_OBJECT_MAX_BYTES:
+            logger.info(
+                f"s3_rename_and_move: {data_file} is {size_bytes:,} bytes, over "
+                "CopyObject's 5GB limit -- using a multipart copy"
+            )
+            _copy_large_s3_object(
+                s3_client, bucket_name, data_file, target_key, size_bytes
+            )
+        else:
+            s3_client.copy_object(
+                Bucket=bucket_name,
+                CopySource={"Bucket": bucket_name, "Key": data_file},
+                Key=target_key,
+            )
         s3_client.delete_object(Bucket=bucket_name, Key=data_file)
         logger.info(f"Renamed: {data_file} -> {target_key}")
 
