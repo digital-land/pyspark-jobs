@@ -226,10 +226,10 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, database_url):
     attempt = 0
     while attempt < max_attempts:
         try:
-            conn_params["timeout"] = 1800  # 30 minutes
+            conn_params["timeout"] = 3600  # 1 hour
             conn = pg8000.connect(**conn_params)
             cur = conn.cursor()
-            cur.execute("SET statement_timeout = '1800000';")
+            cur.execute("SET statement_timeout = '3600000';")
             cur.execute("BEGIN;")
 
             # Delete existing dataset rows
