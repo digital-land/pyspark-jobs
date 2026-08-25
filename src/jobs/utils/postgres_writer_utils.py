@@ -226,17 +226,29 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, database_url):
     attempt = 0
     while attempt < max_attempts:
         try:
-            conn_params["timeout"] = 3600  # 1 hour
+            conn_params["timeout"] = 7200  # 2 hours
             conn = pg8000.connect(**conn_params)
             cur = conn.cursor()
-            cur.execute("SET statement_timeout = '3600000';")
+            cur.execute("SET statement_timeout = '7200000';")
             cur.execute("BEGIN;")
 
-            # Delete existing dataset rows
+            # Delete existing dataset rows. Logged before/after (with timing)
+            # because this and the insert below are the only two statements
+            # that can run long enough to hit statement_timeout, and a
+            # cancelled statement's error alone doesn't say which one was
+            # in flight -- these lines are what let a future timeout tell us
+            # that directly instead of leaving it to guesswork.
+            delete_start = time.monotonic()
+            logger.info(f"Atomic commit: starting DELETE for dataset={data_set}")
             cur.execute("DELETE FROM entity WHERE dataset = %s;", (data_set,))
             deleted = cur.rowcount
+            logger.info(
+                f"Atomic commit: DELETE removed {deleted:,} rows in "
+                f"{time.monotonic() - delete_start:.1f}s, starting INSERT"
+            )
 
             # Insert using explicit column mapping to avoid positional mismatches
+            insert_start = time.monotonic()
             cur.execute(
                 f"""
             INSERT INTO entity (
@@ -264,6 +276,10 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, database_url):
             """
             )
             inserted = cur.rowcount
+            logger.info(
+                f"Atomic commit: INSERT wrote {inserted:,} rows in "
+                f"{time.monotonic() - insert_start:.1f}s"
+            )
 
             # Drop staging and commit
             cur.execute(f"DROP TABLE {staging_table};")
