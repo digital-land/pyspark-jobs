@@ -12,12 +12,23 @@ from pyspark.sql.functions import (
     count,
     explode,
     first,
+    from_json,
     lit,
+    lower,
     sha2,
+    size,
     split,
     struct,
     substring,
+    sum as spark_sum,
     to_json,
+)
+from pyspark.sql.types import (
+    ArrayType,
+    LongType,
+    StringType,
+    StructField,
+    StructType,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,6 +42,28 @@ logger = logging.getLogger(__name__)
 # in the reference hash. digital-land-python's task.py still uses
 # severity=error/responsibility=external and a hash without organisation —
 # bring these back in sync if/when that implementation is updated to match.
+
+
+# Only the keys the bridge needs. from_json ignores everything else in the blob,
+# so checks can keep their own extra keys without this having to change.
+_EXPECTATION_DETAILS_SCHEMA = StructType(
+    [
+        StructField("error", StringType(), True),
+        StructField("field", StringType(), True),
+        StructField(
+            "failures",
+            ArrayType(
+                StructType(
+                    [
+                        StructField("organisation_entity", StringType(), True),
+                        StructField("count", LongType(), True),
+                    ]
+                )
+            ),
+            True,
+        ),
+    ]
+)
 
 
 def transform_log_to_tasks(df: DataFrame, entry_date: str = None) -> DataFrame:
@@ -132,6 +165,121 @@ def transform_issues_to_tasks(df: DataFrame, entry_date: str = None) -> DataFram
             ),
         )
         .withColumn("task_source", lit("issue"))
+        .withColumn("entry_date", lit(entry_date))
+    )
+
+    grouped = _add_reference(grouped)
+
+    return grouped.select(
+        col("dataset"),
+        col("organisation"),
+        col("endpoint"),
+        col("resource"),
+        col("details"),
+        col("severity"),
+        col("responsibility"),
+        col("task_source"),
+        col("entry_date"),
+        col("reference"),
+    )
+
+
+def transform_expectations_to_tasks(
+    df: DataFrame, org_df: DataFrame, entry_date: str = None
+) -> DataFrame:
+    """
+    Transform an expectation DataFrame into task rows.
+
+    Expects df to be the expectation parquet — one row per (dataset, check),
+    with `details` as a JSON string. org_df maps organisation_entity to the
+    organisation curie the task schema uses, and must carry both columns.
+
+    Unlike issues, expectations are computed against the assembled dataset, so
+    there is no resource or endpoint to attribute them to.
+    """
+    entry_date = entry_date or str(date.today())
+    logger.info("transform_expectations_to_tasks: Starting")
+
+    # `passed` is written as the string "True"/"False", not a boolean. Casting
+    # and comparing as a string works for either shape, so this does not depend
+    # on the writer's choice of type. (Spark coerces a bare `== False` correctly
+    # too, but this avoids the E712 lint suppression that would need.)
+    df = df.filter(lower(col("passed").cast("string")) == "false").filter(
+        col("severity").isin("error", "warning", "notice")
+    )
+
+    parsed = df.withColumn(
+        "_details", from_json(col("details"), _EXPECTATION_DETAILS_SCHEMA)
+    )
+
+    # A check that errored found nothing. It used to report an empty details
+    # dict; since digital-land-python#587 it reports {"error": ...}, so both
+    # shapes have to be dropped here.
+    parsed = parsed.filter(col("_details").isNotNull() & col("_details.error").isNull())
+
+    # No failures means nothing attributable to an organisation: either a check
+    # predating the details standardisation, or duplicate_geometry_check where an
+    # organisation's polygons only touch each other. Neither is a task.
+    parsed = parsed.filter(
+        col("_details.failures").isNotNull() & (size(col("_details.failures")) > 0)
+    )
+
+    if parsed.rdd.isEmpty():
+        logger.warning(
+            "transform_expectations_to_tasks: no expectation rows survived the "
+            "filters — no expectation tasks will be produced"
+        )
+        return None
+
+    exploded = (
+        parsed.withColumn("_failure", explode(col("_details.failures")))
+        .withColumn(
+            "organisation_entity", col("_failure.organisation_entity").cast("string")
+        )
+        .withColumn("_failure_count", col("_failure.count"))
+        .withColumn("field", coalesce(col("_details.field"), lit("")))
+    )
+
+    grouped = exploded.groupBy("dataset", "organisation_entity", "operation").agg(
+        # Where a check supplies its own count, sum it — a duplicate-name failure
+        # carries the number of entities sharing that name. Where it does not,
+        # each failure is one offending entity, hence the 1.
+        spark_sum(coalesce(col("_failure_count"), lit(1))).alias("count"),
+        # How many failure records the organisation has, e.g. how many distinct
+        # names are duplicated as against how many entities that affects.
+        count("*").alias("groups"),
+        first("severity").alias("severity"),
+        first("responsibility").alias("responsibility"),
+        first("field").alias("field"),
+    )
+
+    # organisation_entity is an entity number; the task schema wants the curie.
+    # Inner join so a failure naming an unknown organisation is dropped rather
+    # than becoming an unattributed task no one can see.
+    org_df = org_df.select(
+        col("organisation_entity").cast("string").alias("organisation_entity"),
+        col("organisation"),
+    )
+    grouped = grouped.join(org_df, on="organisation_entity", how="inner")
+
+    grouped = (
+        grouped.withColumn(
+            "details",
+            to_json(
+                struct(
+                    # `operation`, deliberately not `issue_type`: submit's task
+                    # list only renders tasks whose details carry issue_type and
+                    # field, so this keeps expectation tasks out of that path.
+                    col("operation"),
+                    col("count").cast("int").alias("count"),
+                    col("groups").cast("int").alias("groups"),
+                    col("field"),
+                )
+            ),
+        )
+        .withColumn("endpoint", lit(""))
+        .withColumn("resource", lit(""))
+        .withColumn("task_source", lit("expectation"))
         .withColumn("entry_date", lit(entry_date))
     )
 
