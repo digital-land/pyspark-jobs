@@ -209,6 +209,7 @@ def clean_provision_quality_table(db_conn):
             dataset TEXT NOT NULL,
             organisation TEXT NOT NULL,
             organisation_name TEXT,
+            has_endpoint BOOLEAN NOT NULL,
             has_active_endpoint BOOLEAN NOT NULL,
             has_active_resource BOOLEAN NOT NULL,
             owns_entities BOOLEAN NOT NULL,

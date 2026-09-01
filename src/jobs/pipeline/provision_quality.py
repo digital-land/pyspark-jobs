@@ -126,11 +126,18 @@ def _live_datasets(dataset_df, env):
 
 
 def _build_provision_quality(
-    providers_df, org_df, entity_org_df, lookup_df, entity_quality_df
+    providers_df, ever_provided, org_df, entity_org_df, lookup_df, entity_quality_df
 ):
-    """Base table: one row per (dataset, organisation) that has an active endpoint
-    OR owns entities OR is a detected seeder. Nothing dropped; flags distinguish
-    the cases. Owner/provider classification + seeder detection."""
+    """Base table: one row per (dataset, organisation) that has ever had an
+    endpoint OR owns entities OR is a detected seeder. Nothing dropped; flags
+    distinguish the cases. Owner/provider classification + seeder detection.
+
+    A flag joined on after `keys` cannot bring rows with it — see
+    is_designated_provider, which is only ever true on rows that exist for some
+    other reason. That is why has_endpoint widens `keys` rather than just
+    joining a column.
+    """
+
     # map each owned entity to its owner organisation reference
     eq = entity_quality_df.join(
         org_df.select("organisation", "organisation_entity"),
@@ -142,11 +149,10 @@ def _build_provision_quality(
     active_orgs = org_df.filter(col("org_active")).select("organisation").distinct()
     seeder_side = _seeder_alt_sources(eq, lookup_df, entity_org_df, active_orgs)
 
-    providers = providers_df.select("dataset", "organisation").distinct()
     designated = entity_org_df.select("dataset", "organisation").distinct()
 
     keys = (
-        providers.unionByName(owner_side.select("dataset", "organisation"))
+        ever_provided.unionByName(owner_side.select("dataset", "organisation"))
         .unionByName(seeder_side.select("dataset", "organisation"))
         .distinct()
     )
@@ -165,6 +171,11 @@ def _build_provision_quality(
             how="left",
         )
         .join(
+            ever_provided.withColumn("has_endpoint", lit(True)),
+            on=["dataset", "organisation"],
+            how="left",
+        )
+        .join(
             org_df.select("organisation", "organisation_name").distinct(),
             on="organisation",
             how="left",
@@ -175,6 +186,7 @@ def _build_provision_quality(
         "dataset",
         "organisation",
         "organisation_name",
+        coalesce(col("has_endpoint"), lit(False)).alias("has_endpoint"),
         coalesce(col("has_active_endpoint"), lit(False)).alias("has_active_endpoint"),
         coalesce(col("has_active_resource"), lit(False)).alias("has_active_resource"),
         coalesce(col("owns_entities"), lit(False)).alias("owns_entities"),
@@ -243,6 +255,7 @@ PROVISION_QUALITY_PG_TYPES = [
     ("dataset", "TEXT"),
     ("organisation", "TEXT"),
     ("organisation_name", "TEXT"),
+    ("has_endpoint", "BOOLEAN"),
     ("has_active_endpoint", "BOOLEAN"),
     ("has_active_resource", "BOOLEAN"),
     ("owns_entities", "BOOLEAN"),
@@ -285,24 +298,32 @@ class ProvisionQualityPipeline(BasePipeline):
         spark = self.config.spark
         base = AnyPath(self.config.collection_data_path)
 
-        # -- Active providers (source.csv → who submits) ------------------------
-        # Non-empty endpoint, empty end_date; `pipelines` (';'-split) = dataset(s).
+        # -- Providers (source.csv → who submits) -------------------------------
+        # `pipelines` (';'-split) = dataset(s). Read once, then split two ways:
+        # everyone who has ever had an endpoint, and the subset still live.
         collections = collection_names(base)
         source_files = collection_files(base, collections, "source.csv")
         logger.info(f"ProvisionQuality: Found {len(source_files)} source files")
         source_df = read_csvs_by_name(
             spark, source_files, ["endpoint", "end_date", "organisation", "pipelines"]
         )
-        active_sources = (
-            source_df.filter(
-                (col("endpoint").isNotNull() & (col("endpoint") != ""))
-                & (col("end_date").isNull() | (col("end_date") == ""))
-            )
+        # Every organisation that has ever registered an endpoint for the dataset.
+        endpoint_sources = (
+            source_df.filter(col("endpoint").isNotNull() & (col("endpoint") != ""))
             .select(
                 explode(split(col("pipelines"), ";")).alias("dataset"),
                 col("organisation"),
                 col("endpoint"),
+                col("end_date"),
             )
+            .distinct()
+        )
+
+        ever_provided = endpoint_sources.select("dataset", "organisation").distinct()
+
+        active_sources = (
+            endpoint_sources.filter(col("end_date").isNull() | (col("end_date") == ""))
+            .select("dataset", "organisation", "endpoint")
             .distinct()
         )
 
@@ -380,7 +401,12 @@ class ProvisionQualityPipeline(BasePipeline):
 
         # -- Classification + rollups ------------------------------------------
         provision_quality = _build_provision_quality(
-            providers_df, org_df, entity_org_df, lookup_df, entity_quality_df
+            providers_df,
+            ever_provided,
+            org_df,
+            entity_org_df,
+            lookup_df,
+            entity_quality_df,
         ).localCheckpoint(
             eager=True
         )  # materialise once AND truncate the huge plan

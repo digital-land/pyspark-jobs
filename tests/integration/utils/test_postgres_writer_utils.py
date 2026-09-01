@@ -583,6 +583,7 @@ def test_write_table_to_postgres_provision_quality(
             StructField("dataset", StringType(), True),
             StructField("organisation", StringType(), True),
             StructField("organisation_name", StringType(), True),
+            StructField("has_endpoint", BooleanType(), True),
             StructField("has_active_endpoint", BooleanType(), True),
             StructField("has_active_resource", BooleanType(), True),
             StructField("owns_entities", BooleanType(), True),
@@ -601,6 +602,7 @@ def test_write_table_to_postgres_provision_quality(
             True,
             True,
             True,
+            True,
             "authoritative",
             42,
             None,
@@ -609,6 +611,7 @@ def test_write_table_to_postgres_provision_quality(
             "conservation-area",
             "government-organisation:MHCLG",
             None,
+            True,
             True,
             False,
             False,
@@ -625,7 +628,8 @@ def test_write_table_to_postgres_provision_quality(
     cur = db_conn.cursor()
     cur.execute(
         "SELECT organisation, organisation_name, has_active_endpoint, quality, "
-        "entity_count, quality_score FROM provision_quality ORDER BY organisation;"
+        "entity_count, quality_score, has_endpoint FROM provision_quality "
+        "ORDER BY organisation;"
     )
     result = cur.fetchall()
     cur.close()
@@ -641,6 +645,7 @@ def test_write_table_to_postgres_provision_quality(
     assert adu[3] == "authoritative"
     assert adu[4] == 42
     assert adu[5] is None
+    assert adu[6] is True  # has_endpoint round-trips through the writer
     mhclg = by_org["government-organisation:MHCLG"]
     assert mhclg[1] is None  # organisation_name null preserved
     assert mhclg[3] is None  # quality null preserved
@@ -652,6 +657,7 @@ def test_write_table_to_postgres_provision_quality(
                 "green-belt",
                 "local-authority:XYZ",
                 "XYZ Council",
+                False,
                 False,
                 False,
                 True,

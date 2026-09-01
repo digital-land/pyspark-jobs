@@ -20,6 +20,7 @@ PQ_ADU = "local-authority:ADU"
 PQ_LEW = "local-authority:LEW"
 PQ_MHCLG = "government-organisation:MHCLG"
 PQ_NEW = "local-authority:NEW"
+PQ_OLD = "local-authority:OLD"
 
 
 def _provision_quality_inputs(spark):
@@ -28,6 +29,7 @@ def _provision_quality_inputs(spark):
     - Lewes : no endpoint, owns entities seeded on its behalf ('some') -> some
     - MHCLG : national seeder, has endpoint, owns nothing, seeded Lewes -> some
     - New LA: active endpoint but nothing arriving (kept + flagged, null)
+    - Old DC: every source row end-dated, entities gone -> has_endpoint only
     """
     providers_df = spark.createDataFrame(
         [
@@ -37,12 +39,24 @@ def _provision_quality_inputs(spark):
         ],
         ["dataset", "organisation", "has_active_resource"],
     )
+    # a superset of providers_df: everyone who has ever had an endpoint, whether
+    # or not their source rows have since been end-dated
+    ever_provided = spark.createDataFrame(
+        [
+            (PQ_DATASET, PQ_ADU),
+            (PQ_DATASET, PQ_MHCLG),
+            (PQ_DATASET, PQ_NEW),
+            (PQ_DATASET, PQ_OLD),  # retired: no live source row, no entities left
+        ],
+        ["dataset", "organisation"],
+    )
     org_df = spark.createDataFrame(
         [
             (PQ_ADU, "100", "Adur DC", True),
             (PQ_LEW, "200", "Lewes DC", True),
             (PQ_MHCLG, "300", "MHCLG", True),
             (PQ_NEW, "400", "New LA", True),
+            (PQ_OLD, "500", "Old DC", True),
         ],
         ["organisation", "organisation_entity", "organisation_name", "org_active"],
     )
@@ -63,7 +77,14 @@ def _provision_quality_inputs(spark):
         ],
         ["dataset", "organisation_entity", "quality", "entity"],
     )
-    return providers_df, org_df, entity_org_df, lookup_df, entity_quality_df
+    return (
+        providers_df,
+        ever_provided,
+        org_df,
+        entity_org_df,
+        lookup_df,
+        entity_quality_df,
+    )
 
 
 class TestProvisionQuality:
@@ -72,9 +93,10 @@ class TestProvisionQuality:
         pq = _build_provision_quality(*_provision_quality_inputs(spark))
         rows = {r["organisation"]: r.asDict() for r in pq.collect()}
 
-        assert set(rows) == {PQ_ADU, PQ_LEW, PQ_MHCLG, PQ_NEW}
+        assert set(rows) == {PQ_ADU, PQ_LEW, PQ_MHCLG, PQ_NEW, PQ_OLD}
 
         adu = rows[PQ_ADU]
+        assert adu["has_endpoint"] is True
         assert adu["has_active_endpoint"] is True
         assert adu["has_active_resource"] is True
         assert adu["owns_entities"] is True
@@ -83,6 +105,7 @@ class TestProvisionQuality:
         assert adu["entity_count"] == 2
 
         lew = rows[PQ_LEW]
+        assert lew["has_endpoint"] is False  # never registered an endpoint at all
         assert lew["has_active_endpoint"] is False  # owns but never submitted
         assert lew["has_active_resource"] is False  # no endpoint, so nothing arriving
         assert lew["owns_entities"] is True
@@ -91,6 +114,7 @@ class TestProvisionQuality:
         assert lew["entity_count"] == 2
 
         mhclg = rows[PQ_MHCLG]
+        assert mhclg["has_endpoint"] is True
         assert mhclg["has_active_endpoint"] is True
         assert mhclg["has_active_resource"] is True
         assert mhclg["owns_entities"] is False  # provider that owns nothing
@@ -99,12 +123,27 @@ class TestProvisionQuality:
         assert mhclg["entity_count"] == 2  # seeded count
 
         new = rows[PQ_NEW]
+        assert new["has_endpoint"] is True
         assert new["has_active_endpoint"] is True
         # endpoint is configured but its resource has stopped arriving
         assert new["has_active_resource"] is False
         assert new["owns_entities"] is False
         assert new["quality"] is None  # endpoint but no data — kept + flagged
         assert new["entity_count"] == 0
+
+        # The case has_endpoint exists for. Before it, an organisation whose
+        # source rows were all end-dated had no row here at all, which is why
+        # dataset_publication.publisher_count could not be reached from this
+        # table. It must still read false for every "currently doing something"
+        # flag — has_endpoint records history, not activity.
+        old = rows[PQ_OLD]
+        assert old["has_endpoint"] is True
+        assert old["has_active_endpoint"] is False
+        assert old["has_active_resource"] is False
+        assert old["owns_entities"] is False
+        assert old["is_designated_provider"] is False
+        assert old["quality"] is None
+        assert old["entity_count"] == 0
 
     def test_dataset_quality_rollup(self, spark):
         pq = _build_provision_quality(*_provision_quality_inputs(spark))
