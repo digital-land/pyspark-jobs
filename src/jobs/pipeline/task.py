@@ -7,17 +7,28 @@ from functools import reduce
 
 from cloudpathlib import AnyPath
 from pyspark.sql import Window
-from pyspark.sql.functions import col, count, explode, lit, row_number, split, when
+from pyspark.sql.functions import (
+    col,
+    count,
+    explode,
+    lit,
+    lower,
+    row_number,
+    split,
+    when,
+)
 
 from jobs.pipeline.base import BasePipeline
 from jobs.read import read_issue_csvs
 from jobs.transform.task_transformer import (
+    transform_expectations_to_tasks,
     transform_issues_to_tasks,
     transform_log_to_tasks,
 )
 from jobs.utils.collection_paths import (
     collection_files,
     collection_names,
+    expectation_files,
     issue_files_for_resources,
 )
 from jobs.utils.df_utils import normalise_column_names
@@ -246,8 +257,63 @@ class TaskPipeline(BasePipeline):
 
             issue_tasks = transform_issues_to_tasks(issue_df)
 
+        # -- Expectation tasks -------------------------------------------------
+        # Expectations run against the assembled dataset, so unlike issues they
+        # have no resource to join on and are not filtered by active resources.
+        exp_files = expectation_files(base)
+        logger.info(f"TaskPipeline: Found {len(exp_files)} expectation files")
+
+        if not exp_files:
+            logger.warning(
+                "TaskPipeline: No expectation files found — skipping expectation tasks"
+            )
+            expectation_tasks = None
+        else:
+            expectation_df = spark.read.parquet(*exp_files)
+
+            org_path = str(
+                base / "organisation-collection" / "dataset" / "organisation.csv"
+            )
+            org_df = normalise_column_names(
+                spark.read.option("header", "true").csv(org_path)
+            ).select(
+                col("organisation"),
+                col("entity").alias("organisation_entity"),
+            )
+
+            # Same shape of guard as the issue path above: the failure mode
+            # here is every row being dropped, which produces no tasks and no
+            # error, so the counts are logged rather than left to DEBUG.
+            stats = expectation_df.agg(
+                count("*").alias("rows"),
+                count(when(lower(col("passed").cast("string")) == "false", True)).alias(
+                    "failed"
+                ),
+                count(
+                    when(
+                        (lower(col("passed").cast("string")) == "false")
+                        & col("severity").isin("error", "warning", "notice"),
+                        True,
+                    )
+                ).alias("surviving"),
+            ).collect()[0]
+            logger.info(
+                f"TaskPipeline: {stats['rows']} expectation rows, "
+                f"{stats['failed']} failed, "
+                f"{stats['surviving']} survive the severity filter"
+            )
+            if stats["rows"] and not stats["surviving"]:
+                logger.error(
+                    "TaskPipeline: every expectation row was dropped by the "
+                    "filters — check `passed` and `severity` values"
+                )
+
+            expectation_tasks = transform_expectations_to_tasks(expectation_df, org_df)
+
         # -- Union and write --------------------------------------------------
-        frames = [df for df in [log_tasks, issue_tasks] if df is not None]
+        frames = [
+            df for df in [log_tasks, issue_tasks, expectation_tasks] if df is not None
+        ]
 
         if not frames:
             logger.warning("TaskPipeline: No tasks generated — nothing to write")

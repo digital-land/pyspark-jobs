@@ -84,3 +84,35 @@ def issue_files_for_resources(
                 continue
             files.extend(str(p) for p in dataset_dir.iterdir() if p.stem in resources)
     return files
+
+
+def expectation_files(base: AnyPath) -> list[str]:
+    """Paths to the per-dataset expectation parquet files.
+
+    These sit at the bucket root under a bare `log/`, not under a
+    {collection}-collection prefix, because OUTPUT_LOG_DIR is `log/` and
+    makerules syncs it straight to the root.
+
+    The layout is hive-style (`dataset=<name>/`), but the files are listed
+    rather than handed to Spark as a partitioned directory: the parquet
+    already carries its own `dataset` column, so partition discovery would
+    produce a second column of the same name and collide. Reading the files
+    directly and using the in-file column avoids the question.
+
+    Args:
+        base: Root of the collection-data bucket
+
+    Returns:
+        Paths as strings, ready to hand to spark.read
+    """
+    expectation_dir = base / "log" / "expectation"
+    if not expectation_dir.exists():
+        logger.warning(f"expectation_files: {expectation_dir} does not exist")
+        return []
+
+    files = []
+    for dataset_dir in expectation_dir.iterdir():
+        if not dataset_dir.is_dir():
+            continue
+        files.extend(str(p) for p in dataset_dir.iterdir() if p.suffix == ".parquet")
+    return files
