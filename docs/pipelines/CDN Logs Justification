@@ -14,172 +14,174 @@ Required fields
 These fields are needed by the pipeline to continue processing, without them it SHOULD fail
 
 date -> timestamp
-The date (UTC) the event occurred, e.g. 2026-07-15.
-
-format: UTC string
+    The date (UTC) the event occurred, e.g. 2026-07-15.
+    format: UTC string
+    Justification: This could serve as primary partition key for the log store. It is also required for any time-series performance reporting and trend analysis
+    Verdict:
 
 time -> timestamp
-The time the event occurred in UTC
-
-Justification: Need to understand the time of day of the request to see when we're getting the most traffic
-
-the time will be limited to an hour to help with is being anonymous.
+    The time the event occurred in UTC
+    Justification: Need to understand the time of day of the request to see when we're getting the most traffic. Enables intra day analysis.
+    the time will be limited to an hour to help with is being anonymous.
+    Verdict:
 
 time-taken -> time_taken
-Total time in seconds from when CloudFront received the request to when it finished writing the last byte of the response — the primary latency metric.
+    Total time in seconds from when CloudFront received the request to when it finished writing the last byte of the response — the primary latency metric.
+    Justification: gives us our primary latency statistic with routes, allows us to track latency over a longer period of time to see which routes are driving up latency.
+    Processing requirements:  must be rounded down to the hour interval it took place in. this stops the timing be too accurate but can still show us trends over the day
+    Verdict:
 
-Justification:
-
-gives us our primary latency statistic with routes, allows us to track latency over a longer period of time to see which routes are driving up latency.
-
-Processing requirements:
-
-must be rounded down to the hour interval it took place in. this stops the timing be too accurate but can still show us trends over the day
 time-to-first-byte -> time_to_first_byte
-Seconds between CloudFront receiving the request and writing the first byte of the response — useful for distinguishing "slow to start responding" from "slow to finish sending" (e.g., large file transfer vs. slow backend).
+    Seconds between CloudFront receiving the request and writing the first byte of the response 
+    Justification: useful for distinguishing "slow to start responding" from "slow to finish sending" (e.g., large file transfer vs. slow backend).
+    Verdict:
 
 c-ip -> daily_visitor_hash
-The IP address of the viewer that made the request
+    The IP address of the viewer that made the request
+    Processing requirements: 
+    this field must not be in the final result as it can be considered sensitive. see the anonymising method below for how this is used.
 
-Processing requirements:
-
-this field must not be in the final result as it can be considered sensitive. see the anonymising method below for how this is used.
 cs(User-Agent) -> daily_visitor_hash
-The User-Agent header sent by the viewer
+    The User-Agent header sent by the viewer
+    Processing requirements: this field must not be in the final result as it can be considered sensitive. see the anonymising method below for how this is used.
+    Verdict:
 
-Processing requirements:
-
-this field must not be in the final result as it can be considered sensitive. see the anonymising method below for how this is used.
 cs(Referer) -> referer_domain
-The Referer header — what page/link the request came from, if any.
+    The Referer header — what page/link the request came from, if any.
+    Justification: This attribute shows how users arrive at the portal — from LPA sites, GOV.UK, search, or internal navigation. Supports channel analysis and is hugely used in the existing power bi reports.
+    Verdict:
 
 cs-method -> http_method
-HTTP method used
+    HTTP method used
+    Justification: Separates read traffic from submissions. Essential for API analytics and spotting method-based probing e.g submission volumes vs. browsing (Get, head, Post etc). Was used in first drat of API analytics report.
+    Verdict:
 
 cs-uri-stem -> path
-The path portion of the requested URL (e.g., /blog/post-title), URL-encoded.
+    The path portion of the requested URL (e.g., /blog/post-title), URL-encoded.
+    Justifcation: Perhaps the most important field for analytics. Drives endpoint-level performance reporting, journey and page analysis, identification of the most-requested documents and API routes, and cache-rule design. Actively used in existing performance report.
+    Verdict:
 
 cs-uri-query -> query_params
-The query string portion, if any (e.g., ?ref=twitter), URL-encoded
+    The query string portion, if any (e.g., ?ref=twitter), URL-encoded
+    Processing requirements: need to transform to a json of key value pairs, this should only happen for a subset of query params identified. This is documented below for each query parameter we want to include.
+    Justification: Carries the parameters that define API behaviour: search filters, pagination, layering etc.
+    Verdict:
 
-Processing requirements:
-
-need to transform to a json of key value pairs, this should only happen for a subset of query params identified. This is documented below for each query parameter we want to include.
 x-host-header -> domain, daily_visitor_hash
-The value of the Host header as CloudFront received it — used to distinguish alternate domain names on the same distribution. In our infrastructure this is the *.planning.data.gov.uk url.
+    The value of the Host header as CloudFront received it — used to distinguish alternate domain names on the same distribution. In our infrastructure this is the *.planning.data.gov.uk url.
+    Verdict:
 
 sc-status -> status_code
-The HTTP status code CloudFront returned to the viewer
+    The HTTP status code CloudFront returned to the viewer
+    Justification: Underpins the availability and error-rate of service. Evidences uptime and downtime, and just to detect broken links or removed content. Currently in the power bi report, it is used in connection with cs(Referer) to identify what users click that generates errors.
+    Verdict:
 
 sc-bytes -> response_bytes
-Number of bytes CloudFront sent to the viewer, including headers (size of the response).
+    Number of bytes CloudFront sent to the viewer, including headers (size of the response).
+    Justification: Could be needed for cost attribution across services, for bandwidth capacity planning, and for detecting abnormal bulk extraction of documents.
+    Verdict:
 
 sc-content-type -> content_type
-The Content-Type header value of the response (e.g., text/html, image/png).
+    The Content-Type header value of the response (e.g., text/html, image/png).
+    Justification: Enables analysis by asset class — HTML, JSON API responses, map tiles, PDF and drawing downloads — each of which wull have a distinct performance profile
+    Verdict:
 
 x-edge-result-type -> cache_result
-What CloudFront did with the request — Hit, Miss, RefreshHit, Error, Redirect, etc.
-
-Removed/ignored fields
-This list is known fields in the source data that isn't even read in during the spark job
+    What CloudFront did with the request — Hit, Miss, RefreshHit, Error, Redirect, etc.
+    Removed/ignored fields
+    This list is known fields in the source data that isn't even read in during the spark job
+    Verdict:
 
 c-port
-The port number the viewer's request came from
+    The port number the viewer's request came from
+    Justification: doesn't offer any analytical bonus for a 2 year retention time, useful in raw logs for system monitoring
+    Verdict:
 
-Justification:
-
-doesn't offer any analytical bonus for a 2 year retention time, useful in raw logs for system monitoring
 cs(Cookie)
-Cookie header content, only present if you've explicitly enabled cookie logging
+    Cookie header content, only present if you've explicitly enabled cookie logging
+    Justification: this is likely to be a source of identifiable information and there's no cookies in use that we specifically want to be passed to our applications. this may be revisited in the future but cloudfront should be used to ensure only our cookies are passed through.
+    Verdict:
 
-Justification:
-
-this is likely to be a source of identifiable information and there's no cookies in use that we specifically want to be passed to our applications. this may be revisited in the future but cloudfront should be used to ensure only our cookies are passed through.
 x-forwarded-for
-If the request passed through a proxy before reaching CloudFront, this can contain the original client IP as reported by that proxy
+    If the request passed through a proxy before reaching CloudFront, this can contain the original client IP as reported by that proxy
+    Justification: no value in keeping for any analysis
+    Verdict:
 
-Justification:
-
-no value in keeping for any analysis
 cs(Host)
-The Host header, this is normally the cloudfront host.
+    The Host header, this is normally the cloudfront host.
+    Justification: isn't useful, especially if it were to be modified.
+    Verdict:
 
-Justification:
-
-isn't useful, especially if it were to be modified.
 cs-protocol
-The protocol of the viewer's request — http or https.
+    The protocol of the viewer's request — http or https.
+    Justification: this should be https for all, might be worth monitoring in live logs but not worth it for analytical purposes
+    Verdict:
 
-Justification:
-
-this should be https for all, might be worth monitoring in live logs but not worth it for analytical purposes
 cs-protocol-version
-The HTTP protocol version — HTTP/1.1, HTTP/2.0, etc.
+    The HTTP protocol version — HTTP/1.1, HTTP/2.0, etc.
+    Justification: no analytical justification to include this so it's dropped
+    Verdict:
 
-Justification:
-
-no analytical justification to include this so it's dropped
 cs-bytes
-Number of bytes received by CloudFront from the viewer, including headers (i.e., the size of the request).
+    Number of bytes received by CloudFront from the viewer, including headers (i.e., the size of the request).
+    Justification: our application is read only meaning no put requests, we may want to optionally include this based on the application being monitored but initially we can exclude this.
+    Verdict:
 
-Justification:
-
-our application is read only meaning no put requests, we may want to optionally include this based on the application being monitored but initially we can exclude this.
 sc-content-len
-The Content-Length header value of the response.
+    The Content-Length header value of the response.
+    Justification: duplicate of sc bytes, not worth including both instead stick to one source of the truth.
+    Verdict:
 
-Justification:
-
-duplicate of sc bytes, not worth including both instead stick to one source of the truth.
 sc-range-start
-If the response included a Content-Range header (i.e., a partial/range request, common for video/large file streaming), this gives the byte range start.
+    If the response included a Content-Range header (i.e., a partial/range request, common for video/large file streaming), this gives the byte range start.
+    Justification: our main app doesn't require this, however we may want to investigate adding it in the future
+    Verdict:
 
-Justification:
-
-our main app doesn't require this, however we may want to investigate adding it in the future
 sc-range-end
-If the response included a Content-Range header (i.e., a partial/range request, common for video/large file streaming), this gives the byte range end.
+    If the response included a Content-Range header (i.e., a partial/range request, common for video/large file streaming), this gives the byte range end.
+    Justification: our main app doesn't require this, however we may want to investigate adding it in the future
+    Verdict:
 
-Justification:
-
-our main app doesn't require this, however we may want to investigate adding it in the future
 x-edge-response-result-type
-Similar to x-edge-result-type, but reflects the result type actually sent to the viewer, which can differ from x-edge-result-type in edge cases
+    Similar to x-edge-result-type, but reflects the result type actually sent to the viewer, which can differ from x-edge-result-type in edge cases
+    Justification: very similar to the other field but occasionally at edge results differ, this is more of a debug field than something to analyse. 
+    AO's view: I believe it is worth keeping. A simple pie chart showing the distribution of errors, hits, misses, redirects and influence intuition when performing diagnostic work.
+    Verdict:
 
-Justification:
-
-very similar to the other field but occasionally at edge results differ, this is more of a debug field than something to analyse
 x-edge-detailed-result-type
-When the result type is an error, this gives the specific error type — more granular than just "Error," useful for diagnosing what actually went wrong.
+    When the result type is an error, this gives the specific error type — more granular than just "Error," useful for diagnosing what actually went wrong.
+    Justification: used for diagnosing errors for analysis this isn't required.
+    AO's view: I believe it is worth keeping. A simple pie chart showing the distribution of errors, hits, misses, redirects and influence intuition when performing diagnostic work.
+    Verdict:
 
-Justification:
+x-edge-Location
+    This is the Cloudfront recorded point of prescence.
+    Justification: Evidences that traffic is being served from expected regions. It also supports capacity and cache-footprint decisions.
+    Verdict:
 
-used for diagnosing errors for analysis this isn't required.
 ssl-protocol
-The SSL/TLS protocol version used (e.g., TLSv1.3) — empty if the request wasn't HTTPS.
+    The SSL/TLS protocol version used (e.g., TLSv1.3) — empty if the request wasn't HTTPS.
+    Justification: irrelevant for analysis
+    Verdict:
 
-Justification:
-
-irrelevant for analysis
 ssl-cipher
-The specific cipher suite negotiated for the connection.
+    The specific cipher suite negotiated for the connection.
+    Justification: irrelevant for analysis
+    Verdict:
 
-Justification:
-
-irrelevant for analysis
 fle-status
-Field-Level Encryption status, if configured — indicates whether encryption was applied.
+    Field-Level Encryption status, if configured — indicates whether encryption was applied.
+    Justification: irrelevant for analysis
+    Verdict:
 
-Justification:
-
-irrelevant for analysis
 fle-encrypted-fields
-Number of fields that were field-level-encrypted, if FLE is in use — a fairly niche feature for sensitive form data.
+    Number of fields that were field-level-encrypted, if FLE is in use — a fairly niche feature for sensitive form data.
+    Justification: irrelevant for analysis
+    Verdict:
 
-Justification
+---------------------------------------------------------
 
-irrelevant for analysis
-processed CDN Log Output
+Processed CDN Log Output
 The output will have the following fields, each has a justification as to why it's needed. there is no row filtering that happens for this output, instead relying on further pipelines/ processes to filter prior to aggregation.
 
 partition columns:
@@ -268,7 +270,7 @@ cs-uri-stem
 query_params
 a JSON of key value pairs for whitelisted keys and validated values
 
-Derived from:
+Derived from:   
 
 cs-uri-query
 domain
