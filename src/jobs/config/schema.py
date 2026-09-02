@@ -241,9 +241,11 @@ register(
         fields=[
             FieldSchema(field="dataset", name="Dataset", datatype="string"),
             FieldSchema(field="end_date", name="End Date", datatype="string"),
+            FieldSchema(field="entity", name="Entity", datatype="bigint"),
             FieldSchema(field="entry_date", name="Entry Date", datatype="string"),
             FieldSchema(field="entry_number", name="Entry Number", datatype="string"),
             FieldSchema(field="fact", name="Fact", datatype="string"),
+            FieldSchema(field="field", name="Field", datatype="string"),
             FieldSchema(field="priority", name="Priority", datatype="integer"),
             FieldSchema(field="resource", name="Resource", datatype="string"),
             FieldSchema(field="start_date", name="Start Date", datatype="string"),
