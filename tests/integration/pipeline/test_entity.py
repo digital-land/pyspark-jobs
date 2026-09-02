@@ -299,6 +299,83 @@ class TestEntityPipeline:
         expected_unique_entities = len({r["entity"] for r in TRANSFORMED_ROWS})
         assert entity_df.count() == expected_unique_entities
 
+    def test_execute_writes_entity_and_field_to_fact_resource(
+        self, spark, tmp_path, mocker
+    ):
+        """fact_resource carries entity and field, agreeing with the fact table."""
+        dataset = "test-dataset"
+        collection = "test-dataset"
+        base = str(tmp_path)
+        collection_dir = os.path.join(base, f"{collection}-collection")
+        parquet_base = os.path.join(base, "parquet-output/")
+
+        write_parquet(
+            spark,
+            os.path.join(collection_dir, "transformed", dataset),
+            TRANSFORMED_COLUMNS,
+            TRANSFORMED_ROWS,
+        )
+        write_csv(
+            os.path.join(
+                base, "organisation-collection", "dataset", "organisation.csv"
+            ),
+            ["organisation", "entity"],
+            ORGANISATION_ROWS,
+        )
+
+        mocker.patch(
+            "jobs.transform.entity_transformer.get_dataset_typology",
+            return_value="geography",
+        )
+        mock_consumer_df = mocker.MagicMock()
+        mock_consumer_df.columns = []
+        mock_consumer_df.count.return_value = 0
+        mock_consumer_df.toLocalIterator.return_value = iter([])
+        mock_consumer_df.repartition.return_value.toLocalIterator.return_value = iter(
+            []
+        )
+        mocker.patch(
+            "jobs.pipeline.entity.flatten_json_column",
+            return_value=mock_consumer_df,
+        )
+        mocker.patch(
+            "jobs.pipeline.entity.ensure_schema_fields",
+            return_value=mock_consumer_df,
+        )
+        mocker.patch("jobs.pipeline.entity.write_dataframe_to_postgres_jdbc")
+        mocker.patch("jobs.pipeline.entity.EntityPipeline._write_single_parquet")
+
+        config = PipelineConfig(
+            spark=spark,
+            dataset=dataset,
+            env="local",
+            collection_data_path=f"{base}/",
+            parquet_datasets_path=parquet_base,
+            database_url="postgresql://user:pass@localhost:5432/testdb",
+        )
+
+        EntityPipeline(config).run(collection=collection)
+
+        fact_resource_df = spark.read.format("delta").load(
+            os.path.join(parquet_base, "fact_resource")
+        )
+        assert fact_resource_df.filter("entity is null or field is null").count() == 0
+
+        # A fact hash is derived from (entity, field, value), so the two tables
+        # must agree on entity and field for any given fact.
+        fact_df = spark.read.format("delta").load(os.path.join(parquet_base, "fact"))
+        joined = fact_resource_df.alias("fr").join(fact_df.alias("f"), "fact")
+        assert (
+            joined.filter("fr.entity <> f.entity or fr.field <> f.field").count() == 0
+        )
+
+        expected = {(r["fact"], int(r["entity"]), r["field"]) for r in TRANSFORMED_ROWS}
+        actual = {
+            (r["fact"], r["entity"], r["field"])
+            for r in fact_resource_df.select("fact", "entity", "field").collect()
+        }
+        assert actual == expected
+
     def test_execute_calls_postgres_write(self, spark, tmp_path, mocker):
         """execute() writes entity data to Postgres."""
         dataset = "test-dataset"
