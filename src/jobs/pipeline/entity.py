@@ -10,7 +10,7 @@ from pyspark.sql.functions import col
 
 from jobs.config.metadata import load_metadata
 from jobs.pipeline.base import BasePipeline
-from jobs.read import read_old_resources
+from jobs.read import read_old_resources, read_resources
 from jobs.transform.entity_transformer import transform_entity
 from jobs.transform.fact_resource_transformer import transform_fact_resource
 from jobs.transform.fact_transformer import transform_fact
@@ -69,6 +69,9 @@ class EntityPipeline(BasePipeline):
             str(base / f"{collection}-collection" / "transformed" / dataset)
             + "/*.parquet"
         )
+        resource_path = str(
+            base / f"{collection}-collection" / "collection" / "resource.csv"
+        )
 
         logger.info(
             f"EntityPipeline: Reading organisation data from {organisation_path}"
@@ -79,6 +82,11 @@ class EntityPipeline(BasePipeline):
         logger.info(f"EntityPipeline: Reading transformed data from {transformed_path}")
         transformed_df = spark.read.parquet(transformed_path)
         transformed_df.cache()
+
+        logger.info(f"EntityPipeline: Reading resource data from {resource_path}")
+        resource_df = read_resources(spark, resource_path)
+        resource_df.cache()
+
         transformed_df.printSchema()
         show_df(transformed_df, 5, env)
 
@@ -139,7 +147,9 @@ class EntityPipeline(BasePipeline):
         if fact_count is not None:
             logger.info(f"EntityPipeline: fact contains {fact_count} records")
 
-        entity_df = transform_entity(transformed_df, dataset, organisation_df)
+        entity_df = transform_entity(
+            transformed_df, dataset, organisation_df, resource_df, env
+        )
         logger.info("EntityPipeline: entity transform completed")
 
         # -- Load: parquet ----------------------------------------------------

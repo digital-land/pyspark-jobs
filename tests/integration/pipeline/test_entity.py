@@ -115,6 +115,11 @@ ORGANISATION_ROWS = [
     {"organisation": "local-authority:ABC", "entity": "100"},
 ]
 
+RESOURCE_ROWS = [
+    {"resource": "res-001", "start-date": "2024-01-01", "end-date": ""},
+    {"resource": "res-002", "start-date": "2024-01-01", "end-date": ""},
+]
+
 
 class TestEntityPipeline:
     def test_execute_writes_correct_fact_resource_row_count(
@@ -139,6 +144,13 @@ class TestEntityPipeline:
             ),
             ["organisation", "entity"],
             ORGANISATION_ROWS,
+        )
+        write_csv(
+            os.path.join(
+                base, f"{collection}-collection", "collection", "resource.csv"
+            ),
+            ["resource", "start-date", "end-date"],
+            RESOURCE_ROWS,
         )
 
         mocker.patch(
@@ -200,6 +212,13 @@ class TestEntityPipeline:
             ["organisation", "entity"],
             ORGANISATION_ROWS,
         )
+        write_csv(
+            os.path.join(
+                base, f"{collection}-collection", "collection", "resource.csv"
+            ),
+            ["resource", "start-date", "end-date"],
+            RESOURCE_ROWS,
+        )
 
         mocker.patch(
             "jobs.transform.entity_transformer.get_dataset_typology",
@@ -258,6 +277,13 @@ class TestEntityPipeline:
             ),
             ["organisation", "entity"],
             ORGANISATION_ROWS,
+        )
+        write_csv(
+            os.path.join(
+                base, f"{collection}-collection", "collection", "resource.csv"
+            ),
+            ["resource", "start-date", "end-date"],
+            RESOURCE_ROWS,
         )
 
         mocker.patch(
@@ -321,6 +347,13 @@ class TestEntityPipeline:
             ),
             ["organisation", "entity"],
             ORGANISATION_ROWS,
+        )
+        write_csv(
+            os.path.join(
+                base, f"{collection}-collection", "collection", "resource.csv"
+            ),
+            ["resource", "start-date", "end-date"],
+            RESOURCE_ROWS,
         )
 
         mocker.patch(
@@ -397,6 +430,13 @@ class TestEntityPipeline:
             ["organisation", "entity"],
             ORGANISATION_ROWS,
         )
+        write_csv(
+            os.path.join(
+                base, f"{collection}-collection", "collection", "resource.csv"
+            ),
+            ["resource", "start-date", "end-date"],
+            RESOURCE_ROWS,
+        )
 
         mocker.patch(
             "jobs.transform.entity_transformer.get_dataset_typology",
@@ -452,6 +492,13 @@ class TestEntityPipeline:
             ),
             ["organisation", "entity"],
             ORGANISATION_ROWS,
+        )
+        write_csv(
+            os.path.join(
+                base, f"{collection}-collection", "collection", "resource.csv"
+            ),
+            ["resource", "start-date", "end-date"],
+            RESOURCE_ROWS,
         )
 
         config = PipelineConfig(

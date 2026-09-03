@@ -247,6 +247,11 @@ ORGANISATION_ROWS = [
     {"organisation": "local-authority:ABC", "entity": "100"},
 ]
 
+RESOURCE_ROWS = [
+    {"resource": "res-001", "start-date": "2024-01-01", "end-date": ""},
+    {"resource": "res-002", "start-date": "2024-01-01", "end-date": ""},
+]
+
 DATASET_RESOURCE_COLUMNS = [
     "entry_date",
     "dataset",
@@ -335,6 +340,13 @@ def test_e2e_full_load_pipeline(cli_runner, run_main_cmd, spark, tmp_path, mocke
         os.path.join(base, "organisation-collection", "dataset", "organisation.csv"),
         ["organisation", "entity"],
         ORGANISATION_ROWS,
+    )
+
+    # Write resource CSV (supplies the resource dates the entity ranking uses)
+    _write_csv(
+        os.path.join(collection_dir, "collection", "resource.csv"),
+        ["resource", "start-date", "end-date"],
+        RESOURCE_ROWS,
     )
 
     # Write dataset-resource CSV
