@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 
 from pyspark.sql.functions import (
+    asc,
     col,
     desc,
     first,
@@ -43,11 +44,57 @@ _STANDARD_COLUMNS = {
 }
 
 
+def _join_resource_dates(df, resource_df):
+    """Attach the resource's own start/end dates for use as ranking criteria.
+
+    Mirrors the LEFT JOIN in dataset_parquet.py's load_entities_range. A null
+    end-date means the resource is live (not yet superseded) and must sort
+    first, so it is coalesced to a sentinel that outranks every real date.
+
+    A resource absent from resource.csv misses the join and also lands on the
+    sentinel, so it sorts as live. That is duckdb's behaviour too; it is
+    arguably the wrong default but is reproduced here deliberately rather than
+    quietly diverging.
+    """
+    resource_dates = resource_df.select(
+        col("resource"),
+        col("start_date").alias("resource_start_date"),
+        col("end_date").alias("resource_end_date_raw"),
+    )
+
+    return (
+        df.join(resource_dates, on="resource", how="left")
+        .withColumn(
+            "resource_end_date",
+            when(
+                col("resource_end_date_raw").isNull()
+                | (col("resource_end_date_raw") == ""),
+                lit("2999-12-31"),
+            ).otherwise(col("resource_end_date_raw")),
+        )
+        .drop("resource_end_date_raw")
+    )
+
+
 def _deduplicate_eav(df):
-    if "priority" in df.columns:
-        ordering_cols = [desc("entry_date"), desc("priority"), desc("entry_number")]
-    else:
-        ordering_cols = [desc("entry_date"), desc("entry_number")]
+    """Pick one winning row per (entity, field).
+
+    Ordering is copied from dataset_parquet.py:610 (digital-land-python), which
+    is the canonical implementation every duckdb-built dataset uses. Priority
+    ranks FIRST so that an authoritative source beats a merely more recent one.
+
+    The trailing resource and fact are ASC and give the window a total order, so
+    the result is deterministic rather than dependent on Spark's partitioning.
+    """
+    ordering_cols = [
+        desc("priority"),
+        desc("entry_date"),
+        desc("resource_end_date"),
+        desc("resource_start_date"),
+        desc("entry_number"),
+        asc("resource"),
+        asc("fact"),
+    ]
 
     w = Window.partitionBy("entity", "field").orderBy(*ordering_cols)
 
@@ -168,51 +215,55 @@ def _final_projection(df):
     return get_schema("entity").enforce(df).dropDuplicates(["entity"])
 
 
-def transform_entity(df, dataset, organisation_df, env=None):
+def transform_entity(df, dataset, organisation_df, resource_df, env=None):
     logger.info("transform_entity: Transforming data for Entity table")
     show_df(df, 20, env)
 
-    logger.info("transform_entity: Step 1 — deduplicate EAV records")
+    logger.info("transform_entity: Step 1 — join resource dates")
+    df = _join_resource_dates(df, resource_df)
+    show_df(df, 5, env)
+
+    logger.info("transform_entity: Step 2 — deduplicate EAV records")
     df = _deduplicate_eav(df)
     show_df(df, 5, env)
 
-    logger.info("transform_entity: Step 2 — pivot to wide format")
+    logger.info("transform_entity: Step 3 — pivot to wide format")
     df = _pivot_to_entity(df, env)
     show_df(df, 5, env)
 
-    logger.info("transform_entity: Step 3 — add quality column")
+    logger.info("transform_entity: Step 4 — add quality column")
     df = _add_quality_column(df)
     show_df(df, 5, env)
 
-    logger.info("transform_entity: Step 4 — add typology")
+    logger.info("transform_entity: Step 5 — add typology")
     df = _add_typology(df, dataset, env)
     show_df(df, 5, env)
 
-    logger.info("transform_entity: Step 5 — normalise column names")
+    logger.info("transform_entity: Step 6 — normalise column names")
     df = _normalise_column_names(df)
     show_df(df, 5, env)
 
-    logger.info("transform_entity: Step 6 — set dataset column")
+    logger.info("transform_entity: Step 7 — set dataset column")
     df = _set_dataset(df, dataset)
     show_df(df, 5, env)
 
-    logger.info("transform_entity: Step 7 — join organisation")
+    logger.info("transform_entity: Step 8 — join organisation")
     df = _join_organisation(df, organisation_df)
     show_df(df, 5, env)
 
-    logger.info("transform_entity: Step 8 — build JSON column")
+    logger.info("transform_entity: Step 9 — build JSON column")
     df = _build_json_column(df)
     show_df(df, 5, env)
 
-    logger.info("transform_entity: Step 9 — normalise dates")
+    logger.info("transform_entity: Step 10 — normalise dates")
     df = _normalise_dates(df)
     show_df(df, 5, env)
 
-    logger.info("transform_entity: Step 10 — normalise geometry")
+    logger.info("transform_entity: Step 11 — normalise geometry")
     df = _normalise_geometry(df)
     show_df(df, 5, env)
 
-    logger.info("transform_entity: Step 11 — final projection")
+    logger.info("transform_entity: Step 12 — final projection")
     df = _final_projection(df)
     show_df(df, 5, env)
 

@@ -28,6 +28,30 @@ def read_old_resources(spark: SparkSession, path: str) -> DataFrame:
     return normalise_column_names(df)
 
 
+def read_resources(spark: SparkSession, path: str) -> DataFrame:
+    """
+    Read the collection's resource CSV into a DataFrame.
+
+    Provides the `start-date` and `end-date` the entity ranking needs to prefer
+    live resources over superseded ones, matching `dataset_parquet.py`'s
+    LEFT JOIN onto resource.csv.
+
+    Note this is a different file from old-resource.csv: resource.csv lives at
+    {collection}-collection/collection/, old-resource.csv at
+    config/collection/{collection}/.
+
+    Args:
+        spark: Active Spark session
+        path: Path to the resource.csv file (local or S3)
+
+    Returns:
+        DataFrame with resource records, columns normalised to underscores
+    """
+    logger.info(f"read_resources: Reading resources from {path}")
+    df = spark.read.option("header", "true").csv(path)
+    return normalise_column_names(df)
+
+
 _ISSUE_RAW_SCHEMA = StructType(
     [StructField(f"_c{i}", StringType(), True) for i in range(9)]
 )
