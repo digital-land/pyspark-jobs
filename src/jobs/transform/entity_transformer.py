@@ -76,6 +76,42 @@ def _join_resource_dates(df, resource_df):
     )
 
 
+def _assert_entity_populated(df):
+    """Fail loudly if fact_resource has not been backfilled with entity.
+
+    entity and field were added to fact_resource by config#2913 and are
+    populated per dataset by write_delta's replaceWhere on that dataset's
+    next run. Until that has happened they are NULL for every row, and
+    partitionBy("entity", "field") would collapse the whole dataset into a
+    single group and silently emit a garbage entity table.
+
+    Checking for one non-null entity short-circuits immediately in the
+    healthy case; only an unbackfilled dataset pays for a full scan, and
+    that scan ends in an exception rather than a bad publish.
+    """
+    if not df.select("entity").filter(col("entity").isNotNull()).limit(1).take(1):
+        raise ValueError(
+            "transform_entity: no fact_resource row has an entity. This dataset's "
+            "fact_resource predates entity/field being added (config#2913). Run the "
+            "dataset once to backfill before rebuilding entity from the fact tables."
+        )
+
+
+def _join_fact_values(df, fact_df):
+    """Attach each winning fact's value.
+
+    fact_hash is derived from (entity, field, value), so a hash uniquely
+    determines its value, and transform_fact keeps exactly one row per hash.
+    The join can therefore neither fan out nor change which row won.
+
+    Only fact and value are selected: fact_resource and fact share eight
+    column names (dataset, end_date, entity, entry_date, fact, field,
+    priority, start_date), and pulling any of them in would silently shadow
+    the ranking columns.
+    """
+    return df.join(fact_df.select(col("fact"), col("value")), on="fact", how="left")
+
+
 def _deduplicate_eav(df):
     """Pick one winning row per (entity, field).
 
@@ -215,55 +251,69 @@ def _final_projection(df):
     return get_schema("entity").enforce(df).dropDuplicates(["entity"])
 
 
-def transform_entity(df, dataset, organisation_df, resource_df, env=None):
+def transform_entity(
+    fact_resource_df, fact_df, dataset, organisation_df, resource_df, env=None
+):
+    """Build the entity table from fact_resource + fact + resource.
+
+    Ranking runs on fact_resource, which carries every ordering column but no
+    values, and fact is joined once at the end to supply the winning values.
+    """
     logger.info("transform_entity: Transforming data for Entity table")
-    show_df(df, 20, env)
+    show_df(fact_resource_df, 20, env)
+
+    logger.info("transform_entity: Step 0 — check fact_resource has entity populated")
+    _assert_entity_populated(fact_resource_df)
 
     logger.info("transform_entity: Step 1 — join resource dates")
-    df = _join_resource_dates(df, resource_df)
+    df = _join_resource_dates(fact_resource_df, resource_df)
     show_df(df, 5, env)
 
     logger.info("transform_entity: Step 2 — deduplicate EAV records")
     df = _deduplicate_eav(df)
     show_df(df, 5, env)
 
-    logger.info("transform_entity: Step 3 — pivot to wide format")
+    logger.info("transform_entity: Step 3 — join winning facts to their values")
+    df = _join_fact_values(df, fact_df)
+    show_df(df, 5, env)
+
+    logger.info("transform_entity: Step 4 — pivot to wide format")
     df = _pivot_to_entity(df, env)
     show_df(df, 5, env)
 
-    logger.info("transform_entity: Step 4 — add quality column")
+    logger.info("transform_entity: Step 5 — add quality column")
     df = _add_quality_column(df)
     show_df(df, 5, env)
 
-    logger.info("transform_entity: Step 5 — add typology")
+    logger.info("transform_entity: Step 6 — add typology")
     df = _add_typology(df, dataset, env)
     show_df(df, 5, env)
 
-    logger.info("transform_entity: Step 6 — normalise column names")
+    logger.info("transform_entity: Step 7 — normalise column names")
     df = _normalise_column_names(df)
     show_df(df, 5, env)
 
-    logger.info("transform_entity: Step 7 — set dataset column")
+    logger.info("transform_entity: Step 8 — set dataset column")
     df = _set_dataset(df, dataset)
     show_df(df, 5, env)
 
-    logger.info("transform_entity: Step 8 — join organisation")
+    logger.info("transform_entity: Step 9 — join organisation")
     df = _join_organisation(df, organisation_df)
     show_df(df, 5, env)
 
-    logger.info("transform_entity: Step 9 — build JSON column")
+    logger.info("transform_entity: Step 10 — build JSON column")
     df = _build_json_column(df)
     show_df(df, 5, env)
 
-    logger.info("transform_entity: Step 10 — normalise dates")
+    logger.info("transform_entity: Step 11 — normalise dates")
     df = _normalise_dates(df)
     show_df(df, 5, env)
 
-    logger.info("transform_entity: Step 11 — normalise geometry")
+    logger.info("transform_entity: Step 12 — normalise geometry")
     df = _normalise_geometry(df)
     show_df(df, 5, env)
 
-    logger.info("transform_entity: Step 12 — final projection")
+    logger.info("transform_entity: Step 13 — final projection")
     df = _final_projection(df)
     show_df(df, 5, env)
 
