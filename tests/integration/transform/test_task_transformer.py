@@ -318,7 +318,7 @@ class TestTransformIssuesToTasks:
                     "resource-aaa",
                     "name",
                     "missing-value",
-                    "notice",
+                    "warning",
                     "internal",
                     "organisation-x",
                     "endpoint-aaa",
@@ -360,6 +360,61 @@ class TestTransformIssuesToTasks:
         result = transform_issues_to_tasks(df)
         assert result is not None
         assert result.count() == 1
+
+    def test_includes_critical_severity_rows(self, spark):
+        """No issue-type uses critical yet. The filter accepts it ahead of the
+        specification change so those issues cannot silently vanish in between."""
+        df = _build_df(
+            spark,
+            [
+                (
+                    "dataset-a",
+                    "resource-aaa",
+                    "geometry",
+                    "invalid-geometry",
+                    "critical",
+                    "external",
+                    "organisation-x",
+                    "endpoint-aaa",
+                ),
+            ],
+            ISSUE_COLUMNS,
+        )
+        result = transform_issues_to_tasks(df)
+        assert result is not None
+        assert result.count() == 1
+        assert result.collect()[0]["severity"] == "critical"
+
+    def test_excludes_notice_severity_rows(self, spark):
+        df = _build_df(
+            spark,
+            [
+                (
+                    "dataset-a",
+                    "resource-aaa",
+                    "geometry",
+                    "invalid-geometry",
+                    "error",
+                    "external",
+                    "organisation-x",
+                    "endpoint-aaa",
+                ),
+                (
+                    "dataset-a",
+                    "resource-aaa",
+                    "name",
+                    "unknown entity",
+                    "notice",
+                    "internal",
+                    "organisation-x",
+                    "endpoint-aaa",
+                ),
+            ],
+            ISSUE_COLUMNS,
+        )
+        result = transform_issues_to_tasks(df)
+        assert result.count() == 1
+        assert result.collect()[0]["severity"] == "error"
 
     def test_returns_none_when_no_matching_rows(self, spark):
         df = _build_df(
@@ -768,6 +823,28 @@ class TestTransformExpectationsToTasks:
             [
                 _expectation_row(severity="warning"),
                 _expectation_row(severity="info", operation="other_check"),
+            ],
+            EXPECTATION_COLUMNS,
+        )
+        result = transform_expectations_to_tasks(df, _org_df(spark))
+        assert result.count() == 1
+
+    def test_includes_critical_severity_rows(self, spark):
+        df = _build_df(
+            spark, [_expectation_row(severity="critical")], EXPECTATION_COLUMNS
+        )
+        result = transform_expectations_to_tasks(df, _org_df(spark))
+        assert result.count() == 1
+        assert result.collect()[0]["severity"] == "critical"
+
+    def test_excludes_notice_severity_rows(self, spark):
+        """count_lpa_boundary and count_deleted_entities are notice in config
+        expect.csv, and are the bulk of what stops being generated."""
+        df = _build_df(
+            spark,
+            [
+                _expectation_row(severity="warning"),
+                _expectation_row(severity="notice", operation="count_lpa_boundary"),
             ],
             EXPECTATION_COLUMNS,
         )

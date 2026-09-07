@@ -21,6 +21,7 @@ from pyspark.sql.functions import (
 from jobs.pipeline.base import BasePipeline
 from jobs.read import read_issue_csvs
 from jobs.transform.task_transformer import (
+    TASK_SEVERITIES,
     transform_expectations_to_tasks,
     transform_issues_to_tasks,
     transform_log_to_tasks,
@@ -240,9 +241,9 @@ class TaskPipeline(BasePipeline):
             stats = issue_df.agg(
                 count("*").alias("rows"),
                 count(when(col("severity").isNotNull(), True)).alias("matched"),
-                count(
-                    when(col("severity").isin("error", "warning", "notice"), True)
-                ).alias("surviving"),
+                count(when(col("severity").isin(*TASK_SEVERITIES), True)).alias(
+                    "surviving"
+                ),
             ).collect()[0]
             logger.info(
                 f"TaskPipeline: {stats['rows']} issue rows for active resources, "
@@ -292,7 +293,7 @@ class TaskPipeline(BasePipeline):
                 count(
                     when(
                         (lower(col("passed").cast("string")) == "false")
-                        & col("severity").isin("error", "warning", "notice"),
+                        & col("severity").isin(*TASK_SEVERITIES),
                         True,
                     )
                 ).alias("surviving"),
