@@ -20,7 +20,9 @@ from pyspark.sql.functions import (
     split,
     struct,
     substring,
-    sum as spark_sum,
+)
+from pyspark.sql.functions import sum as spark_sum
+from pyspark.sql.functions import (
     to_json,
 )
 from pyspark.sql.types import (
@@ -36,12 +38,23 @@ logger = logging.getLogger(__name__)
 
 # NOTE: This module mirrors some of the task transform logic in digital-land-python:
 # digital_land/pipeline/task.py (_transform_log_to_tasks, _transform_issues_to_tasks).
-# transform_issues_to_tasks now intentionally diverges: it filters severity in
-# (error, warning, notice) with no responsibility filter, explodes ';'-separated
+# transform_issues_to_tasks now intentionally diverges: it filters severity to
+# TASK_SEVERITIES with no responsibility filter, explodes ';'-separated
 # organisation values to one task row per organisation, and includes organisation
 # in the reference hash. digital-land-python's task.py still uses
 # severity=error/responsibility=external and a hash without organisation —
 # bring these back in sync if/when that implementation is updated to match.
+
+
+# The severities that become tasks. Tasks exist to be surfaced to publishers, and
+# only these three ever are, so notice/info/debug stay in the raw issue and
+# expectation logs only.
+#
+# `critical` is listed ahead of anything using it: no issue-type or expect.csv row
+# has that severity today, so adding it changes nothing now. It has to be here
+# BEFORE the specification flips issue-types from error to critical, or those
+# issues would silently stop producing tasks in between.
+TASK_SEVERITIES = ("critical", "error", "warning")
 
 
 # Only the keys the bridge needs. from_json ignores everything else in the blob,
@@ -129,7 +142,7 @@ def transform_issues_to_tasks(df: DataFrame, entry_date: str = None) -> DataFram
     entry_date = entry_date or str(date.today())
     logger.info("transform_issues_to_tasks: Starting")
 
-    df = df.filter(col("severity").isin("error", "warning", "notice"))
+    df = df.filter(col("severity").isin(*TASK_SEVERITIES))
 
     if df.rdd.isEmpty():
         logger.warning(
@@ -205,7 +218,7 @@ def transform_expectations_to_tasks(
     # on the writer's choice of type. (Spark coerces a bare `== False` correctly
     # too, but this avoids the E712 lint suppression that would need.)
     df = df.filter(lower(col("passed").cast("string")) == "false").filter(
-        col("severity").isin("error", "warning", "notice")
+        col("severity").isin(*TASK_SEVERITIES)
     )
 
     parsed = df.withColumn(
