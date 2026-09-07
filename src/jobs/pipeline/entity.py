@@ -148,7 +148,7 @@ class EntityPipeline(BasePipeline):
             logger.info(f"EntityPipeline: fact contains {fact_count} records")
 
         entity_df = transform_entity(
-            transformed_df, dataset, organisation_df, resource_df, env
+            fact_resource_df, fact_df, dataset, organisation_df, resource_df, env
         )
         logger.info("EntityPipeline: entity transform completed")
 

@@ -28,6 +28,21 @@ def _build_resource_df(spark, resources=None):
     )
 
 
+def _split_rows(spark, rows):
+    """Split EAV rows into the fact_resource and fact frames transform_entity takes.
+
+    Mirrors EntityPipeline: fact_resource keeps the per-occurrence ranking
+    columns and drops value; fact holds one row per hash carrying the value.
+    """
+    fact_resource_df = spark.createDataFrame(
+        [{k: v for k, v in row.items() if k != "value"} for row in rows]
+    )
+    values = {}
+    for row in rows:
+        values.setdefault(row["fact"], {"fact": row["fact"], "value": row["value"]})
+    return fact_resource_df, spark.createDataFrame(list(values.values()))
+
+
 def _base_rows(entity, priority=None, entry_date="2024-03-01", resource="res-a"):
     fields = [
         ("name", "Place A"),
@@ -97,9 +112,13 @@ def test_transform_entity_point_preserved_when_geometry_absent(spark, mocker):
         }
     ]
 
-    df = spark.createDataFrame(rows)
+    fact_resource_df, fact_df = _split_rows(spark, rows)
     result = transform_entity(
-        df, "test-dataset", _build_organisation_df(spark), _build_resource_df(spark)
+        fact_resource_df,
+        fact_df,
+        "test-dataset",
+        _build_organisation_df(spark),
+        _build_resource_df(spark),
     )
     row = result.collect()[0]
 
@@ -116,9 +135,13 @@ def test_transform_entity_dataset_column_set(spark, mocker):
         return_value="geography",
     )
 
-    df = spark.createDataFrame(_base_rows("2002", priority="1"))
+    fact_resource_df, fact_df = _split_rows(spark, _base_rows("2002", priority="1"))
     result = transform_entity(
-        df, "my-dataset", _build_organisation_df(spark), _build_resource_df(spark)
+        fact_resource_df,
+        fact_df,
+        "my-dataset",
+        _build_organisation_df(spark),
+        _build_resource_df(spark),
     )
     row = result.collect()[0]
 
@@ -134,9 +157,13 @@ def test_transform_entity_quality_some_when_priority_one(spark, mocker):
         return_value="geography",
     )
 
-    df = spark.createDataFrame(_base_rows("3001", priority="1"))
+    fact_resource_df, fact_df = _split_rows(spark, _base_rows("3001", priority="1"))
     result = transform_entity(
-        df, "test-dataset", _build_organisation_df(spark), _build_resource_df(spark)
+        fact_resource_df,
+        fact_df,
+        "test-dataset",
+        _build_organisation_df(spark),
+        _build_resource_df(spark),
     )
 
     assert result.collect()[0]["quality"] == "some"
@@ -149,9 +176,13 @@ def test_transform_entity_quality_authoritative_when_priority_two(spark, mocker)
         return_value="geography",
     )
 
-    df = spark.createDataFrame(_base_rows("3002", priority="2"))
+    fact_resource_df, fact_df = _split_rows(spark, _base_rows("3002", priority="2"))
     result = transform_entity(
-        df, "test-dataset", _build_organisation_df(spark), _build_resource_df(spark)
+        fact_resource_df,
+        fact_df,
+        "test-dataset",
+        _build_organisation_df(spark),
+        _build_resource_df(spark),
     )
 
     assert result.collect()[0]["quality"] == "authoritative"
@@ -186,9 +217,13 @@ def test_transform_entity_priority_beats_recency(spark, mocker):
         [("res-new", "2026-01-01", None), ("res-old", "2024-01-01", None)],
     )
 
-    df = spark.createDataFrame(rows)
+    fact_resource_df, fact_df = _split_rows(spark, rows)
     result = transform_entity(
-        df, "test-dataset", _build_organisation_df(spark), resources
+        fact_resource_df,
+        fact_df,
+        "test-dataset",
+        _build_organisation_df(spark),
+        resources,
     )
 
     assert result.collect()[0]["name"] == "AUTHORITATIVE"
@@ -220,9 +255,13 @@ def test_transform_entity_live_resource_beats_ended(spark, mocker):
         [("res-ended", "2024-01-01", "2025-01-01"), ("res-live", "2024-01-01", None)],
     )
 
-    df = spark.createDataFrame(rows)
+    fact_resource_df, fact_df = _split_rows(spark, rows)
     result = transform_entity(
-        df, "test-dataset", _build_organisation_df(spark), resources
+        fact_resource_df,
+        fact_df,
+        "test-dataset",
+        _build_organisation_df(spark),
+        resources,
     )
 
     assert result.collect()[0]["name"] == "FROM-LIVE"
@@ -254,9 +293,13 @@ def test_transform_entity_later_start_date_wins_between_live_resources(spark, mo
         [("res-early", "2024-01-01", None), ("res-later", "2026-01-01", None)],
     )
 
-    df = spark.createDataFrame(rows)
+    fact_resource_df, fact_df = _split_rows(spark, rows)
     result = transform_entity(
-        df, "test-dataset", _build_organisation_df(spark), resources
+        fact_resource_df,
+        fact_df,
+        "test-dataset",
+        _build_organisation_df(spark),
+        resources,
     )
 
     assert result.collect()[0]["name"] == "FROM-LATER-START"
@@ -290,9 +333,13 @@ def test_transform_entity_entry_number_sorts_as_string(spark, mocker):
         ),
     ]
 
-    df = spark.createDataFrame(rows)
+    fact_resource_df, fact_df = _split_rows(spark, rows)
     result = transform_entity(
-        df, "test-dataset", _build_organisation_df(spark), _build_resource_df(spark)
+        fact_resource_df,
+        fact_df,
+        "test-dataset",
+        _build_organisation_df(spark),
+        _build_resource_df(spark),
     )
 
     assert result.collect()[0]["name"] == "ENTRY-NINE"
@@ -324,12 +371,20 @@ def test_transform_entity_is_deterministic_under_repartition(spark, mocker):
         [("res-a", "2024-01-01", None), ("res-b", "2024-01-01", None)],
     )
 
-    df = spark.createDataFrame(rows)
+    fact_resource_df, fact_df = _split_rows(spark, rows)
     first = transform_entity(
-        df, "test-dataset", _build_organisation_df(spark), resources
+        fact_resource_df,
+        fact_df,
+        "test-dataset",
+        _build_organisation_df(spark),
+        resources,
     ).collect()
     second = transform_entity(
-        df.repartition(4), "test-dataset", _build_organisation_df(spark), resources
+        fact_resource_df.repartition(4),
+        fact_df,
+        "test-dataset",
+        _build_organisation_df(spark),
+        resources,
     ).collect()
 
     assert first[0]["name"] == "FROM-RES-A"
