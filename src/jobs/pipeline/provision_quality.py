@@ -1,7 +1,6 @@
 """ProvisionQualityPipeline: provider/organisation quality classification."""
 
 import logging
-from functools import reduce
 
 from cloudpathlib import AnyPath
 from pyspark.sql.functions import (
@@ -17,6 +16,11 @@ from pyspark.sql.functions import (
 from pyspark.sql.functions import sum as spark_sum
 from pyspark.sql.functions import when
 
+from jobs.pipeline.authority import (
+    join_entity_quality_to_org,
+    load_entity_quality,
+    owner_side_classification,
+)
 from jobs.pipeline.base import BasePipeline
 from jobs.read import read_csvs_by_name
 from jobs.utils.collection_paths import collection_files, collection_names
@@ -24,27 +28,6 @@ from jobs.utils.df_utils import normalise_column_names
 from jobs.utils.postgres_writer_utils import write_table_to_postgres
 
 logger = logging.getLogger(__name__)
-
-
-def _owner_side(eq):
-    """Owner lens: per (dataset, organisation) that owns entities, its quality
-    (authoritative if it owns any authoritative entity, else some) and the count
-    of entities it owns."""
-    agg = eq.groupBy("dataset", "organisation").agg(
-        spark_sum(when(col("quality") == "authoritative", 1).otherwise(0)).alias(
-            "auth_owned"
-        ),
-        countDistinct("entity").alias("owned_entity_count"),
-    )
-    return agg.select(
-        "dataset",
-        "organisation",
-        lit(True).alias("owns_entities"),
-        when(col("auth_owned") > 0, lit("authoritative"))
-        .otherwise(lit("some"))
-        .alias("owner_quality"),
-        col("owned_entity_count"),
-    )
 
 
 def _seeder_alt_sources(eq, lookup_df, entity_org_df, active_orgs):
@@ -132,13 +115,9 @@ def _build_provision_quality(
     OR owns entities OR is a detected seeder. Nothing dropped; flags distinguish
     the cases. Owner/provider classification + seeder detection."""
     # map each owned entity to its owner organisation reference
-    eq = entity_quality_df.join(
-        org_df.select("organisation", "organisation_entity"),
-        on="organisation_entity",
-        how="inner",
-    )
+    eq = join_entity_quality_to_org(entity_quality_df, org_df)
 
-    owner_side = _owner_side(eq)
+    owner_side = owner_side_classification(eq)
     active_orgs = org_df.filter(col("org_active")).select("organisation").distinct()
     seeder_side = _seeder_alt_sources(eq, lookup_df, entity_org_df, active_orgs)
 
@@ -376,7 +355,7 @@ class ProvisionQualityPipeline(BasePipeline):
         live_datasets_df = _live_datasets(dataset_df, self.config.env)
 
         # -- Entity + quality (SWAPPABLE SEAM) ----------------------------------
-        entity_quality_df = self.load_entity_quality(spark, entity_data_path)
+        entity_quality_df = load_entity_quality(spark, entity_data_path)
 
         # -- Classification + rollups ------------------------------------------
         provision_quality = _build_provision_quality(
@@ -450,35 +429,6 @@ class ProvisionQualityPipeline(BasePipeline):
             logger.info(
                 "ProvisionQuality: No database_url provided — skipping Postgres writes"
             )
-
-    def load_entity_quality(self, spark, entity_data_path):
-        """SWAPPABLE SEAM. Phase 1: read the flattened per-dataset entity CSVs
-        (one {dataset}.csv each) and return (dataset, organisation_entity,
-        quality, entity). Read per file + union because each dataset's flattened
-        CSV has its own column set — a single multi-file read would misalign
-        headers. Future: swap the body to read the per-dataset Delta tables."""
-        entity_files = [str(p) for p in AnyPath(entity_data_path).glob("*.csv")]
-        logger.info(f"ProvisionQuality: Found {len(entity_files)} entity CSVs")
-        frames = []
-        for f in entity_files:
-            dataset = AnyPath(f).stem
-            df = spark.read.option("header", "true").csv(f)
-            if "organisation-entity" not in df.columns or "quality" not in df.columns:
-                logger.warning(
-                    f"ProvisionQuality: {dataset} flattened CSV missing "
-                    "organisation-entity/quality — skipping"
-                )
-                continue
-            frames.append(
-                df.select(
-                    col("entity"),
-                    col("`organisation-entity`").alias("organisation_entity"),
-                    col("quality"),
-                ).withColumn("dataset", lit(dataset))
-            )
-        if not frames:
-            raise ValueError(f"No usable entity CSVs found under {entity_data_path}")
-        return reduce(lambda a, b: a.unionByName(b), frames)
 
     def _write_single_csv(self, df, output_path, name):
         """Write df as a single header CSV at output_path/name.csv.

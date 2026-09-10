@@ -25,6 +25,7 @@ def test_help_flag_returns_zero(cli_runner, run_tasks_cmd):
     assert result.exit_code == 0
     assert "--env" in result.output
     assert "--collection-data-path" in result.output
+    assert "--entity-data-path" in result.output
     assert "--parquet-datasets-path" in result.output
 
 
@@ -217,6 +218,33 @@ def test_e2e_task_generation_pipeline(
         os.path.join(tree, "collection", "source.csv"), SOURCE_COLUMNS, TREE_SOURCE_ROWS
     )
 
+    # organisation:1 is designated for conservation-area but owns nothing in
+    # the entity data below — exercises the authority leg's "none" case.
+    _write_csv(
+        os.path.join(base, "organisation-collection", "dataset", "organisation.csv"),
+        ["organisation", "entity", "name", "end-date"],
+        [
+            {
+                "organisation": "organisation:1",
+                "entity": "600001",
+                "name": "Test Org",
+                "end-date": "",
+            }
+        ],
+    )
+    _write_csv(
+        os.path.join(
+            base, "config", "pipeline", "conservation-area", "entity-organisation.csv"
+        ),
+        ["dataset", "organisation"],
+        [{"dataset": "conservation-area", "organisation": "organisation:1"}],
+    )
+    _write_csv(
+        os.path.join(base, "entity", "conservation-area.csv"),
+        ["entity", "organisation-entity", "quality"],
+        [],
+    )
+
     # -- Mock infrastructure --------------------------------------------------
 
     mocker.patch("jobs.job.create_spark_session", return_value=spark)
@@ -242,6 +270,8 @@ def test_e2e_task_generation_pipeline(
             "local",
             "--collection-data-path",
             f"{base}/",
+            "--entity-data-path",
+            os.path.join(base, "entity"),
             "--parquet-datasets-path",
             parquet_base,
             "--database-url",
@@ -287,6 +317,15 @@ def test_e2e_task_generation_pipeline(
     # Issue task carries organisation/endpoint from the resource it was raised against
     assert issue_rows[0]["organisation"] == "organisation:1"
     assert issue_rows[0]["endpoint"] == "endpoint-ca-aaa"
+
+    # organisation:1 is designated for conservation-area but owns nothing ->
+    # one authority task, quality "none"
+    authority_rows = [r for r in rows if r["task_source"] == "provision"]
+    assert len(authority_rows) == 1
+    assert authority_rows[0]["dataset"] == "conservation-area"
+    assert authority_rows[0]["organisation"] == "organisation:1"
+    assert authority_rows[0]["quality_dimension"] == "authoritativeness"
+    assert json.loads(authority_rows[0]["details"])["quality"] == "none"
 
     # All references are unique across the whole output
     references = [r["reference"] for r in rows]

@@ -41,6 +41,14 @@ logger = logging.getLogger(__name__)
     help="Root path containing all *-collection directories (default: s3://{env}-collection-data/)",
 )
 @click.option(
+    "--entity-data-path",
+    required=False,
+    type=str,
+    default=None,
+    help="Root path with flattened per-dataset entity CSVs "
+    "(default: {collection-data-path}dataset/)",
+)
+@click.option(
     "--parquet-datasets-path",
     required=False,
     type=str,
@@ -60,7 +68,14 @@ logger = logging.getLogger(__name__)
     default=False,
     help="Enable DEBUG logging (default: INFO)",
 )
-def run(env, collection_data_path, parquet_datasets_path, database_url, debug):
+def run(
+    env,
+    collection_data_path,
+    entity_data_path,
+    parquet_datasets_path,
+    database_url,
+    debug,
+):
     """Generate task data from log and issue files across all collections."""
     logging.basicConfig(
         level=logging.DEBUG if debug else logging.INFO,
@@ -69,8 +84,10 @@ def run(env, collection_data_path, parquet_datasets_path, database_url, debug):
     for logger_name in ("boto3", "botocore", "urllib3", "py4j", "pyspark"):
         logging.getLogger(logger_name).setLevel(logging.WARNING)
 
+    resolved_collection_data_path = collection_data_path or f"s3://{env}-collection-data/"
     job.generate_tasks(
-        collection_data_path=collection_data_path or f"s3://{env}-collection-data/",
+        collection_data_path=resolved_collection_data_path,
+        entity_data_path=entity_data_path or f"{resolved_collection_data_path}dataset/",
         parquet_datasets_path=parquet_datasets_path or f"s3://{env}-parquet-datasets/",
         env=env,
         database_url=database_url,
