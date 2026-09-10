@@ -105,8 +105,8 @@ class TestTaskPipeline:
         mocker.patch(
             "jobs.pipeline.task._load_issue_type_df",
             return_value=spark.createDataFrame(
-                [("invalid-geometry", "error", "external")],
-                ["issue_type", "severity", "responsibility"],
+                [("invalid-geometry", "error", "external", "validity")],
+                ["issue_type", "severity", "responsibility", "quality_dimension"],
             ),
         )
 
@@ -211,8 +211,8 @@ class TestTaskPipeline:
         mocker.patch(
             "jobs.pipeline.task._load_issue_type_df",
             return_value=spark.createDataFrame(
-                [("OSGB flipped", "warning", "external")],
-                ["issue_type", "severity", "responsibility"],
+                [("OSGB flipped", "warning", "external", "validity")],
+                ["issue_type", "severity", "responsibility", "quality_dimension"],
             ),
         )
 
