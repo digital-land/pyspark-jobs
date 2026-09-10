@@ -17,6 +17,37 @@ from jobs.pipeline.task import (
 from ._test_helpers import write_csv
 
 
+def _write_empty_authority_fixtures(base):
+    """Organisation + designation fixtures TaskPipeline.execute() now reads
+    unconditionally (for the authority leg). No designated providers here, so
+    that leg produces nothing — existing assertions in tests using this
+    fixture are unaffected."""
+    write_csv(
+        os.path.join(base, "organisation-collection", "dataset", "organisation.csv"),
+        ["organisation", "entity", "name", "end-date"],
+        [
+            {
+                "organisation": "organisation:1",
+                "entity": "600001",
+                "name": "Test Org",
+                "end-date": "",
+            }
+        ],
+    )
+    write_csv(
+        os.path.join(
+            base, "config", "pipeline", "dataset-a", "entity-organisation.csv"
+        ),
+        ["dataset", "organisation"],
+        [],
+    )
+    write_csv(
+        os.path.join(base, "entity", "dataset-a.csv"),
+        ["entity", "organisation-entity", "quality"],
+        [],
+    )
+
+
 class TestTaskPipeline:
 
     def test_no_duplicate_references_in_output(self, spark, tmp_path, mocker):
@@ -110,6 +141,8 @@ class TestTaskPipeline:
             ),
         )
 
+        _write_empty_authority_fixtures(base)
+
         config = PipelineConfig(
             spark=spark,
             dataset="",
@@ -118,7 +151,7 @@ class TestTaskPipeline:
             parquet_datasets_path=parquet_base,
         )
 
-        TaskPipeline(config).run()
+        TaskPipeline(config).run(entity_data_path=os.path.join(base, "entity"))
 
         tasks_df = spark.read.format("delta").load(os.path.join(parquet_base, "task"))
         references = [row["reference"] for row in tasks_df.collect()]
@@ -216,6 +249,8 @@ class TestTaskPipeline:
             ),
         )
 
+        _write_empty_authority_fixtures(base)
+
         config = PipelineConfig(
             spark=spark,
             dataset="",
@@ -224,7 +259,7 @@ class TestTaskPipeline:
             parquet_datasets_path=parquet_base,
         )
 
-        TaskPipeline(config).run()
+        TaskPipeline(config).run(entity_data_path=os.path.join(base, "entity"))
 
         tasks_df = spark.read.format("delta").load(os.path.join(parquet_base, "task"))
         issue_tasks = tasks_df.filter(tasks_df.task_source == "issue")
@@ -233,6 +268,74 @@ class TestTaskPipeline:
             "resource-8",
             "resource-9",
         }
+
+    def test_authority_task_reaches_the_output_table(self, spark, tmp_path):
+        """A designated provider owning nothing must produce a provision task
+        in the final written output — guards against the authority leg being
+        computed but dropped before the union (exactly the bug this leg had
+        mid-review: a duplicate `frames = [...]` assignment silently
+        discarded it)."""
+        base = str(tmp_path)
+        parquet_base = os.path.join(base, "parquet-output/")
+
+        # A collection has to exist or log_files ends up empty and the CSV
+        # read fails to infer a schema — one successful row, no log task.
+        write_csv(
+            os.path.join(base, "dataset-a-collection", "collection", "log.csv"),
+            ["endpoint", "resource", "status", "exception", "entry-date"],
+            [
+                {
+                    "endpoint": "http://endpoint-a",
+                    "resource": "resource-a",
+                    "status": "200",
+                    "exception": "",
+                    "entry-date": "2026-01-01",
+                }
+            ],
+        )
+        write_csv(
+            os.path.join(
+                base, "organisation-collection", "dataset", "organisation.csv"
+            ),
+            ["organisation", "entity", "name", "end-date"],
+            [
+                {
+                    "organisation": "organisation:1",
+                    "entity": "600001",
+                    "name": "Test Org",
+                    "end-date": "",
+                }
+            ],
+        )
+        write_csv(
+            os.path.join(
+                base, "config", "pipeline", "dataset-a", "entity-organisation.csv"
+            ),
+            ["dataset", "organisation"],
+            [{"dataset": "dataset-a", "organisation": "organisation:1"}],
+        )
+        write_csv(
+            os.path.join(base, "entity", "dataset-a.csv"),
+            ["entity", "organisation-entity", "quality"],
+            [],  # organisation:1 owns nothing -> "none"
+        )
+
+        config = PipelineConfig(
+            spark=spark,
+            dataset="",
+            env="local",
+            collection_data_path=f"{base}/",
+            parquet_datasets_path=parquet_base,
+        )
+        TaskPipeline(config).run(entity_data_path=os.path.join(base, "entity"))
+
+        tasks_df = spark.read.format("delta").load(os.path.join(parquet_base, "task"))
+        authority_rows = [
+            r for r in tasks_df.collect() if r["task_source"] == "provision"
+        ]
+        assert len(authority_rows) == 1
+        assert authority_rows[0]["organisation"] == "organisation:1"
+        assert authority_rows[0]["quality_dimension"] == "authoritativeness"
 
 
 class TestBackfillDatasetFromSource:

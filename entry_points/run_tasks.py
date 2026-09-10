@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
     type=str,
     default=None,
     help="Root path with flattened per-dataset entity CSVs "
-    "(default: s3://digital-land-{env}-collection-dataset-hoisted/data/)",
+    "(default: {collection-data-path}dataset/)",
 )
 @click.option(
     "--parquet-datasets-path",
@@ -84,10 +84,10 @@ def run(
     for logger_name in ("boto3", "botocore", "urllib3", "py4j", "pyspark"):
         logging.getLogger(logger_name).setLevel(logging.WARNING)
 
+    resolved_collection_data_path = collection_data_path or f"s3://{env}-collection-data/"
     job.generate_tasks(
-        collection_data_path=collection_data_path or f"s3://{env}-collection-data/",
-        entity_data_path=entity_data_path
-        or f"s3://digital-land-{env}-collection-dataset-hoisted/data/",
+        collection_data_path=resolved_collection_data_path,
+        entity_data_path=entity_data_path or f"{resolved_collection_data_path}dataset/",
         parquet_datasets_path=parquet_datasets_path or f"s3://{env}-parquet-datasets/",
         env=env,
         database_url=database_url,

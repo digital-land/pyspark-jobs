@@ -10,8 +10,10 @@ tests/unit/transform/test_task_transformer.py
 import json
 
 from pyspark.sql.functions import lit
+from pyspark.sql.types import LongType, StringType, StructField, StructType
 
 from jobs.transform.task_transformer import (
+    transform_authority_to_tasks,
     transform_expectations_to_tasks,
     transform_issues_to_tasks,
     transform_log_to_tasks,
@@ -1186,3 +1188,97 @@ class TestTransformExpectationsToTasks:
         result = transform_expectations_to_tasks(df, _org_df(spark))
         refs = [r["reference"] for r in result.collect()]
         assert len(refs) == len(set(refs))
+
+
+AUTHORITY_SCHEMA = StructType(
+    [
+        StructField("dataset", StringType(), True),
+        StructField("organisation", StringType(), True),
+        StructField("quality", StringType(), True),
+        StructField("owned_entity_count", LongType(), True),
+    ]
+)
+
+
+def _authority_df(spark, rows):
+    # Explicit schema, not _build_df's name-only inference: the empty-
+    # population test below would otherwise hit CANNOT_INFER_EMPTY_SCHEMA.
+    return spark.createDataFrame(rows, schema=AUTHORITY_SCHEMA)
+
+
+def _authority_row(
+    dataset="conservation-area",
+    organisation="local-authority:BRO",
+    quality="some",
+    owned_entity_count=5,
+):
+    return (dataset, organisation, quality, owned_entity_count)
+
+
+class TestTransformAuthorityToTasks:
+
+    def test_returns_none_for_empty_population(self, spark):
+        df = _authority_df(spark, [])
+        assert transform_authority_to_tasks(df) is None
+
+    def test_uses_fixed_rule_values(self, spark):
+        df = _authority_df(spark, [_authority_row()])
+        row = transform_authority_to_tasks(df).collect()[0]
+        assert row["severity"] == "error"
+        assert row["responsibility"] == "external"
+        assert row["task_source"] == "provision"
+        assert row["quality_dimension"] == "authoritativeness"
+
+    def test_endpoint_and_resource_are_blank(self, spark):
+        """Unlike issues, there is no single resource this speaks to."""
+        df = _authority_df(spark, [_authority_row()])
+        row = transform_authority_to_tasks(df).collect()[0]
+        assert row["endpoint"] == ""
+        assert row["resource"] == ""
+
+    def test_details_carries_quality_and_owned_entity_count(self, spark):
+        df = _authority_df(
+            spark, [_authority_row(quality="none", owned_entity_count=0)]
+        )
+        details = json.loads(transform_authority_to_tasks(df).collect()[0]["details"])
+        assert details == {"quality": "none", "owned_entity_count": 0}
+
+    def test_details_excludes_issue_type_and_field(self, spark):
+        """submit's generic task rendering only fires on issue_type + field —
+        keeping both out is what stops this being misrendered as a field
+        issue, same discipline as the expectation leg."""
+        df = _authority_df(spark, [_authority_row()])
+        details = json.loads(transform_authority_to_tasks(df).collect()[0]["details"])
+        assert "issue_type" not in details
+        assert "field" not in details
+
+    def test_reference_is_16_chars(self, spark):
+        df = _authority_df(spark, [_authority_row()])
+        assert len(transform_authority_to_tasks(df).collect()[0]["reference"]) == 16
+
+    def test_references_are_unique_per_organisation(self, spark):
+        df = _authority_df(
+            spark,
+            [
+                _authority_row(organisation="local-authority:BRO"),
+                _authority_row(organisation="local-authority:LBH"),
+            ],
+        )
+        refs = [r["reference"] for r in transform_authority_to_tasks(df).collect()]
+        assert len(refs) == len(set(refs))
+
+    def test_output_has_correct_columns(self, spark):
+        df = _authority_df(spark, [_authority_row()])
+        assert set(transform_authority_to_tasks(df).columns) == {
+            "dataset",
+            "organisation",
+            "endpoint",
+            "resource",
+            "details",
+            "severity",
+            "responsibility",
+            "task_source",
+            "entry_date",
+            "quality_dimension",
+            "reference",
+        }
