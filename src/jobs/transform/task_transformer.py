@@ -35,6 +35,7 @@ from pyspark.sql.types import (
     StructType,
 )
 
+from jobs.config.authoritativeness_task import load_authoritativeness_task_rule
 from jobs.config.quality_dimensions import (
     LOG_DIMENSION,
     load_expectation_dimensions,
@@ -324,6 +325,65 @@ def transform_expectations_to_tasks(
     grouped = _add_reference(grouped)
 
     return grouped.select(
+        col("dataset"),
+        col("organisation"),
+        col("endpoint"),
+        col("resource"),
+        col("details"),
+        col("severity"),
+        col("responsibility"),
+        col("task_source"),
+        col("entry_date"),
+        col("quality_dimension"),
+        col("reference"),
+    )
+
+
+def transform_authority_to_tasks(population_df, entry_date: str = None) -> DataFrame:
+    """
+    Transform the non-authoritative-provider population into task rows.
+
+    population_df: dataset, organisation, quality ("none"/"some"),
+    owned_entity_count — one row per designated provider that does not own an
+    authoritative-quality entity (jobs.pipeline.authority.non_authoritative_providers).
+
+    Unlike issues, there is no resource or endpoint to attribute this to: it is
+    a statement about the whole dataset-organisation provision, not any single
+    resource, so both are set to "" — same convention as expectation tasks.
+    """
+    entry_date = entry_date or str(date.today())
+    logger.info("transform_authority_to_tasks: Starting")
+
+    if population_df.rdd.isEmpty():
+        logger.info(
+            "transform_authority_to_tasks: No non-authoritative providers found"
+        )
+        return None
+
+    rule = load_authoritativeness_task_rule()
+
+    df = (
+        population_df.withColumn(
+            "details",
+            to_json(
+                struct(
+                    col("quality"),
+                    col("owned_entity_count").cast("int").alias("owned_entity_count"),
+                )
+            ),
+        )
+        .withColumn("endpoint", lit(""))
+        .withColumn("resource", lit(""))
+        .withColumn("severity", lit(rule["severity"]))
+        .withColumn("responsibility", lit(rule["responsibility"]))
+        .withColumn("task_source", lit(rule["task_source"]))
+        .withColumn("quality_dimension", lit(rule["quality_dimension"]))
+        .withColumn("entry_date", lit(entry_date))
+    )
+
+    df = _add_reference(df)
+
+    return df.select(
         col("dataset"),
         col("organisation"),
         col("endpoint"),

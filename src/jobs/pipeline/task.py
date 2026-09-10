@@ -18,10 +18,13 @@ from pyspark.sql.functions import (
     when,
 )
 
+from jobs.config.authoritativeness_task import RESTRICT_TO_ACTIVE_ORGS
+from jobs.pipeline.authority import load_entity_quality, non_authoritative_providers
 from jobs.pipeline.base import BasePipeline
-from jobs.read import read_issue_csvs
+from jobs.read import read_csvs_by_name, read_issue_csvs
 from jobs.transform.task_transformer import (
     TASK_SEVERITIES,
+    transform_authority_to_tasks,
     transform_expectations_to_tasks,
     transform_issues_to_tasks,
     transform_log_to_tasks,
@@ -138,7 +141,7 @@ class TaskPipeline(BasePipeline):
     regenerated from scratch nightly.
     """
 
-    def execute(self):
+    def execute(self, entity_data_path):
         spark = self.config.spark
         base = AnyPath(self.config.collection_data_path)
 
@@ -191,6 +194,25 @@ class TaskPipeline(BasePipeline):
             endpoint_dataset_df = None
             endpoint_organisation_df = None
             endpoint_attrs_df = None
+
+        # -- Organisation + designation reference (used by the authority leg
+        # below, and by the expectation leg further down for organisation) ----
+        org_path = str(
+            base / "organisation-collection" / "dataset" / "organisation.csv"
+        )
+        org_df = normalise_column_names(
+            spark.read.option("header", "true").csv(org_path)
+        ).select(
+            col("organisation"),
+            col("entity").alias("organisation_entity"),
+            (col("end_date").isNull() | (col("end_date") == "")).alias("org_active"),
+        )
+
+        config_base = base / "config" / "pipeline"
+        eo_files = [str(p) for p in config_base.glob("*/entity-organisation.csv")]
+        entity_org_df = read_csvs_by_name(
+            spark, eo_files, ["dataset", "organisation"]
+        ).distinct()  # designated (dataset, org)
 
         # -- Active resources (current resource per endpoint, from the log) ------
         active_df = _active_resources_from_log(log_df, endpoint_attrs_df)
@@ -282,16 +304,6 @@ class TaskPipeline(BasePipeline):
         else:
             expectation_df = spark.read.parquet(*exp_files)
 
-            org_path = str(
-                base / "organisation-collection" / "dataset" / "organisation.csv"
-            )
-            org_df = normalise_column_names(
-                spark.read.option("header", "true").csv(org_path)
-            ).select(
-                col("organisation"),
-                col("entity").alias("organisation_entity"),
-            )
-
             # Same shape of guard as the issue path above: the failure mode
             # here is every row being dropped, which produces no tasks and no
             # error, so the counts are logged rather than left to DEBUG.
@@ -321,9 +333,21 @@ class TaskPipeline(BasePipeline):
 
             expectation_tasks = transform_expectations_to_tasks(expectation_df, org_df)
 
+        # -- Authority (provide authoritative data) tasks ---------------------
+        # Independent of the active-resource / issue-file legs above: a
+        # statement about the whole dataset-organisation provision, not any
+        # single resource. Uses org_df / entity_org_df read above.
+        entity_quality_df = load_entity_quality(spark, entity_data_path)
+        authority_population = non_authoritative_providers(
+            entity_quality_df, org_df, entity_org_df, RESTRICT_TO_ACTIVE_ORGS
+        )
+        authority_tasks = transform_authority_to_tasks(authority_population)
+
         # -- Union and write --------------------------------------------------
         frames = [
-            df for df in [log_tasks, issue_tasks, expectation_tasks] if df is not None
+            df
+            for df in [log_tasks, issue_tasks, expectation_tasks, authority_tasks]
+            if df is not None
         ]
 
         if not frames:

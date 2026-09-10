@@ -343,6 +343,7 @@ def _optimise_and_vacuum_tables(spark, table_paths, retention_hours):
 
 def generate_tasks(
     collection_data_path: str,
+    entity_data_path: str,
     parquet_datasets_path: str,
     env: str,
     database_url: str = None,
@@ -397,7 +398,7 @@ def generate_tasks(
         )
 
         task_pipeline = TaskPipeline(config)
-        task_pipeline.run()
+        task_pipeline.run(entity_data_path=entity_data_path)
 
         logger.info(f"generate_tasks: Result — {task_pipeline.result}")
 

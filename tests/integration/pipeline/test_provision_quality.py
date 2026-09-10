@@ -4,9 +4,8 @@ Integration tests for ProvisionQualityPipeline and its module-level helpers.
 Uses a real Spark session and local filesystem for reads/writes.
 """
 
-from jobs.pipeline.base import PipelineConfig
+from jobs.pipeline.authority import load_entity_quality
 from jobs.pipeline.provision_quality import (
-    ProvisionQualityPipeline,
     _build_dataset_quality,
     _build_organisation_quality,
     _build_provision_quality,
@@ -135,7 +134,7 @@ class TestProvisionQuality:
     def test_load_entity_quality_reads_flattened_csvs(self, spark, tmp_path):
         """load_entity_quality() reads the flattened per-dataset entity CSVs,
         tags dataset from the filename, aliases organisation-entity, and skips
-        files missing the required columns. Also guards against the method
+        files missing the required columns. Also guards against the function
         being dropped (it once vanished in a refactor, breaking execute())."""
         entity_dir = tmp_path / "entity"
         write_csv(
@@ -156,17 +155,7 @@ class TestProvisionQuality:
             ["entity", "name"],
             [{"entity": "9", "name": "irrelevant"}],
         )
-
-        config = PipelineConfig(
-            spark=spark,
-            dataset="",
-            env="local",
-            collection_data_path=f"{tmp_path}/",
-            parquet_datasets_path=str(tmp_path / "parquet-output/"),
-        )
-        df = ProvisionQualityPipeline(config).load_entity_quality(
-            spark, str(entity_dir)
-        )
+        df = load_entity_quality(spark, str(entity_dir))
 
         assert set(df.columns) == {
             "entity",
