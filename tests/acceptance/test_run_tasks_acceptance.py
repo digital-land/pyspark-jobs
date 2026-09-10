@@ -224,8 +224,8 @@ def test_e2e_task_generation_pipeline(
 
     # Replace the GitHub HTTP call with a controlled issue-type mapping
     mock_issue_type_df = spark.createDataFrame(
-        [("invalid-geometry", "error", "external")],
-        ["issue_type", "severity", "responsibility"],
+        [("invalid-geometry", "error", "external", "validity")],
+        ["issue_type", "severity", "responsibility", "quality_dimension"],
     )
     mocker.patch(
         "jobs.pipeline.task._load_issue_type_df", return_value=mock_issue_type_df

@@ -9,6 +9,8 @@ tests/unit/transform/test_task_transformer.py
 
 import json
 
+from pyspark.sql.functions import lit
+
 from jobs.transform.task_transformer import (
     transform_expectations_to_tasks,
     transform_issues_to_tasks,
@@ -104,9 +106,32 @@ class TestTransformLogToTasks:
             "responsibility",
             "task_source",
             "entry_date",
+            "quality_dimension",
             "reference",
         }
         assert set(result.columns) == expected
+
+    def test_quality_dimension_is_correctness(self, spark):
+        """A log task is a collection failure. That is arguably closer to
+        timeliness, but timeliness is not a dimension yet, so it rolls up to
+        correctness — reclassifying later is a one-line change because the task
+        table is rebuilt in full on every run."""
+        df = _build_df(
+            spark,
+            [
+                (
+                    "endpoint-aaa",
+                    "resource-aaa",
+                    "404",
+                    "",
+                    "dataset-a",
+                    "organisation-x",
+                )
+            ],
+            LOG_COLUMNS,
+        )
+        result = transform_log_to_tasks(df)
+        assert result.collect()[0]["quality_dimension"] == "correctness"
 
     def test_task_source_is_log(self, spark):
         df = _build_df(
@@ -296,11 +321,24 @@ ISSUE_COLUMNS = [
 ]
 
 
+def _issue_df(spark, rows, quality_dimension="validity"):
+    """Issue rows in the shape the transformer receives them.
+
+    severity, responsibility and quality_dimension are all joined on from
+    issue-type.csv before transform_issues_to_tasks sees the frame. Added as a
+    column rather than an extra element on every row tuple so the existing
+    fixtures stay readable.
+    """
+    return _build_df(spark, rows, ISSUE_COLUMNS).withColumn(
+        "quality_dimension", lit(quality_dimension)
+    )
+
+
 class TestTransformIssuesToTasks:
 
     def test_includes_internal_responsibility_rows(self, spark):
         """responsibility is no longer filtered — internal issues are now included."""
-        df = _build_df(
+        df = _issue_df(
             spark,
             [
                 (
@@ -324,14 +362,13 @@ class TestTransformIssuesToTasks:
                     "endpoint-aaa",
                 ),
             ],
-            ISSUE_COLUMNS,
         )
         result = transform_issues_to_tasks(df)
         assert result is not None
         assert result.count() == 2
 
     def test_excludes_info_severity_rows(self, spark):
-        df = _build_df(
+        df = _issue_df(
             spark,
             [
                 (
@@ -355,7 +392,6 @@ class TestTransformIssuesToTasks:
                     "endpoint-aaa",
                 ),
             ],
-            ISSUE_COLUMNS,
         )
         result = transform_issues_to_tasks(df)
         assert result is not None
@@ -364,7 +400,7 @@ class TestTransformIssuesToTasks:
     def test_includes_critical_severity_rows(self, spark):
         """No issue-type uses critical yet. The filter accepts it ahead of the
         specification change so those issues cannot silently vanish in between."""
-        df = _build_df(
+        df = _issue_df(
             spark,
             [
                 (
@@ -378,7 +414,6 @@ class TestTransformIssuesToTasks:
                     "endpoint-aaa",
                 ),
             ],
-            ISSUE_COLUMNS,
         )
         result = transform_issues_to_tasks(df)
         assert result is not None
@@ -386,7 +421,7 @@ class TestTransformIssuesToTasks:
         assert result.collect()[0]["severity"] == "critical"
 
     def test_excludes_notice_severity_rows(self, spark):
-        df = _build_df(
+        df = _issue_df(
             spark,
             [
                 (
@@ -410,14 +445,13 @@ class TestTransformIssuesToTasks:
                     "endpoint-aaa",
                 ),
             ],
-            ISSUE_COLUMNS,
         )
         result = transform_issues_to_tasks(df)
         assert result.count() == 1
         assert result.collect()[0]["severity"] == "error"
 
     def test_returns_none_when_no_matching_rows(self, spark):
-        df = _build_df(
+        df = _issue_df(
             spark,
             [
                 (
@@ -431,12 +465,11 @@ class TestTransformIssuesToTasks:
                     "endpoint-aaa",
                 )
             ],
-            ISSUE_COLUMNS,
         )
         assert transform_issues_to_tasks(df) is None
 
     def test_groups_by_issue_type_and_field_and_counts(self, spark):
-        df = _build_df(
+        df = _issue_df(
             spark,
             [
                 (
@@ -470,7 +503,6 @@ class TestTransformIssuesToTasks:
                     "endpoint-aaa",
                 ),
             ],
-            ISSUE_COLUMNS,
         )
         result = transform_issues_to_tasks(df)
         assert result.count() == 2
@@ -483,7 +515,7 @@ class TestTransformIssuesToTasks:
         assert json.loads(geom_row["details"])["count"] == 2
 
     def test_output_has_correct_columns(self, spark):
-        df = _build_df(
+        df = _issue_df(
             spark,
             [
                 (
@@ -497,7 +529,6 @@ class TestTransformIssuesToTasks:
                     "endpoint-aaa",
                 )
             ],
-            ISSUE_COLUMNS,
         )
         result = transform_issues_to_tasks(df)
         expected = {
@@ -510,12 +541,60 @@ class TestTransformIssuesToTasks:
             "responsibility",
             "task_source",
             "entry_date",
+            "quality_dimension",
             "reference",
         }
         assert set(result.columns) == expected
 
+    def test_quality_dimension_rolls_up_to_correctness(self, spark):
+        """issue-type.csv carries a finer-grained dimension per issue type. All
+        five of its values are statements about whether the data itself is right,
+        so they map to correctness."""
+        df = _issue_df(
+            spark,
+            [
+                (
+                    "dataset-a",
+                    "resource-aaa",
+                    "name",
+                    "too small",
+                    "error",
+                    "external",
+                    "organisation-x",
+                    "endpoint-aaa",
+                )
+            ],
+            quality_dimension="accuracy",
+        )
+        result = transform_issues_to_tasks(df)
+        assert result.collect()[0]["quality_dimension"] == "correctness"
+
+    def test_untagged_issue_type_has_no_quality_dimension(self, spark):
+        """An issue type with no dimension gets null rather than being silently
+        counted as correctness. Every untagged type in issue-type.csv is
+        responsibility=internal, so this is the normal case for those rather
+        than a fault."""
+        df = _issue_df(
+            spark,
+            [
+                (
+                    "dataset-a",
+                    "resource-aaa",
+                    "entry-date",
+                    "far-future-date",
+                    "error",
+                    "internal",
+                    "organisation-x",
+                    "endpoint-aaa",
+                )
+            ],
+            quality_dimension="",
+        )
+        result = transform_issues_to_tasks(df)
+        assert result.collect()[0]["quality_dimension"] is None
+
     def test_task_source_is_issue(self, spark):
-        df = _build_df(
+        df = _issue_df(
             spark,
             [
                 (
@@ -529,13 +608,12 @@ class TestTransformIssuesToTasks:
                     "endpoint-aaa",
                 )
             ],
-            ISSUE_COLUMNS,
         )
         result = transform_issues_to_tasks(df)
         assert all(row["task_source"] == "issue" for row in result.collect())
 
     def test_details_json_has_correct_structure(self, spark):
-        df = _build_df(
+        df = _issue_df(
             spark,
             [
                 (
@@ -549,7 +627,6 @@ class TestTransformIssuesToTasks:
                     "endpoint-aaa",
                 )
             ],
-            ISSUE_COLUMNS,
         )
         result = transform_issues_to_tasks(df)
         details = json.loads(result.collect()[0]["details"])
@@ -558,7 +635,7 @@ class TestTransformIssuesToTasks:
         assert isinstance(details["count"], int)
 
     def test_reference_is_16_chars(self, spark):
-        df = _build_df(
+        df = _issue_df(
             spark,
             [
                 (
@@ -572,13 +649,12 @@ class TestTransformIssuesToTasks:
                     "endpoint-aaa",
                 )
             ],
-            ISSUE_COLUMNS,
         )
         result = transform_issues_to_tasks(df)
         assert len(result.collect()[0]["reference"]) == 16
 
     def test_organisation_and_endpoint_are_carried_through(self, spark):
-        df = _build_df(
+        df = _issue_df(
             spark,
             [
                 (
@@ -592,7 +668,6 @@ class TestTransformIssuesToTasks:
                     "endpoint-aaa",
                 )
             ],
-            ISSUE_COLUMNS,
         )
         result = transform_issues_to_tasks(df)
         row = result.collect()[0]
@@ -601,7 +676,7 @@ class TestTransformIssuesToTasks:
 
     def test_references_are_unique(self, spark):
         """No two issue tasks should share a reference."""
-        df = _build_df(
+        df = _issue_df(
             spark,
             [
                 (
@@ -635,14 +710,13 @@ class TestTransformIssuesToTasks:
                     "endpoint-aaa",
                 ),
             ],
-            ISSUE_COLUMNS,
         )
         result = transform_issues_to_tasks(df)
         references = [row["reference"] for row in result.collect()]
         assert len(references) == len(set(references))
 
     def test_explodes_multi_org_into_one_task_per_organisation(self, spark):
-        df = _build_df(
+        df = _issue_df(
             spark,
             [
                 (
@@ -656,7 +730,6 @@ class TestTransformIssuesToTasks:
                     "endpoint-aaa",
                 )
             ],
-            ISSUE_COLUMNS,
         )
         result = transform_issues_to_tasks(df)
         rows = result.collect()
@@ -667,7 +740,7 @@ class TestTransformIssuesToTasks:
         }
 
     def test_duplicate_organisation_in_list_is_not_double_counted(self, spark):
-        df = _build_df(
+        df = _issue_df(
             spark,
             [
                 (
@@ -681,7 +754,6 @@ class TestTransformIssuesToTasks:
                     "endpoint-aaa",
                 )
             ],
-            ISSUE_COLUMNS,
         )
         result = transform_issues_to_tasks(df)
         rows = result.collect()
@@ -692,7 +764,7 @@ class TestTransformIssuesToTasks:
         """An issue on a resource shared by two orgs, plus another issue on the
         same resource/field affecting only one of them, should produce
         per-organisation counts rather than one combined count."""
-        df = _build_df(
+        df = _issue_df(
             spark,
             [
                 (
@@ -716,7 +788,6 @@ class TestTransformIssuesToTasks:
                     "endpoint-aaa",
                 ),
             ],
-            ISSUE_COLUMNS,
         )
         result = transform_issues_to_tasks(df)
         by_org = {row["organisation"]: row for row in result.collect()}
@@ -726,7 +797,7 @@ class TestTransformIssuesToTasks:
     def test_exploded_org_rows_have_distinct_references(self, spark):
         """organisation is part of the reference hash, so per-org rows from the
         same source issue don't collide on the Postgres task_pkey."""
-        df = _build_df(
+        df = _issue_df(
             spark,
             [
                 (
@@ -740,7 +811,6 @@ class TestTransformIssuesToTasks:
                     "endpoint-aaa",
                 )
             ],
-            ISSUE_COLUMNS,
         )
         result = transform_issues_to_tasks(df)
         references = [row["reference"] for row in result.collect()]
@@ -1042,8 +1112,32 @@ class TestTransformExpectationsToTasks:
             "responsibility",
             "task_source",
             "entry_date",
+            "quality_dimension",
             "reference",
         ]
+
+    def test_quality_dimension_comes_from_the_operation(self, spark):
+        """The dimension is a property of the check, not of the expect.csv row it
+        is deployed in — the same operation means the same thing whichever
+        dataset it runs against, whereas its severity varies per row."""
+        df = _build_df(
+            spark,
+            [_expectation_row(operation="duplicate_name_check")],
+            EXPECTATION_COLUMNS,
+        )
+        result = transform_expectations_to_tasks(df, _org_df(spark))
+        assert result.collect()[0]["quality_dimension"] == "correctness"
+
+    def test_unmapped_operation_has_no_quality_dimension(self, spark):
+        """A check nobody has classified yet produces a task with no dimension
+        rather than a wrong one."""
+        df = _build_df(
+            spark,
+            [_expectation_row(operation="some_unclassified_check")],
+            EXPECTATION_COLUMNS,
+        )
+        result = transform_expectations_to_tasks(df, _org_df(spark))
+        assert result.collect()[0]["quality_dimension"] is None
 
     def test_task_source_is_expectation(self, spark):
         df = _build_df(spark, [_expectation_row()], EXPECTATION_COLUMNS)

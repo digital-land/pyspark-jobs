@@ -2,6 +2,7 @@
 
 import logging
 from datetime import date
+from itertools import chain
 
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import (
@@ -10,6 +11,7 @@ from pyspark.sql.functions import (
     col,
     concat_ws,
     count,
+    create_map,
     explode,
     first,
     from_json,
@@ -31,6 +33,12 @@ from pyspark.sql.types import (
     StringType,
     StructField,
     StructType,
+)
+
+from jobs.config.quality_dimensions import (
+    LOG_DIMENSION,
+    load_expectation_dimensions,
+    load_issue_type_dimensions,
 )
 
 logger = logging.getLogger(__name__)
@@ -113,6 +121,7 @@ def transform_log_to_tasks(df: DataFrame, entry_date: str = None) -> DataFrame:
         )
         .withColumn("severity", lit("error"))
         .withColumn("responsibility", lit("external"))
+        .withColumn("quality_dimension", lit(LOG_DIMENSION))
         .withColumn("task_source", lit("log"))
         .withColumn("entry_date", lit(entry_date))
     )
@@ -129,6 +138,7 @@ def transform_log_to_tasks(df: DataFrame, entry_date: str = None) -> DataFrame:
         col("responsibility"),
         col("task_source"),
         col("entry_date"),
+        col("quality_dimension"),
         col("reference"),
     )
 
@@ -143,6 +153,15 @@ def transform_issues_to_tasks(df: DataFrame, entry_date: str = None) -> DataFram
     logger.info("transform_issues_to_tasks: Starting")
 
     df = df.filter(col("severity").isin(*TASK_SEVERITIES))
+
+    # issue-type.csv's fine-grained dimension rolls up to ours. Mapped before the
+    # group-by so the grouped rows already carry the value the task table stores;
+    # it is functionally determined by issue_type, which is in the group-by, so
+    # first() below is deterministic.
+    df = df.withColumn(
+        "quality_dimension",
+        _dimension_map(load_issue_type_dimensions())[col("quality_dimension")],
+    )
 
     if df.rdd.isEmpty():
         logger.warning(
@@ -162,6 +181,7 @@ def transform_issues_to_tasks(df: DataFrame, entry_date: str = None) -> DataFram
     ).agg(
         count("*").alias("count"),
         first("severity").alias("severity"),
+        first("quality_dimension").alias("quality_dimension"),
         first("responsibility").alias("responsibility"),
         first("endpoint").alias("endpoint"),
     )
@@ -193,6 +213,7 @@ def transform_issues_to_tasks(df: DataFrame, entry_date: str = None) -> DataFram
         col("responsibility"),
         col("task_source"),
         col("entry_date"),
+        col("quality_dimension"),
         col("reference"),
     )
 
@@ -293,6 +314,10 @@ def transform_expectations_to_tasks(
         .withColumn("endpoint", lit(""))
         .withColumn("resource", lit(""))
         .withColumn("task_source", lit("expectation"))
+        .withColumn(
+            "quality_dimension",
+            _dimension_map(load_expectation_dimensions())[col("operation")],
+        )
         .withColumn("entry_date", lit(entry_date))
     )
 
@@ -308,6 +333,7 @@ def transform_expectations_to_tasks(
         col("responsibility"),
         col("task_source"),
         col("entry_date"),
+        col("quality_dimension"),
         col("reference"),
     )
 
@@ -337,3 +363,13 @@ def _add_reference(df: DataFrame) -> DataFrame:
             16,
         ),
     )
+
+
+def _dimension_map(mapping):
+    """A Spark map literal for a {value: dimension} lookup.
+
+    A key that is absent resolves to null, which is what we want: an unmapped task
+    stays visible rather than being silently counted toward a dimension it was never
+    classified into.
+    """
+    return create_map([lit(x) for x in chain(*mapping.items())])

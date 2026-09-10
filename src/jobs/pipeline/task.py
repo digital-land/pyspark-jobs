@@ -44,11 +44,21 @@ def _load_issue_type_df(spark):
     with urllib.request.urlopen(ISSUE_TYPE_URL) as response:
         lines = [line.decode("utf-8") for line in response.readlines()]
         reader = csv.DictReader(lines)
+        # .get on quality_dimension: it is fetched from the specification at runtime,
+        # so a column rename upstream should degrade to unmapped tasks and a loud log
+        # line rather than killing the nightly task build outright.
         rows = [
-            (row["issue-type"], row["severity"], row["responsibility"])
+            (
+                row["issue-type"],
+                row["severity"],
+                row["responsibility"],
+                row.get("quality_dimension") or "",
+            )
             for row in reader
         ]
-    return spark.createDataFrame(rows, ["issue_type", "severity", "responsibility"])
+    return spark.createDataFrame(
+        rows, ["issue_type", "severity", "responsibility", "quality_dimension"]
+    )
 
 
 def _backfill_dataset_from_source(log_df, endpoint_dataset_df):
@@ -326,6 +336,22 @@ class TaskPipeline(BasePipeline):
             else reduce(lambda a, b: a.unionByName(b), frames)
         )
 
+        # Dimension coverage, one pass logged at INFO in the same spirit as the
+        # severity guards above. Some tasks legitimately have no dimension — every
+        # untagged issue type in issue-type.csv is responsibility=internal — so a
+        # non-zero unmapped count is normal. Every task being unmapped is not, and
+        # means the issue-type fetch or a mapping has broken.
+        dimension_counts = {
+            row["quality_dimension"]: row["count"]
+            for row in tasks_df.groupBy("quality_dimension").count().collect()
+        }
+        logger.info(f"TaskPipeline: tasks by quality dimension: {dimension_counts}")
+        if not any(dimension for dimension in dimension_counts if dimension):
+            logger.error(
+                "TaskPipeline: no task resolved to a quality dimension — check the "
+                "issue-type.csv fetch and the quality_dimensions mappings"
+            )
+
         output_path = str(AnyPath(self.config.parquet_datasets_path) / "task")
         logger.info(f"TaskPipeline: Writing tasks to {output_path}...")
         (
@@ -341,4 +367,11 @@ class TaskPipeline(BasePipeline):
             self._write_postgres(tasks_df)
 
     def _write_postgres(self, tasks_df):
-        write_task_to_postgres(tasks_df, self.config.database_url)
+        # quality_dimension is not in the Postgres task table yet. The staging DDL and
+        # the INSERT column list in write_task_to_postgres are both explicit, and Spark's
+        # JDBC writer rejects a DataFrame column the target table does not have. Delta
+        # carries it — which is what provision quality reads — and Postgres gets it when
+        # the digital-land.info migration lands.
+        write_task_to_postgres(
+            tasks_df.drop("quality_dimension"), self.config.database_url
+        )
