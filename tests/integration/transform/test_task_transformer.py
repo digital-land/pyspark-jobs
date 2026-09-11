@@ -1228,6 +1228,7 @@ class TestTransformAuthorityToTasks:
         assert row["responsibility"] == "external"
         assert row["task_source"] == "provision"
         assert row["quality_dimension"] == "authoritativeness"
+        assert json.loads(row["details"])["task_type"] == "provide_authoritative_data"
 
     def test_endpoint_and_resource_are_blank(self, spark):
         """Unlike issues, there is no single resource this speaks to."""
@@ -1236,12 +1237,16 @@ class TestTransformAuthorityToTasks:
         assert row["endpoint"] == ""
         assert row["resource"] == ""
 
-    def test_details_carries_quality_and_owned_entity_count(self, spark):
+    def test_details_carries_task_type_quality_and_owned_entity_count(self, spark):
         df = _authority_df(
             spark, [_authority_row(quality="none", owned_entity_count=0)]
         )
         details = json.loads(transform_authority_to_tasks(df).collect()[0]["details"])
-        assert details == {"quality": "none", "owned_entity_count": 0}
+        assert details == {
+            "task_type": "provide_authoritative_data",
+            "quality": "none",
+            "owned_entity_count": 0,
+        }
 
     def test_details_excludes_issue_type_and_field(self, spark):
         """submit's generic task rendering only fires on issue_type + field —

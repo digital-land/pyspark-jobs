@@ -344,6 +344,7 @@ def _optimise_and_vacuum_tables(spark, table_paths, retention_hours):
 def generate_tasks(
     collection_data_path: str,
     entity_data_path: str,
+    output_path: str,
     parquet_datasets_path: str,
     env: str,
     database_url: str = None,
@@ -352,10 +353,12 @@ def generate_tasks(
     Generate task data from log and issue files across all collections.
 
     Reads collection log and issue CSVs from S3, filters to active resources,
-    and writes a plain Parquet task table to parquet_datasets_path/task/.
+    and writes the task table three ways: Delta to parquet_datasets_path/task/
+    (canonical), serving Postgres, and a CSV to output_path for download.
 
     Args:
         collection_data_path: Root path containing all *-collection directories.
+        output_path: Path the task CSV is written to (public download).
         parquet_datasets_path: S3 path to the parquet datasets bucket.
         env: Environment name (development, staging, production, local).
     """
@@ -398,7 +401,7 @@ def generate_tasks(
         )
 
         task_pipeline = TaskPipeline(config)
-        task_pipeline.run(entity_data_path=entity_data_path)
+        task_pipeline.run(entity_data_path=entity_data_path, output_path=output_path)
 
         logger.info(f"generate_tasks: Result — {task_pipeline.result}")
 
