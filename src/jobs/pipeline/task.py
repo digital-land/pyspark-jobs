@@ -19,7 +19,11 @@ from pyspark.sql.functions import (
 )
 
 from jobs.config.authoritativeness_task import RESTRICT_TO_ACTIVE_ORGS
-from jobs.pipeline.authority import load_entity_quality, non_authoritative_providers
+from jobs.pipeline.authority import (
+    live_datasets,
+    load_entity_quality,
+    non_authoritative_providers,
+)
 from jobs.pipeline.base import BasePipeline
 from jobs.read import read_csvs_by_name, read_issue_csvs
 from jobs.transform.task_transformer import (
@@ -37,6 +41,7 @@ from jobs.utils.collection_paths import (
 )
 from jobs.utils.df_utils import normalise_column_names
 from jobs.utils.postgres_writer_utils import write_task_to_postgres
+from jobs.utils.s3_writer_utils import write_single_csv
 
 logger = logging.getLogger(__name__)
 
@@ -137,11 +142,12 @@ class TaskPipeline(BasePipeline):
 
     Unlike other pipelines, this reads across all collections at once using
     wildcard S3 paths rather than processing a single dataset/collection.
-    Writes a Delta Lake table — full overwrite each run since the table is
-    regenerated from scratch nightly.
+    Writes three ways: Delta to parquet_datasets_path (canonical), serving
+    Postgres, and a CSV to output_path for download — full overwrite each run
+    since the table is regenerated from scratch nightly.
     """
 
-    def execute(self, entity_data_path):
+    def execute(self, entity_data_path, output_path):
         spark = self.config.spark
         base = AnyPath(self.config.collection_data_path)
 
@@ -337,9 +343,19 @@ class TaskPipeline(BasePipeline):
         # Independent of the active-resource / issue-file legs above: a
         # statement about the whole dataset-organisation provision, not any
         # single resource. Uses org_df / entity_org_df read above.
+        dataset_path = str(base / "specification" / "dataset.csv")
+        dataset_df = normalise_column_names(
+            spark.read.option("header", "true").csv(dataset_path)
+        )
+        live_datasets_df = live_datasets(dataset_df, self.config.env)
+
         entity_quality_df = load_entity_quality(spark, entity_data_path)
         authority_population = non_authoritative_providers(
-            entity_quality_df, org_df, entity_org_df, RESTRICT_TO_ACTIVE_ORGS
+            entity_quality_df,
+            org_df,
+            entity_org_df,
+            live_datasets_df,
+            RESTRICT_TO_ACTIVE_ORGS,
         )
         authority_tasks = transform_authority_to_tasks(authority_population)
 
@@ -376,19 +392,23 @@ class TaskPipeline(BasePipeline):
                 "issue-type.csv fetch and the quality_dimensions mappings"
             )
 
-        output_path = str(AnyPath(self.config.parquet_datasets_path) / "task")
-        logger.info(f"TaskPipeline: Writing tasks to {output_path}...")
+        delta_path = str(AnyPath(self.config.parquet_datasets_path) / "task")
+        logger.info(f"TaskPipeline: Writing tasks to {delta_path}...")
         (
             tasks_df.write.format("delta")
             .mode("overwrite")
             .option("overwriteSchema", "true")
-            .save(output_path)
+            .save(delta_path)
         )
-        logger.info(f"TaskPipeline: Delta table written to {output_path}")
+        logger.info(f"TaskPipeline: Delta table written to {delta_path}")
 
         if self.config.database_url:
             logger.info("TaskPipeline: Writing tasks to Postgres...")
             self._write_postgres(tasks_df)
+
+        write_single_csv(
+            tasks_df.orderBy("dataset", "organisation"), output_path, "task"
+        )
 
     def _write_postgres(self, tasks_df):
         # quality_dimension is not in the Postgres task table yet. The staging DDL and
