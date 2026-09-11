@@ -367,6 +367,7 @@ def transform_authority_to_tasks(population_df, entry_date: str = None) -> DataF
             "details",
             to_json(
                 struct(
+                    lit(rule["task_type"]).alias("task_type"),
                     col("quality"),
                     col("owned_entity_count").cast("int").alias("owned_entity_count"),
                 )
