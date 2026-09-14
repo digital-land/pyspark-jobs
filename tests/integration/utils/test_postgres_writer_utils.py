@@ -29,6 +29,7 @@ from jobs.utils.postgres_writer_utils import (
     write_entity_subdivided_to_postgres,
     write_old_entity_to_postgres,
     write_table_to_postgres,
+    write_task_to_postgres,
 )
 
 
@@ -706,3 +707,125 @@ def test_write_table_to_postgres_dataset_quality_integer_counts(
     db_conn.rollback()
     assert len(result) == 1
     assert list(result[0]) == ["conservation-area", 131, 175, 306, 10941]
+
+
+@pytest.mark.database
+def test_write_task_to_postgres_includes_quality_dimension(
+    spark, db_url, db_conn, clean_task_table
+):
+    """Every task column reaches Postgres, quality_dimension included.
+
+    The task writer has an explicit staging DDL and an explicit INSERT column
+    list, so a column added to the DataFrame without being added to both is a
+    silent omission at best and a failed nightly at worst. This is the only test
+    that exercises the real writer -- the acceptance test mocks it.
+    """
+    schema = StructType(
+        [
+            StructField("dataset", StringType(), True),
+            StructField("organisation", StringType(), True),
+            StructField("endpoint", StringType(), True),
+            StructField("resource", StringType(), True),
+            StructField("details", StringType(), True),
+            StructField("severity", StringType(), True),
+            StructField("responsibility", StringType(), True),
+            StructField("task_source", StringType(), True),
+            StructField("entry_date", StringType(), True),
+            StructField("quality_dimension", StringType(), True),
+            StructField("reference", StringType(), True),
+        ]
+    )
+    rows = [
+        (
+            "conservation-area",
+            "local-authority:ADU",
+            "endpoint-a",
+            "resource-a",
+            '{"issue_type": "invalid date"}',
+            "error",
+            "external",
+            "issue",
+            "2026-09-14",
+            "validity",
+            "ref-1",
+        ),
+        (
+            "brownfield-land",
+            "local-authority:BNH",
+            "endpoint-b",
+            "",
+            '{"status": 404}',
+            "error",
+            "external",
+            "log",
+            "2026-09-14",
+            "current",
+            "ref-2",
+        ),
+        # An untagged issue type speaks to no dimension -- it must land as NULL,
+        # not as an empty string.
+        (
+            "brownfield-land",
+            "local-authority:BNH",
+            "endpoint-c",
+            "resource-c",
+            '{"issue_type": "far-future-date"}',
+            "error",
+            "internal",
+            "issue",
+            "2026-09-14",
+            None,
+            "ref-3",
+        ),
+    ]
+
+    write_task_to_postgres(spark.createDataFrame(rows, schema), db_url)
+
+    cur = db_conn.cursor()
+    cur.execute(
+        "SELECT reference, quality_dimension, dataset, task_source, entry_date "
+        "FROM task ORDER BY reference;"
+    )
+    result = cur.fetchall()
+    cur.close()
+    # Release the read lock (pg8000 autocommit is off) before the next write's
+    # TRUNCATE, or it blocks on this connection's open transaction.
+    db_conn.rollback()
+
+    assert [r[0] for r in result] == ["ref-1", "ref-2", "ref-3"]
+    assert [r[1] for r in result] == ["validity", "current", None]
+    assert result[0][2] == "conservation-area"
+    assert result[0][3] == "issue"
+    assert result[0][4] == date(2026, 9, 14)
+    assert _count_tables_matching(db_conn, "task_staging_%") == 0
+
+    # A second write replaces the table rather than appending.
+    df2 = spark.createDataFrame(
+        [
+            (
+                "green-belt",
+                "local-authority:XYZ",
+                "endpoint-d",
+                "resource-d",
+                '{"issue_type": "missing value"}',
+                "error",
+                "external",
+                "issue",
+                "2026-09-15",
+                "completeness",
+                "ref-4",
+            )
+        ],
+        schema,
+    )
+    write_task_to_postgres(df2, db_url)
+
+    cur = db_conn.cursor()
+    cur.execute("SELECT reference, quality_dimension FROM task;")
+    after = cur.fetchall()
+    cur.close()
+    db_conn.rollback()
+
+    assert len(after) == 1
+    assert list(after[0]) == ["ref-4", "completeness"]
+    assert _count_tables_matching(db_conn, "task_staging_%") == 0

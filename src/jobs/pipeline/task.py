@@ -426,11 +426,4 @@ class TaskPipeline(BasePipeline):
         )
 
     def _write_postgres(self, tasks_df):
-        # quality_dimension is not in the Postgres task table yet. The staging DDL and
-        # the INSERT column list in write_task_to_postgres are both explicit, and Spark's
-        # JDBC writer rejects a DataFrame column the target table does not have. Delta
-        # carries it — which is what provision quality reads — and Postgres gets it when
-        # the digital-land.info migration lands.
-        write_task_to_postgres(
-            tasks_df.drop("quality_dimension"), self.config.database_url
-        )
+        write_task_to_postgres(tasks_df, self.config.database_url)
