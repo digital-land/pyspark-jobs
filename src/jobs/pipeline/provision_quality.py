@@ -1,21 +1,28 @@
 """ProvisionQualityPipeline: provider/organisation quality classification."""
 
 import logging
+from itertools import chain
 
 from cloudpathlib import AnyPath
 from pyspark.sql.functions import (
     coalesce,
     col,
+    count,
     countDistinct,
+    create_map,
     explode,
     first,
     lit,
     lower,
     split,
 )
+
 from pyspark.sql.functions import sum as spark_sum
+from pyspark.sql.functions import max as spark_max
 from pyspark.sql.functions import when
 
+
+from jobs.config.quality_dimensions import AUTHORITATIVENESS
 from jobs.pipeline.authority import (
     join_entity_quality_to_org,
     live_datasets,
@@ -28,6 +35,11 @@ from jobs.utils.collection_paths import collection_files, collection_names
 from jobs.utils.df_utils import normalise_column_names
 from jobs.utils.postgres_writer_utils import write_table_to_postgres
 from jobs.utils.s3_writer_utils import write_single_csv
+from jobs.utils.specification import (
+    load_declared_provisions,
+    load_quality_priorities,
+    load_severity_priorities,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,8 +98,55 @@ def _seeder_alt_sources(eq, lookup_df, entity_org_df, active_orgs):
     )
 
 
+def load_tasks(spark, parquet_datasets_path):
+    """SWAPPABLE SEAM, same discipline as load_entity_quality: the task table the
+    task pipeline wrote earlier in this DAG run."""
+    task_path = str(AnyPath(parquet_datasets_path) / "task")
+    logger.info(f"ProvisionQuality: reading tasks from {task_path}")
+    return (
+        spark.read.format("delta")
+        .load(task_path)
+        .select(
+            "dataset", "organisation", "severity", "responsibility", "quality_dimension"
+        )
+    )
+
+
+def _task_state(tasks_df, severity_priorities, error_priority):
+    """Per (dataset, organisation): is there an error-or-worse task, and any task at all?
+
+    Authoritativeness tasks are EXCLUDED. They decide which band a provision sits
+    in, not where it sits inside that band — and because the
+    provide-authoritative-data task is always severity=error, counting them would
+    put every non-authoritative provision on the bottom rung and make `indicative`
+    and `verifiable` unreachable.
+
+    Internal responsibility is excluded: those are our processing problems and must
+    not mark a publisher down. That also removes every task with no dimension,
+    since all the untagged issue types in issue-type.csv are internal.
+    """
+    severity_map = create_map([lit(x) for x in chain(*severity_priorities.items())])
+    relevant = (
+        tasks_df.filter(~col("quality_dimension").eqNullSafe(lit(AUTHORITATIVENESS)))
+        .filter(~col("responsibility").eqNullSafe(lit("internal")))
+        .filter(col("organisation").isNotNull() & (col("organisation") != ""))
+    )
+    return (
+        relevant.withColumn("severity_priority", severity_map[col("severity")])
+        .groupBy("dataset", "organisation")
+        .agg(
+            spark_max(
+                when(col("severity_priority") <= lit(error_priority), lit(1)).otherwise(
+                    lit(0)
+                )
+            ).alias("has_error_task"),
+            count(lit(1)).alias("task_count"),
+        )
+    )
+
+
 def _build_provision_quality(
-    providers_df, org_df, entity_org_df, lookup_df, entity_quality_df
+    providers_df, org_df, entity_org_df, lookup_df, entity_quality_df, declared_df
 ):
     """Base table: one row per (dataset, organisation) that has an active endpoint
     OR owns entities OR is a detected seeder. Nothing dropped; flags distinguish
@@ -105,6 +164,9 @@ def _build_provision_quality(
     keys = (
         providers.unionByName(owner_side.select("dataset", "organisation"))
         .unionByName(seeder_side.select("dataset", "organisation"))
+        # the specification's declared universe, so a provision that has supplied
+        # nothing still gets a row and can score "no data"
+        .unionByName(declared_df.select("dataset", "organisation"))
         .distinct()
     )
 
@@ -138,27 +200,81 @@ def _build_provision_quality(
         coalesce(col("is_designated_provider"), lit(False)).alias(
             "is_designated_provider"
         ),
-        coalesce(col("owner_quality"), col("seeder_quality")).alias("quality"),
+        coalesce(col("owner_quality"), col("seeder_quality")).alias("entity_quality"),
         coalesce(col("owned_entity_count"), col("seeder_entity_count"), lit(0)).alias(
             "entity_count"
         ),
-        lit(None).cast("double").alias("quality_score"),
     )
 
 
-def _build_dataset_quality(provision_quality):
-    """Rollup per dataset. Only classified (auth/some) rows count; entity total is
-    from owned counts so seeded rows don't double-count."""
-    classified = provision_quality.filter(col("quality").isNotNull())
+def _assign_quality(provision_quality, task_state, quality_priorities):
+    """The seven-level ladder: authoritativeness picks the band, task state picks
+    the rung within it.
+
+        base   = none          owns no entities
+                 some          owns only alternative-source entities
+                 authoritative owns authoritative entities
+        offset = 0 any error-or-worse task, 1 warnings only, 2 no tasks
+
+    A pure function of (entity_quality, task state), so the ladder can move into
+    reference data later without the logic changing. Priorities are read from
+    quality.csv; only the three band anchors are named here, never their values.
+    """
+    none_priority = quality_priorities["none"]
+    some_priority = quality_priorities["some"]
+    authoritative_priority = quality_priorities["authoritative"]
+    word = create_map(
+        [lit(x) for x in chain(*{p: q for q, p in quality_priorities.items()}.items())]
+    )
+
+    base = (
+        when(col("entity_quality") == "authoritative", lit(authoritative_priority))
+        .when(col("entity_quality") == "some", lit(some_priority))
+        .otherwise(lit(none_priority))
+    )
+    offset = (
+        when(col("has_error_task") == 1, lit(0))
+        .when(col("task_count") > 0, lit(1))
+        .otherwise(lit(2))
+    )
+
+    scored = provision_quality.join(
+        task_state, on=["dataset", "organisation"], how="left"
+    ).withColumn(
+        # a provision with no data stays at the bottom whatever its task state
+        "priority",
+        when(base == lit(none_priority), lit(none_priority)).otherwise(base + offset),
+    )
+    return scored.select(
+        "dataset",
+        "organisation",
+        "organisation_name",
+        "has_active_endpoint",
+        "has_active_resource",
+        "owns_entities",
+        "is_designated_provider",
+        word[col("priority")].alias("quality"),
+        "entity_count",
+        col("priority").cast("double").alias("quality_score"),
+    )
+
+
+def _build_dataset_quality(provision_quality, authoritative_priority):
+    """Rollup per dataset. Organisations are counted by BAND, not by exact quality:
+    `usable` and `trustworthy` are authoritative provisions that happen to be
+    cleaner, so an equality test on "authoritative" would count only the ones with
+    outstanding errors."""
     return (
-        classified.groupBy("dataset")
+        provision_quality.groupBy("dataset")
         .agg(
             countDistinct(
-                when(col("quality") == "authoritative", col("organisation"))
+                when(
+                    col("quality_score") >= authoritative_priority, col("organisation")
+                )
             ).alias("authoritative_organisations"),
-            countDistinct(when(col("quality") == "some", col("organisation"))).alias(
-                "some_organisations"
-            ),
+            countDistinct(
+                when(col("quality_score") < authoritative_priority, col("organisation"))
+            ).alias("some_organisations"),
             countDistinct("organisation").alias("total_organisations"),
             spark_sum(
                 when(col("owns_entities"), col("entity_count")).otherwise(0)
@@ -168,19 +284,19 @@ def _build_dataset_quality(provision_quality):
     )
 
 
-def _build_organisation_quality(provision_quality):
-    """Rollup per organisation across datasets."""
-    classified = provision_quality.filter(col("quality").isNotNull())
+def _build_organisation_quality(provision_quality, authoritative_priority):
+    """Rollup per organisation across datasets. Datasets are counted by BAND rather
+    than by exact quality — see _build_dataset_quality."""
     return (
-        classified.groupBy("organisation")
+        provision_quality.groupBy("organisation")
         .agg(
             first("organisation_name", ignorenulls=True).alias("organisation_name"),
             countDistinct(
-                when(col("quality") == "authoritative", col("dataset"))
+                when(col("quality_score") >= authoritative_priority, col("dataset"))
             ).alias("authoritative_datasets"),
-            countDistinct(when(col("quality") == "some", col("dataset"))).alias(
-                "some_datasets"
-            ),
+            countDistinct(
+                when(col("quality_score") < authoritative_priority, col("dataset"))
+            ).alias("some_datasets"),
             countDistinct("dataset").alias("total_datasets"),
             spark_sum(
                 when(col("owns_entities"), col("entity_count")).otherwise(0)
@@ -335,9 +451,26 @@ class ProvisionQualityPipeline(BasePipeline):
         # -- Entity + quality (SWAPPABLE SEAM) ----------------------------------
         entity_quality_df = load_entity_quality(spark, entity_data_path)
 
+        # -- Specification: the ladder, the severity scale, the declared universe -
+        quality_priorities = load_quality_priorities()
+        severity_priorities = load_severity_priorities()
+        declared_df = load_declared_provisions(spark)
+
+        # -- Tasks (written by assemble-tasks earlier in this DAG run) ----------
+        task_state = _task_state(
+            load_tasks(spark, self.config.parquet_datasets_path),
+            severity_priorities,
+            severity_priorities["error"],
+        )
+
         # -- Classification + rollups ------------------------------------------
         provision_quality = _build_provision_quality(
-            providers_df, org_df, entity_org_df, lookup_df, entity_quality_df
+            providers_df,
+            org_df,
+            entity_org_df,
+            lookup_df,
+            entity_quality_df,
+            declared_df,
         ).localCheckpoint(
             eager=True
         )  # materialise once AND truncate the huge plan
@@ -361,8 +494,20 @@ class ProvisionQualityPipeline(BasePipeline):
 
         provision_quality = _drop_blank_organisations(provision_quality)
 
-        dataset_quality = _build_dataset_quality(provision_quality)
-        organisation_quality = _build_organisation_quality(provision_quality)
+        # Score after the filters so the task join only sees rows we keep, and
+        # checkpoint again: provision_quality now has five actions on it (two
+        # rollups, CSV, Delta, Postgres) and the task join is a shuffle.
+        provision_quality = _assign_quality(
+            provision_quality, task_state, quality_priorities
+        ).localCheckpoint(eager=True)
+
+        authoritative_priority = quality_priorities["authoritative"]
+        dataset_quality = _build_dataset_quality(
+            provision_quality, authoritative_priority
+        )
+        organisation_quality = _build_organisation_quality(
+            provision_quality, authoritative_priority
+        )
 
         # -- Write (phase 1: CSV) ----------------------------------------------
         write_single_csv(
