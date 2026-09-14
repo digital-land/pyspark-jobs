@@ -285,3 +285,53 @@ def clean_dataset_quality_table(db_conn):
     )
     db_conn.commit()
     cur.close()
+
+
+@pytest.fixture()
+def clean_task_table(db_conn):
+    """Create the task table before each test, truncate after.
+
+    Column set and nullability mirror the real table as created by
+    digital-land.info's alembic migrations, quality_dimension included.
+    """
+    cur = db_conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS task (
+            dataset TEXT NOT NULL,
+            organisation TEXT,
+            endpoint TEXT,
+            resource TEXT,
+            details JSONB,
+            severity TEXT NOT NULL,
+            responsibility TEXT NOT NULL,
+            task_source TEXT NOT NULL,
+            entry_date DATE,
+            reference TEXT NOT NULL,
+            quality_dimension TEXT
+        );
+        """
+    )
+    db_conn.commit()
+    cur.close()
+
+    yield
+
+    cur = db_conn.cursor()
+    cur.execute("TRUNCATE TABLE task;")
+    cur.execute(
+        """
+        DO $$
+        DECLARE t TEXT;
+        BEGIN
+            FOR t IN SELECT tablename FROM pg_tables
+                     WHERE schemaname = 'public'
+                       AND tablename LIKE 'task_staging_%'
+            LOOP
+                EXECUTE 'DROP TABLE IF EXISTS ' || t;
+            END LOOP;
+        END $$;
+        """
+    )
+    db_conn.commit()
+    cur.close()

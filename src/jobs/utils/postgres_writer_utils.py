@@ -727,7 +727,8 @@ def write_task_to_postgres(df, database_url):
                 responsibility TEXT,
                 task_source TEXT,
                 entry_date DATE,
-                reference TEXT
+                reference TEXT,
+                quality_dimension TEXT
             );
             """
         )
@@ -788,11 +789,13 @@ def write_task_to_postgres(df, database_url):
                 f"""
                 INSERT INTO task (
                     dataset, organisation, endpoint, resource, details,
-                    severity, responsibility, task_source, entry_date, reference
+                    severity, responsibility, task_source, entry_date, reference,
+                    quality_dimension
                 )
                 SELECT
                     dataset, organisation, endpoint, resource, details::jsonb,
-                    severity, responsibility, task_source, entry_date, reference
+                    severity, responsibility, task_source, entry_date, reference,
+                    quality_dimension
                 FROM {staging_table};
                 """
             )
