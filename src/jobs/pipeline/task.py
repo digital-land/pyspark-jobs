@@ -19,6 +19,7 @@ from pyspark.sql.functions import (
 )
 
 from jobs.config.authoritativeness_task import RESTRICT_TO_ACTIVE_ORGS
+from jobs.config.quality_dimensions import known_dimensions
 from jobs.pipeline.authority import (
     live_datasets,
     load_entity_quality,
@@ -389,7 +390,21 @@ class TaskPipeline(BasePipeline):
         if not any(dimension for dimension in dimension_counts if dimension):
             logger.error(
                 "TaskPipeline: no task resolved to a quality dimension — check the "
-                "issue-type.csv fetch and the quality_dimensions mappings"
+                "issue-type.csv fetch and the specification's quality_dimension column"
+            )
+
+        # Values now arrive from issue-type.csv unmapped, so a new or renamed value
+        # upstream would flow into the task table silently. Visible, not blocking —
+        # the specification is allowed to grow a dimension before we know about it.
+        unknown = {
+            dimension
+            for dimension in dimension_counts
+            if dimension and dimension not in known_dimensions()
+        }
+        if unknown:
+            logger.warning(
+                f"TaskPipeline: quality dimensions outside the agreed vocabulary: "
+                f"{sorted(unknown)} — issue-type.csv may have gained a value"
             )
 
         delta_path = str(AnyPath(self.config.parquet_datasets_path) / "task")

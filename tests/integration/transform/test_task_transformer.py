@@ -113,11 +113,11 @@ class TestTransformLogToTasks:
         }
         assert set(result.columns) == expected
 
-    def test_quality_dimension_is_correctness(self, spark):
-        """A log task is a collection failure. That is arguably closer to
-        timeliness, but timeliness is not a dimension yet, so it rolls up to
-        correctness — reclassifying later is a one-line change because the task
-        table is rebuilt in full on every run."""
+    def test_quality_dimension_is_current(self, spark):
+        """A log task means the endpoint did not respond, so the data cannot
+        reflect anything the publisher has changed since it broke. The task table
+        is rebuilt in full on every run, so reclassifying later is a one-line
+        change with no backfill."""
         df = _build_df(
             spark,
             [
@@ -133,7 +133,7 @@ class TestTransformLogToTasks:
             LOG_COLUMNS,
         )
         result = transform_log_to_tasks(df)
-        assert result.collect()[0]["quality_dimension"] == "correctness"
+        assert result.collect()[0]["quality_dimension"] == "current"
 
     def test_task_source_is_log(self, spark):
         df = _build_df(
@@ -548,10 +548,10 @@ class TestTransformIssuesToTasks:
         }
         assert set(result.columns) == expected
 
-    def test_quality_dimension_rolls_up_to_correctness(self, spark):
-        """issue-type.csv carries a finer-grained dimension per issue type. All
-        five of its values are statements about whether the data itself is right,
-        so they map to correctness."""
+    def test_quality_dimension_comes_from_issue_type(self, spark):
+        """issue-type.csv carries the dimension per issue type and it passes
+        straight through untouched — `too small` is accuracy there, so the task
+        is accuracy. The specification owns the vocabulary, not this pipeline."""
         df = _issue_df(
             spark,
             [
@@ -569,13 +569,13 @@ class TestTransformIssuesToTasks:
             quality_dimension="accuracy",
         )
         result = transform_issues_to_tasks(df)
-        assert result.collect()[0]["quality_dimension"] == "correctness"
+        assert result.collect()[0]["quality_dimension"] == "accuracy"
 
     def test_untagged_issue_type_has_no_quality_dimension(self, spark):
-        """An issue type with no dimension gets null rather than being silently
-        counted as correctness. Every untagged type in issue-type.csv is
-        responsibility=internal, so this is the normal case for those rather
-        than a fault."""
+        """An issue type with no dimension gets null rather than an empty string,
+        so "speaks to no dimension" is one value everywhere. Every untagged type
+        in issue-type.csv is responsibility=internal, so this is the normal case
+        for those rather than a fault."""
         df = _issue_df(
             spark,
             [
@@ -1128,7 +1128,7 @@ class TestTransformExpectationsToTasks:
             EXPECTATION_COLUMNS,
         )
         result = transform_expectations_to_tasks(df, _org_df(spark))
-        assert result.collect()[0]["quality_dimension"] == "correctness"
+        assert result.collect()[0]["quality_dimension"] == "uniqueness"
 
     def test_unmapped_operation_has_no_quality_dimension(self, spark):
         """A check nobody has classified yet produces a task with no dimension
