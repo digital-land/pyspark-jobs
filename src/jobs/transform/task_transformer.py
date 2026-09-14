@@ -26,6 +26,8 @@ from pyspark.sql.functions import (
 from pyspark.sql.functions import sum as spark_sum
 from pyspark.sql.functions import (
     to_json,
+    trim,
+    when,
 )
 from pyspark.sql.types import (
     ArrayType,
@@ -39,7 +41,6 @@ from jobs.config.authoritativeness_task import load_authoritativeness_task_rule
 from jobs.config.quality_dimensions import (
     LOG_DIMENSION,
     load_expectation_dimensions,
-    load_issue_type_dimensions,
 )
 
 logger = logging.getLogger(__name__)
@@ -155,13 +156,17 @@ def transform_issues_to_tasks(df: DataFrame, entry_date: str = None) -> DataFram
 
     df = df.filter(col("severity").isin(*TASK_SEVERITIES))
 
-    # issue-type.csv's fine-grained dimension rolls up to ours. Mapped before the
-    # group-by so the grouped rows already carry the value the task table stores;
-    # it is functionally determined by issue_type, which is in the group-by, so
-    # first() below is deterministic.
+    # issue-type.csv carries the dimension per issue type, so the specification's
+    # value is the one the task table stores and nothing maps it here. Normalised
+    # before the group-by: untagged issue types arrive as "" and become NULL, so
+    # "speaks to no dimension" is one value rather than a mix of "" and NULL. It is
+    # functionally determined by issue_type, which is in the group-by, so first()
+    # below stays deterministic.
     df = df.withColumn(
         "quality_dimension",
-        _dimension_map(load_issue_type_dimensions())[col("quality_dimension")],
+        when(trim(col("quality_dimension")) == "", lit(None).cast("string")).otherwise(
+            trim(col("quality_dimension"))
+        ),
     )
 
     if df.rdd.isEmpty():
