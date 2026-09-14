@@ -11,6 +11,7 @@ from pyspark.sql.types import BooleanType, StringType, StructField, StructType
 
 from jobs.pipeline.authority import (
     join_entity_quality_to_org,
+    live_datasets,
     non_authoritative_providers,
     owner_side_classification,
 )
@@ -39,6 +40,14 @@ ENTITY_ORG_SCHEMA = StructType(
         StructField("organisation", StringType(), True),
     ]
 )
+LIVE_DATASETS_SCHEMA = StructType([StructField("dataset", StringType(), True)])
+DATASET_SCHEMA = StructType(
+    [
+        StructField("dataset", StringType(), True),
+        StructField("environment", StringType(), True),
+        StructField("end_date", StringType(), True),
+    ]
+)
 
 
 def _entity_quality_df(spark, rows):
@@ -51,6 +60,14 @@ def _org_df(spark, rows):
 
 def _entity_org_df(spark, rows):
     return spark.createDataFrame(rows, schema=ENTITY_ORG_SCHEMA)
+
+
+def _live_datasets_df(spark, datasets):
+    return spark.createDataFrame([(d,) for d in datasets], schema=LIVE_DATASETS_SCHEMA)
+
+
+def _dataset_df(spark, rows):
+    return spark.createDataFrame(rows, schema=DATASET_SCHEMA)
 
 
 class TestOwnerSideClassification:
@@ -96,6 +113,7 @@ class TestNonAuthoritativeProviders:
             _entity_quality_df(spark, []),
             _org_df(spark, [("local-authority:BRO", "100", True)]),
             _entity_org_df(spark, [("conservation-area", "local-authority:BRO")]),
+            _live_datasets_df(spark, ["conservation-area"]),
             restrict_to_active_orgs=True,
         )
         row = result.collect()[0]
@@ -107,6 +125,7 @@ class TestNonAuthoritativeProviders:
             _entity_quality_df(spark, [("1", "100", "some", "conservation-area")]),
             _org_df(spark, [("local-authority:BRO", "100", True)]),
             _entity_org_df(spark, [("conservation-area", "local-authority:BRO")]),
+            _live_datasets_df(spark, ["conservation-area"]),
             restrict_to_active_orgs=True,
         )
         row = result.collect()[0]
@@ -122,6 +141,7 @@ class TestNonAuthoritativeProviders:
             ),
             _org_df(spark, [("local-authority:BRO", "100", True)]),
             _entity_org_df(spark, [("conservation-area", "local-authority:BRO")]),
+            _live_datasets_df(spark, ["conservation-area"]),
             restrict_to_active_orgs=True,
         )
         assert result.count() == 0
@@ -133,6 +153,7 @@ class TestNonAuthoritativeProviders:
             _entity_quality_df(spark, []),
             _org_df(spark, [("local-authority:BRO", "100", True)]),
             _entity_org_df(spark, []),
+            _live_datasets_df(spark, ["conservation-area"]),
             restrict_to_active_orgs=True,
         )
         assert result.count() == 0
@@ -142,6 +163,7 @@ class TestNonAuthoritativeProviders:
             _entity_quality_df(spark, []),
             _org_df(spark, [("local-authority:BRO", "100", False)]),
             _entity_org_df(spark, [("conservation-area", "local-authority:BRO")]),
+            _live_datasets_df(spark, ["conservation-area"]),
             restrict_to_active_orgs=True,
         )
         assert result.count() == 0
@@ -151,9 +173,43 @@ class TestNonAuthoritativeProviders:
             _entity_quality_df(spark, []),
             _org_df(spark, [("local-authority:BRO", "100", False)]),
             _entity_org_df(spark, [("conservation-area", "local-authority:BRO")]),
+            _live_datasets_df(spark, ["conservation-area"]),
             restrict_to_active_orgs=False,
         )
         assert result.count() == 1
+
+    def test_designated_provider_for_a_non_live_dataset_gets_no_task(self, spark):
+        """Designation config outlives the dataset. A provider still designated
+        for a dataset the platform no longer builds must produce no task —
+        without this filter, retired datasets alone produced ~580 tasks in
+        production that nobody could act on."""
+        result = non_authoritative_providers(
+            _entity_quality_df(spark, []),
+            _org_df(spark, [("local-authority:BRO", "100", True)]),
+            _entity_org_df(spark, [("retired-dataset", "local-authority:BRO")]),
+            _live_datasets_df(spark, ["conservation-area"]),
+            restrict_to_active_orgs=True,
+        )
+        assert result.count() == 0
+
+    def test_live_and_non_live_designations_are_separated(self, spark):
+        """The filter must drop only the non-live dataset, not the whole
+        population — guards against an over-broad join killing real tasks."""
+        result = non_authoritative_providers(
+            _entity_quality_df(spark, []),
+            _org_df(spark, [("local-authority:BRO", "100", True)]),
+            _entity_org_df(
+                spark,
+                [
+                    ("conservation-area", "local-authority:BRO"),
+                    ("retired-dataset", "local-authority:BRO"),
+                ],
+            ),
+            _live_datasets_df(spark, ["conservation-area"]),
+            restrict_to_active_orgs=True,
+        )
+        rows = result.collect()
+        assert [r["dataset"] for r in rows] == ["conservation-area"]
 
     def test_agrees_with_owner_side_classification_on_the_same_input(self, spark):
         """Consistency guard: an org owner_side_classification calls
@@ -191,7 +247,11 @@ class TestNonAuthoritativeProviders:
         non_authoritative = {
             r["organisation"]
             for r in non_authoritative_providers(
-                entity_quality, org_df, entity_org_df, restrict_to_active_orgs=True
+                entity_quality,
+                org_df,
+                entity_org_df,
+                _live_datasets_df(spark, ["conservation-area"]),
+                restrict_to_active_orgs=True,
             ).collect()
         }
 
@@ -199,3 +259,54 @@ class TestNonAuthoritativeProviders:
         assert "local-authority:BRO" not in non_authoritative
         assert owner["local-authority:LBH"] == "some"
         assert "local-authority:LBH" in non_authoritative
+
+
+class TestLiveDatasets:
+    """Both excluded cases here are real: development-plan-document is a
+    production dataset end-dated in February, and local-plan-housing has a
+    blank environment. Between them they accounted for 578 of the bogus tasks
+    this filter removes."""
+
+    def test_end_dated_dataset_is_excluded(self, spark):
+        dataset_df = _dataset_df(
+            spark,
+            [
+                ("conservation-area", "production", ""),
+                ("development-plan-document", "production", "2026-02-03"),
+            ],
+        )
+        result = {
+            r["dataset"] for r in live_datasets(dataset_df, "production").collect()
+        }
+        assert result == {"conservation-area"}
+
+    def test_blank_environment_is_built_nowhere(self, spark):
+        dataset_df = _dataset_df(
+            spark,
+            [
+                ("conservation-area", "production", ""),
+                ("local-plan-housing", "", ""),
+            ],
+        )
+        for env in ("production", "staging", "development"):
+            result = {r["dataset"] for r in live_datasets(dataset_df, env).collect()}
+            assert result == {"conservation-area"}, f"failed for env={env}"
+
+    def test_environment_tiering(self, spark):
+        """production everywhere, staging in staging+development,
+        development only in development."""
+        dataset_df = _dataset_df(
+            spark,
+            [
+                ("prod-ds", "production", ""),
+                ("staging-ds", "staging", ""),
+                ("dev-ds", "development", ""),
+            ],
+        )
+
+        def live_in(env):
+            return {r["dataset"] for r in live_datasets(dataset_df, env).collect()}
+
+        assert live_in("production") == {"prod-ds"}
+        assert live_in("staging") == {"prod-ds", "staging-ds"}
+        assert live_in("development") == {"prod-ds", "staging-ds", "dev-ds"}

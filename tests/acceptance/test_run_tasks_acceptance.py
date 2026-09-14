@@ -26,6 +26,7 @@ def test_help_flag_returns_zero(cli_runner, run_tasks_cmd):
     assert "--env" in result.output
     assert "--collection-data-path" in result.output
     assert "--entity-data-path" in result.output
+    assert "--output-path" in result.output
     assert "--parquet-datasets-path" in result.output
 
 
@@ -244,6 +245,16 @@ def test_e2e_task_generation_pipeline(
         ["entity", "organisation-entity", "quality"],
         [],
     )
+    # The authority leg scopes tasks to datasets this environment builds, so
+    # every dataset under test has to be live in the specification.
+    _write_csv(
+        os.path.join(base, "specification", "dataset.csv"),
+        ["dataset", "environment", "end-date"],
+        [
+            {"dataset": dataset, "environment": "production", "end-date": ""}
+            for dataset in ("conservation-area", "tree-preservation-order", "tree")
+        ],
+    )
 
     # -- Mock infrastructure --------------------------------------------------
 
@@ -333,3 +344,10 @@ def test_e2e_task_generation_pipeline(
 
     # Postgres write was called once with the full tasks DataFrame
     assert mock_pg.call_count == 1
+
+    # --output-path was not passed, so this also exercises the CLI default
+    # ({collection-data-path}dataset/) — the path production actually resolves,
+    # since the DAG doesn't pass the flag either.
+    with open(os.path.join(base, "dataset", "task.csv")) as f:
+        csv_rows = list(csv.DictReader(f))
+    assert {r["reference"] for r in csv_rows} == {r["reference"] for r in rows}

@@ -4,7 +4,8 @@ run_tasks.py
 Entry point for the cross-collection task generation job on Amazon EMR Serverless.
 
 Reads collection log and issue CSVs across all collections, filters to active
-resources, and writes a plain Parquet task table to the parquet datasets bucket.
+resources, and writes the task table three ways: Delta to the parquet datasets
+bucket, serving Postgres, and a CSV to the collection-data bucket for download.
 
 Usage:
 1. Package code into a .whl using setup.py.
@@ -49,6 +50,13 @@ logger = logging.getLogger(__name__)
     "(default: {collection-data-path}dataset/)",
 )
 @click.option(
+    "--output-path",
+    required=False,
+    type=str,
+    default=None,
+    help="Where the task CSV is written (default: {collection-data-path}dataset/)",
+)
+@click.option(
     "--parquet-datasets-path",
     required=False,
     type=str,
@@ -72,6 +80,7 @@ def run(
     env,
     collection_data_path,
     entity_data_path,
+    output_path,
     parquet_datasets_path,
     database_url,
     debug,
@@ -84,10 +93,13 @@ def run(
     for logger_name in ("boto3", "botocore", "urllib3", "py4j", "pyspark"):
         logging.getLogger(logger_name).setLevel(logging.WARNING)
 
-    resolved_collection_data_path = collection_data_path or f"s3://{env}-collection-data/"
+    resolved_collection_data_path = (
+        collection_data_path or f"s3://{env}-collection-data/"
+    )
     job.generate_tasks(
         collection_data_path=resolved_collection_data_path,
         entity_data_path=entity_data_path or f"{resolved_collection_data_path}dataset/",
+        output_path=output_path or f"{resolved_collection_data_path}dataset/",
         parquet_datasets_path=parquet_datasets_path or f"s3://{env}-parquet-datasets/",
         env=env,
         database_url=database_url,

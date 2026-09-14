@@ -82,6 +82,27 @@ def write_delta(
     logger.info(f"write_delta: Successfully wrote {row_count:,} rows for '{dataset}'")
 
 
+def write_single_csv(df, output_path, name):
+    """Write df as a single header CSV at output_path/name.csv.
+
+    Spark writes a directory of part-files, so we coalesce(1), then move the
+    one part-file to the target name. Callers write small aggregates
+    (hundreds/thousands of rows), so a driver-side move is fine.
+    """
+    from cloudpathlib import AnyPath
+
+    tmp_dir = AnyPath(output_path) / f"_tmp_{name}"
+    df.coalesce(1).write.mode("overwrite").option("header", "true").option(
+        "escape", '"'
+    ).csv(str(tmp_dir))
+    part = next(p for p in tmp_dir.glob("part-*.csv"))
+    target = AnyPath(output_path) / f"{name}.csv"
+    target.write_bytes(part.read_bytes())
+    for p in tmp_dir.glob("*"):
+        p.unlink()
+    logger.info(f"write_single_csv: Wrote {target}")
+
+
 def cleanup_temp_path(env, dataset_name):
     """Delete all objects in the temp S3 path for a dataset."""
     s3_client = boto3.client("s3")

@@ -18,6 +18,7 @@ from pyspark.sql.functions import when
 
 from jobs.pipeline.authority import (
     join_entity_quality_to_org,
+    live_datasets,
     load_entity_quality,
     owner_side_classification,
 )
@@ -26,6 +27,7 @@ from jobs.read import read_csvs_by_name
 from jobs.utils.collection_paths import collection_files, collection_names
 from jobs.utils.df_utils import normalise_column_names
 from jobs.utils.postgres_writer_utils import write_table_to_postgres
+from jobs.utils.s3_writer_utils import write_single_csv
 
 logger = logging.getLogger(__name__)
 
@@ -81,30 +83,6 @@ def _seeder_alt_sources(eq, lookup_df, entity_org_df, active_orgs):
         col("seeder").alias("organisation"),
         lit("some").alias("seeder_quality"),
         col("seeded_count").alias("seeder_entity_count"),
-    )
-
-
-def _live_datasets(dataset_df, env):
-    """The datasets the platform builds in `env` and has not retired.
-
-    Mirrors is_dataset_available in airflow-dags (dags/utils.py): a
-    `production` dataset is built in every environment, `staging` only in
-    staging and development, `development` only in development, and a blank
-    environment is not built anywhere. An end-dated dataset is retired
-    whatever its environment (e.g. development-plan-document, which is
-    production but was end-dated in February).
-    """
-    available = col("environment") == "production"
-    if env in ("staging", "development"):
-        available = available | (col("environment") == "staging")
-    if env == "development":
-        available = available | (col("environment") == "development")
-
-    return (
-        dataset_df.filter(available)
-        .filter(col("end_date").isNull() | (col("end_date") == ""))
-        .select("dataset")
-        .distinct()
     )
 
 
@@ -352,7 +330,7 @@ class ProvisionQualityPipeline(BasePipeline):
         dataset_df = normalise_column_names(
             spark.read.option("header", "true").csv(dataset_path)
         )
-        live_datasets_df = _live_datasets(dataset_df, self.config.env)
+        live_datasets_df = live_datasets(dataset_df, self.config.env)
 
         # -- Entity + quality (SWAPPABLE SEAM) ----------------------------------
         entity_quality_df = load_entity_quality(spark, entity_data_path)
@@ -387,7 +365,7 @@ class ProvisionQualityPipeline(BasePipeline):
         organisation_quality = _build_organisation_quality(provision_quality)
 
         # -- Write (phase 1: CSV) ----------------------------------------------
-        self._write_single_csv(
+        write_single_csv(
             provision_quality.orderBy(
                 col("dataset"),
                 lower(col("organisation_name")).asc_nulls_last(),
@@ -395,10 +373,10 @@ class ProvisionQualityPipeline(BasePipeline):
             output_path,
             "provision-quality",
         )
-        self._write_single_csv(
+        write_single_csv(
             dataset_quality.orderBy("dataset"), output_path, "dataset-quality"
         )
-        self._write_single_csv(
+        write_single_csv(
             organisation_quality.orderBy(lower(col("organisation_name"))),
             output_path,
             "organisation-quality",
@@ -429,21 +407,3 @@ class ProvisionQualityPipeline(BasePipeline):
             logger.info(
                 "ProvisionQuality: No database_url provided — skipping Postgres writes"
             )
-
-    def _write_single_csv(self, df, output_path, name):
-        """Write df as a single header CSV at output_path/name.csv.
-
-        Spark writes a directory of part-files, so we coalesce(1), then move the
-        one part-file to the target name. The outputs are small aggregates
-        (hundreds/thousands of rows), so a driver-side move is fine.
-        """
-        tmp_dir = AnyPath(output_path) / f"_tmp_{name}"
-        df.coalesce(1).write.mode("overwrite").option("header", "true").csv(
-            str(tmp_dir)
-        )
-        part = next(p for p in tmp_dir.glob("part-*.csv"))
-        target = AnyPath(output_path) / f"{name}.csv"
-        target.write_bytes(part.read_bytes())
-        for p in tmp_dir.glob("*"):
-            p.unlink()
-        logger.info(f"ProvisionQuality: Wrote {target}")
