@@ -13,6 +13,7 @@ from jobs.pipeline.task import (
     _active_resources_from_log,
     _backfill_dataset_from_source,
     _backfill_organisation_from_source,
+    _latest_log_entry_per_endpoint,
 )
 
 from ._test_helpers import write_csv
@@ -70,13 +71,18 @@ class TestTaskPipeline:
         """TaskPipeline produces no duplicate references even when the same
         endpoint fails on multiple collection days — realistic log.csv scenario
         where extra columns (entry-date, bytes, elapsed) would previously prevent
-        .distinct() from deduplicating repeated failures."""
+        .distinct() from deduplicating repeated failures.
+
+        _latest_log_entry_per_endpoint now collapses the repeated-failure case
+        upstream, so the endpoint's LAST entry must be the failure for this to
+        assert anything about log tasks at all."""
         base = str(tmp_path)
         parquet_base = os.path.join(base, "parquet-output/")
 
         # Same endpoint failing on two different dates — the key scenario.
         # entry-date and elapsed differ, which previously caused .distinct()
-        # to keep both rows and produce duplicate reference hashes.
+        # to keep both rows and produce duplicate reference hashes. The 200
+        # comes first so the endpoint's current state is still "failing".
         write_csv(
             os.path.join(base, "test-collection", "collection", "log.csv"),
             [
@@ -92,11 +98,11 @@ class TestTaskPipeline:
                 {
                     "endpoint": "http://endpoint-a",
                     "resource": "resource-aaa",
-                    "status": "404",
+                    "status": "200",
                     "exception": "",
                     "entry-date": "2026-01-01",
                     "bytes": "200",
-                    "elapsed": "1.2",
+                    "elapsed": "1.0",
                 },
                 {
                     "endpoint": "http://endpoint-a",
@@ -105,16 +111,16 @@ class TestTaskPipeline:
                     "exception": "",
                     "entry-date": "2026-01-02",
                     "bytes": "200",
-                    "elapsed": "1.1",
+                    "elapsed": "1.2",
                 },
                 {
                     "endpoint": "http://endpoint-a",
                     "resource": "resource-aaa",
-                    "status": "200",
+                    "status": "404",
                     "exception": "",
                     "entry-date": "2026-01-03",
                     "bytes": "200",
-                    "elapsed": "1.0",
+                    "elapsed": "1.1",
                 },
             ],
         )
@@ -615,3 +621,307 @@ def test_active_resources_from_log_uses_latest_successful_per_endpoint(spark):
     # Only endpoint-a's latest 200 survives; the superseded resource and the
     # never-successful endpoint-b are both excluded.
     assert rows == {("endpoint-a", "resource-current", "dataset-a", "org:1")}
+
+
+class TestLatestLogEntryPerEndpoint:
+    """A log task describes how an endpoint is behaving NOW, so only its most
+    recent entry may produce one. Without this every failure an endpoint ever
+    had becomes a task for ever, long after the publisher has fixed it."""
+
+    def test_keeps_only_the_most_recent_entry_per_endpoint(self, spark):
+        log_df = spark.createDataFrame(
+            [
+                # recovered: failed once, has collected cleanly since
+                ("endpoint-a", "", "404", "2026-01-01"),
+                ("endpoint-a", "resource-a", "200", "2026-02-01"),
+                # broken now: worked once, currently failing
+                ("endpoint-b", "resource-b", "200", "2026-01-01"),
+                ("endpoint-b", "", "500", "2026-02-01"),
+            ],
+            ["endpoint", "resource", "status", "entry_date"],
+        )
+
+        rows = {
+            (r["endpoint"], r["status"])
+            for r in _latest_log_entry_per_endpoint(log_df).collect()
+        }
+
+        assert rows == {("endpoint-a", "200"), ("endpoint-b", "500")}
+
+    def test_every_endpoint_keeps_exactly_one_row(self, spark):
+        log_df = spark.createDataFrame(
+            [
+                ("endpoint-a", "404", "2026-01-01"),
+                ("endpoint-a", "403", "2026-01-02"),
+                ("endpoint-a", "500", "2026-01-03"),
+            ],
+            ["endpoint", "status", "entry_date"],
+        )
+
+        result = _latest_log_entry_per_endpoint(log_df).collect()
+
+        # Three distinct failure statuses on one endpoint used to mean three
+        # tasks, permanently. Only the current one survives.
+        assert len(result) == 1
+        assert result[0]["status"] == "500"
+
+    def test_success_wins_a_tie_on_the_same_date(self, spark):
+        log_df = spark.createDataFrame(
+            [
+                ("endpoint-a", "404", "2026-02-01"),
+                ("endpoint-a", "200", "2026-02-01"),
+            ],
+            ["endpoint", "status", "entry_date"],
+        )
+
+        result = _latest_log_entry_per_endpoint(log_df).collect()
+
+        # Collected successfully at some point on its last day, so it works.
+        assert len(result) == 1
+        assert result[0]["status"] == "200"
+
+    def test_a_row_with_no_status_loses_a_tie_to_a_real_one(self, spark):
+        log_df = spark.createDataFrame(
+            [
+                ("endpoint-a", None, "2026-02-01"),
+                ("endpoint-a", "200", "2026-02-01"),
+            ],
+            ["endpoint", "status", "entry_date"],
+        )
+
+        result = _latest_log_entry_per_endpoint(log_df).collect()
+
+        assert len(result) == 1
+        assert result[0]["status"] == "200"
+
+
+def _write_source(base, collection, rows):
+    """source.csv for a collection. Only endpoint, pipelines, organisation and
+    end-date are read by TaskPipeline; an end-date means the endpoint is retired."""
+    write_csv(
+        os.path.join(base, collection, "collection", "source.csv"),
+        ["endpoint", "pipelines", "organisation", "end-date"],
+        rows,
+    )
+
+
+def _write_log(base, collection, rows):
+    write_csv(
+        os.path.join(base, collection, "collection", "log.csv"),
+        ["endpoint", "resource", "status", "exception", "entry-date"],
+        rows,
+    )
+
+
+def _write_issue(base, collection, dataset, resource):
+    write_csv(
+        os.path.join(base, collection, "issue", dataset, f"{resource}.csv"),
+        [
+            "dataset",
+            "resource",
+            "line-number",
+            "entry-number",
+            "field",
+            "issue-type",
+            "value",
+            "message",
+        ],
+        [
+            {
+                "dataset": dataset,
+                "resource": resource,
+                "line-number": "1",
+                "entry-number": "1",
+                "field": "geometry",
+                "issue-type": "invalid-geometry",
+                "value": "POLYGON((0 0))",
+                "message": "invalid",
+            }
+        ],
+    )
+
+
+def _run_task_pipeline(spark, base):
+    parquet_base = os.path.join(base, "parquet-output/")
+    config = PipelineConfig(
+        spark=spark,
+        dataset="",
+        env="local",
+        collection_data_path=f"{base}/",
+        parquet_datasets_path=parquet_base,
+    )
+    TaskPipeline(config).run(
+        entity_data_path=os.path.join(base, "entity"),
+        output_path=os.path.join(base, "csv-output/"),
+    )
+    return spark.read.format("delta").load(os.path.join(parquet_base, "task"))
+
+
+class TestRetiredAndRecoveredEndpoints:
+    """The two ways a task stops being real: the publisher fixed the endpoint,
+    or retired it. Both must clear the task. These are the first tests to drive
+    execute() with a source.csv, which is what makes an endpoint retired."""
+
+    def test_retired_endpoint_produces_no_tasks(self, spark, tmp_path, mocker):
+        """An end-dated source row means the endpoint is gone. Its frozen log and
+        issue history must not keep generating tasks every night."""
+        base = str(tmp_path)
+        collection = "dataset-a-collection"
+
+        _write_log(
+            base,
+            collection,
+            [
+                # endpoint-a: live, and currently failing
+                {
+                    "endpoint": "endpoint-a",
+                    "resource": "resource-aaa",
+                    "status": "200",
+                    "exception": "",
+                    "entry-date": "2026-01-01",
+                },
+                {
+                    "endpoint": "endpoint-a",
+                    "resource": "",
+                    "status": "404",
+                    "exception": "",
+                    "entry-date": "2026-01-02",
+                },
+                # endpoint-b: retired, and failing when it was switched off
+                {
+                    "endpoint": "endpoint-b",
+                    "resource": "resource-bbb",
+                    "status": "200",
+                    "exception": "",
+                    "entry-date": "2026-01-01",
+                },
+                {
+                    "endpoint": "endpoint-b",
+                    "resource": "",
+                    "status": "500",
+                    "exception": "",
+                    "entry-date": "2026-01-02",
+                },
+            ],
+        )
+        _write_source(
+            base,
+            collection,
+            [
+                {
+                    "endpoint": "endpoint-a",
+                    "pipelines": "dataset-a",
+                    "organisation": "organisation:1",
+                    "end-date": "",
+                },
+                {
+                    "endpoint": "endpoint-b",
+                    "pipelines": "dataset-a",
+                    "organisation": "organisation:1",
+                    "end-date": "2026-01-03",
+                },
+            ],
+        )
+        _write_issue(base, collection, "dataset-a", "resource-aaa")
+        _write_issue(base, collection, "dataset-a", "resource-bbb")
+
+        mocker.patch(
+            "jobs.pipeline.task._load_issue_type_df",
+            return_value=spark.createDataFrame(
+                [("invalid-geometry", "error", "external", "validity")],
+                ["issue_type", "severity", "responsibility", "quality_dimension"],
+            ),
+        )
+        _write_empty_authority_fixtures(base)
+
+        tasks = _run_task_pipeline(spark, base).collect()
+
+        endpoints = {r["endpoint"] for r in tasks}
+        assert "endpoint-b" not in endpoints, (
+            "retired endpoint still produced tasks — its log failures and the "
+            "issues on its last resource are both frozen and unactionable"
+        )
+        # The live endpoint is untouched: still a log task for the 404 and an
+        # issue task for its current resource.
+        assert endpoints == {"endpoint-a"}
+        assert {r["task_source"] for r in tasks} == {"log", "issue"}
+
+    def test_recovered_endpoint_produces_no_log_task(self, spark, tmp_path, mocker):
+        """An endpoint that failed and has since collected cleanly is fixed. Its
+        old failure must not keep producing a task — this is what makes the task
+        self-healing when a publisher repairs their endpoint."""
+        base = str(tmp_path)
+        collection = "dataset-a-collection"
+
+        _write_log(
+            base,
+            collection,
+            [
+                # endpoint-a: failed, then recovered
+                {
+                    "endpoint": "endpoint-a",
+                    "resource": "",
+                    "status": "404",
+                    "exception": "",
+                    "entry-date": "2026-01-01",
+                },
+                {
+                    "endpoint": "endpoint-a",
+                    "resource": "resource-aaa",
+                    "status": "200",
+                    "exception": "",
+                    "entry-date": "2026-01-02",
+                },
+                # endpoint-b: worked, then broke and is still broken
+                {
+                    "endpoint": "endpoint-b",
+                    "resource": "resource-bbb",
+                    "status": "200",
+                    "exception": "",
+                    "entry-date": "2026-01-01",
+                },
+                {
+                    "endpoint": "endpoint-b",
+                    "resource": "",
+                    "status": "503",
+                    "exception": "",
+                    "entry-date": "2026-01-02",
+                },
+            ],
+        )
+        _write_source(
+            base,
+            collection,
+            [
+                {
+                    "endpoint": endpoint,
+                    "pipelines": "dataset-a",
+                    "organisation": "organisation:1",
+                    "end-date": "",
+                }
+                for endpoint in ("endpoint-a", "endpoint-b")
+            ],
+        )
+        _write_issue(base, collection, "dataset-a", "resource-aaa")
+
+        mocker.patch(
+            "jobs.pipeline.task._load_issue_type_df",
+            return_value=spark.createDataFrame(
+                [("invalid-geometry", "error", "external", "validity")],
+                ["issue_type", "severity", "responsibility", "quality_dimension"],
+            ),
+        )
+        _write_empty_authority_fixtures(base)
+
+        tasks = _run_task_pipeline(spark, base).collect()
+
+        log_endpoints = {r["endpoint"] for r in tasks if r["task_source"] == "log"}
+        assert log_endpoints == {"endpoint-b"}, (
+            "a recovered endpoint must not carry a log task; only the one that "
+            "is still failing should"
+        )
+        # Recovery clears the log task but not the issues on the data it did
+        # publish — those are still the current resource.
+        assert any(
+            r["task_source"] == "issue" and r["endpoint"] == "endpoint-a" for r in tasks
+        )

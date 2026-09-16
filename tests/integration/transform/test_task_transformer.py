@@ -194,6 +194,80 @@ class TestTransformLogToTasks:
         assert details["status"] == 500
         assert details["exception"] == "Connection refused"
 
+    def test_row_with_no_status_becomes_a_task(self, spark):
+        """A connection-level failure (ConnectTimeout, SSLError) never reaches a
+        HTTP status, so the log records an exception and leaves status empty.
+        `status != "200"` is NULL for those rows, which silently dropped them —
+        the endpoint was broken and the publisher got no task at all."""
+        df = _build_df(
+            spark,
+            [
+                (
+                    "endpoint-aaa",
+                    "",
+                    "",
+                    "ConnectTimeout",
+                    "dataset-a",
+                    "organisation-x",
+                ),
+                (
+                    "endpoint-bbb",
+                    "",
+                    None,
+                    "SSLError",
+                    "dataset-a",
+                    "organisation-x",
+                ),
+            ],
+            LOG_COLUMNS,
+        )
+        result = transform_log_to_tasks(df)
+        assert result is not None
+        rows = result.collect()
+        assert len(rows) == 2
+        assert {json.loads(r["details"])["exception"] for r in rows} == {
+            "ConnectTimeout",
+            "SSLError",
+        }
+
+    def test_details_omits_status_for_a_connection_failure(self, spark):
+        """to_json drops null fields, so these tasks carry `exception` and no
+        `status` key at all. Anything parsing task.csv has to cope with both
+        shapes on a log row.
+
+        status is None, not "", because Spark's CSV reader turns an empty field
+        into NULL — which is exactly what made these rows vanish."""
+        df = _build_df(
+            spark,
+            [
+                (
+                    "endpoint-aaa",
+                    "",
+                    None,
+                    "ConnectTimeout",
+                    "dataset-a",
+                    "organisation-x",
+                ),
+                (
+                    "endpoint-bbb",
+                    "resource-bbb",
+                    "404",
+                    "",
+                    "dataset-a",
+                    "organisation-x",
+                ),
+            ],
+            LOG_COLUMNS,
+        )
+        details = {
+            r["endpoint"]: json.loads(r["details"])
+            for r in transform_log_to_tasks(df).collect()
+        }
+
+        assert "status" not in details["endpoint-aaa"]
+        assert details["endpoint-aaa"]["exception"] == "ConnectTimeout"
+        assert details["endpoint-bbb"]["status"] == 404
+
     def test_reference_is_16_chars(self, spark):
         df = _build_df(
             spark,

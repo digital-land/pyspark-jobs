@@ -137,6 +137,32 @@ def _active_resources_from_log(log_df, endpoint_attrs_df):
     )
 
 
+def _latest_log_entry_per_endpoint(log_df):
+    """The most recent log entry for each endpoint, whatever its status.
+
+    A log task should say how an endpoint is behaving NOW. Without this, every
+    distinct failure status an endpoint has ever returned becomes a task and stays
+    one for ever: a 404 from 2021 on an endpoint that has collected cleanly every
+    night since is already fixed, but still produces a task, and still pins its
+    provision to the bottom rung in provision_quality. Keeping only the latest
+    entry makes the task self-healing — the next successful collection clears it.
+
+    Mirrors the window in _active_resources_from_log, but keeps the latest entry
+    whatever its status rather than the latest successful one; transform_log_to_tasks
+    then decides whether that entry was a failure. On a date tie the lowest status
+    wins, so an endpoint logged both 200 and 404 on its last day counts as working,
+    and nulls sort last so a real status beats a connection error.
+    """
+    latest_per_endpoint = Window.partitionBy("endpoint").orderBy(
+        col("entry_date").desc(), col("status").asc_nulls_last()
+    )
+    return (
+        log_df.withColumn("_rank", row_number().over(latest_per_endpoint))
+        .filter(col("_rank") == 1)
+        .drop("_rank")
+    )
+
+
 class TaskPipeline(BasePipeline):
     """
     Cross-collection pipeline for generating task data from log and issue files.
@@ -197,10 +223,13 @@ class TaskPipeline(BasePipeline):
                 col("pipelines").alias("dataset"),
                 "organisation",
             ).dropDuplicates(["endpoint"])
+
+            active_endpoints_df = active_source_df.select("endpoint").distinct()
         else:
             endpoint_dataset_df = None
             endpoint_organisation_df = None
             endpoint_attrs_df = None
+            active_endpoints_df = None
 
         # -- Organisation + designation reference (used by the authority leg
         # below, and by the expectation leg further down for organisation) ----
@@ -220,6 +249,10 @@ class TaskPipeline(BasePipeline):
         entity_org_df = read_csvs_by_name(
             spark, eo_files, ["dataset", "organisation"]
         ).distinct()  # designated (dataset, org)
+
+        # -- Drop endpoints that have been retired ----------------------------
+        if active_endpoints_df is not None:
+            log_df = log_df.join(active_endpoints_df, on="endpoint", how="left_semi")
 
         # -- Active resources (current resource per endpoint, from the log) ------
         active_df = _active_resources_from_log(log_df, endpoint_attrs_df)
@@ -243,6 +276,9 @@ class TaskPipeline(BasePipeline):
         )
 
         # -- Log tasks --------------------------------------------------------
+        # Narrow to each endpoint's current state before attribution
+        log_df = _latest_log_entry_per_endpoint(log_df)
+
         log_df = log_df.join(
             active_df.select("resource", "dataset", "organisation"),
             on="resource",

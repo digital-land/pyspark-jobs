@@ -94,13 +94,16 @@ def transform_log_to_tasks(df: DataFrame, entry_date: str = None) -> DataFrame:
     Transform a log DataFrame into task rows.
 
     Expects df to already be joined with resource metadata so it has a
-    dataset column. Only rows where status != 200 become tasks.
+    dataset column. Rows become tasks where the collection did not succeed:
+    a non-200 status, or no status at all, which is a connection-level
+    failure carrying an exception instead.
+
     """
     entry_date = entry_date or str(date.today())
     logger.info("transform_log_to_tasks: Starting")
 
     df = (
-        df.filter(col("status") != "200")
+        df.filter(coalesce(col("status"), lit("")) != "200")
         .select(
             "dataset", "organisation", "endpoint", "resource", "status", "exception"
         )
