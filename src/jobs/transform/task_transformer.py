@@ -56,15 +56,17 @@ logger = logging.getLogger(__name__)
 # bring these back in sync if/when that implementation is updated to match.
 
 
-# The severities that become tasks. Tasks exist to be surfaced to publishers, and
-# only these three ever are, so notice/info/debug stay in the raw issue and
-# expectation logs only.
+# The severities that become tasks. `notice` is included so the table can be used
+# to work out which checks belong at which severity — NOT because notice tasks are
+# actionable. Two things keep them inert: provision_quality scores only severities
+# at or above `warning` (see _task_state), and submit requests severity=error for
+# the LPA dashboard. info/debug stay in the raw issue and expectation logs only.
 #
 # `critical` is listed ahead of anything using it: no issue-type or expect.csv row
 # has that severity today, so adding it changes nothing now. It has to be here
 # BEFORE the specification flips issue-types from error to critical, or those
 # issues would silently stop producing tasks in between.
-TASK_SEVERITIES = ("critical", "error", "warning")
+TASK_SEVERITIES = ("critical", "error", "warning", "notice")
 
 
 # Only the keys the bridge needs. from_json ignores everything else in the blob,
@@ -102,8 +104,15 @@ def transform_log_to_tasks(df: DataFrame, entry_date: str = None) -> DataFrame:
     entry_date = entry_date or str(date.today())
     logger.info("transform_log_to_tasks: Starting")
 
+    # No status means a connection-level failure ONLY when an exception was recorded.
     df = (
-        df.filter(coalesce(col("status"), lit("")) != "200")
+        df.filter(
+            (coalesce(col("status"), lit("")) != "200")
+            & (
+                (coalesce(col("status"), lit("")) != "")
+                | (coalesce(col("exception"), lit("")) != "")
+            )
+        )
         .select(
             "dataset", "organisation", "endpoint", "resource", "status", "exception"
         )

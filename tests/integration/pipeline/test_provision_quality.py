@@ -11,6 +11,7 @@ from jobs.pipeline.provision_quality import (
     _build_organisation_quality,
     _build_provision_quality,
     _drop_blank_organisations,
+    _task_state,
 )
 
 from ._test_helpers import write_csv
@@ -46,6 +47,43 @@ TASK_STATE_SCHEMA = (
 def _task_state_df(spark, rows=()):
     """(dataset, organisation, has_error_task, task_count), as _task_state emits."""
     return spark.createDataFrame(list(rows), TASK_STATE_SCHEMA)
+
+
+# specification/content/severity.csv. Hardcoded for the same reason as
+# QUALITY_PRIORITIES: the pipeline reads it over HTTP at runtime. LOWER IS MORE
+# SEVERE, so "error or worse" is `priority <= error`.
+SEVERITY_PRIORITIES = {
+    "critical": 1,
+    "error": 2,
+    "warning": 3,
+    "notice": 4,
+    "info": 5,
+    "debug": 6,
+}
+
+# dataset, organisation, severity, responsibility, quality_dimension — the five
+# columns load_tasks selects.
+TASK_COLUMNS = [
+    "dataset",
+    "organisation",
+    "severity",
+    "responsibility",
+    "quality_dimension",
+]
+
+
+def _task_row(severity="error", responsibility="external", dimension="validity"):
+    return (PQ_DATASET, PQ_ADU, severity, responsibility, dimension)
+
+
+def _task_state_for(spark, rows):
+    """_task_state over the given task rows, scoring severities down to `warning`."""
+    return _task_state(
+        spark.createDataFrame(list(rows), TASK_COLUMNS),
+        SEVERITY_PRIORITIES,
+        SEVERITY_PRIORITIES["error"],
+        SEVERITY_PRIORITIES["warning"],
+    )
 
 
 def _provision_quality_inputs(spark):
@@ -274,6 +312,85 @@ class TestProvisionQuality:
         )
         result = {r["organisation"] for r in _drop_blank_organisations(df).collect()}
         assert result == {PQ_ADU}
+
+
+class TestTaskState:
+    """What reaches the score at all. The rung comes from `task_count > 0`, not
+    from severity, so anything that survives this function moves a provision."""
+
+    def test_notice_tasks_do_not_reach_the_score(self, spark):
+        """★ The guard that lets the task table carry `notice` rows safely. ★
+
+        Nothing consumes a notice task, but `_assign_quality` reads
+        `task_count > 0` to decide the rung — so if a notice survived here, a
+        provision whose ONLY tasks were notices would silently drop off the top
+        of its band. Emitting no row at all leaves the left join null, which is
+        the same as having no tasks.
+        """
+        state = _task_state_for(spark, [_task_row(severity="notice")])
+
+        assert state.count() == 0
+
+    def test_notice_does_not_inflate_task_count_alongside_a_real_task(self, spark):
+        state = _task_state_for(
+            spark,
+            [
+                _task_row(severity="error"),
+                _task_row(severity="notice"),
+                _task_row(severity="notice"),
+            ],
+        ).collect()
+
+        assert len(state) == 1
+        assert state[0]["task_count"] == 1, "only the error counts"
+        assert state[0]["has_error_task"] == 1
+
+    def test_warning_counts_but_is_not_an_error(self, spark):
+        state = _task_state_for(spark, [_task_row(severity="warning")]).collect()
+
+        assert len(state) == 1
+        assert state[0]["task_count"] == 1
+        assert state[0]["has_error_task"] == 0
+
+    def test_critical_and_error_both_set_has_error_task(self, spark):
+        for severity in ("critical", "error"):
+            state = _task_state_for(spark, [_task_row(severity=severity)]).collect()
+            assert state[0]["has_error_task"] == 1, severity
+
+    def test_info_and_debug_do_not_reach_the_score(self, spark):
+        state = _task_state_for(
+            spark,
+            [_task_row(severity="info"), _task_row(severity="debug")],
+        )
+
+        assert state.count() == 0
+
+    def test_unrecognised_severity_does_not_reach_the_score(self, spark):
+        """A severity absent from severity.csv has no priority, so it cannot be
+        ranked — and something unrankable must not silently move a provision."""
+        state = _task_state_for(spark, [_task_row(severity="not-a-severity")])
+
+        assert state.count() == 0
+
+    def test_authoritativeness_and_internal_are_still_excluded(self, spark):
+        """Regression guard on the two exclusions that predate the severity
+        filter — both must survive it."""
+        state = _task_state_for(
+            spark,
+            [
+                _task_row(dimension="authoritativeness"),
+                _task_row(responsibility="internal"),
+            ],
+        )
+
+        assert state.count() == 0
+
+    def test_blank_organisation_is_still_excluded(self, spark):
+        state = _task_state_for(
+            spark, [(PQ_DATASET, "", "error", "external", "validity")]
+        )
+
+        assert state.count() == 0
 
 
 class TestAssignQuality:
