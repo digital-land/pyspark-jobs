@@ -112,7 +112,7 @@ def load_tasks(spark, parquet_datasets_path):
     )
 
 
-def _task_state(tasks_df, severity_priorities, error_priority):
+def _task_state(tasks_df, severity_priorities, error_priority, scoring_priority):
     """Per (dataset, organisation): is there an error-or-worse task, and any task at all?
 
     Authoritativeness tasks are EXCLUDED. They decide which band a provision sits
@@ -124,24 +124,29 @@ def _task_state(tasks_df, severity_priorities, error_priority):
     Internal responsibility is excluded: those are our processing problems and must
     not mark a publisher down. That also removes every task with no dimension,
     since all the untagged issue types in issue-type.csv are internal.
+
+    Severities below `scoring_priority` are excluded. The task table carries
+    `notice` rows so we can work out which checks belong at which severity, but a
+    notice must not move a provision: the rung comes from `task_count > 0`, so
+    without this a notice-only provision would silently drop off the top rung. An
+    unrecognised severity is excluded for the same reason — we cannot score what
+    we cannot rank.
     """
     severity_map = create_map([lit(x) for x in chain(*severity_priorities.items())])
     relevant = (
         tasks_df.filter(~col("quality_dimension").eqNullSafe(lit(AUTHORITATIVENESS)))
         .filter(~col("responsibility").eqNullSafe(lit("internal")))
         .filter(col("organisation").isNotNull() & (col("organisation") != ""))
+        .withColumn("severity_priority", severity_map[col("severity")])
+        .filter(col("severity_priority") <= lit(scoring_priority))
     )
-    return (
-        relevant.withColumn("severity_priority", severity_map[col("severity")])
-        .groupBy("dataset", "organisation")
-        .agg(
-            spark_max(
-                when(col("severity_priority") <= lit(error_priority), lit(1)).otherwise(
-                    lit(0)
-                )
-            ).alias("has_error_task"),
-            count(lit(1)).alias("task_count"),
-        )
+    return relevant.groupBy("dataset", "organisation").agg(
+        spark_max(
+            when(col("severity_priority") <= lit(error_priority), lit(1)).otherwise(
+                lit(0)
+            )
+        ).alias("has_error_task"),
+        count(lit(1)).alias("task_count"),
     )
 
 
@@ -461,6 +466,7 @@ class ProvisionQualityPipeline(BasePipeline):
             load_tasks(spark, self.config.parquet_datasets_path),
             severity_priorities,
             severity_priorities["error"],
+            severity_priorities["warning"],
         )
 
         # -- Classification + rollups ------------------------------------------

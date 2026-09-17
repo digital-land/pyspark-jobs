@@ -268,6 +268,54 @@ class TestTransformLogToTasks:
         assert details["endpoint-aaa"]["exception"] == "ConnectTimeout"
         assert details["endpoint-bbb"]["status"] == 404
 
+    def test_row_with_no_status_and_no_exception_is_not_a_failure(self, spark):
+        """Log rows from 2022 and earlier carry neither status nor exception, but
+        DO carry a resource — the collection succeeded, the old log format just
+        never recorded a status. Treating a missing status as a failure on its own
+        put a task on every one of these: 12 in production, against real
+        organisations, for collections that worked four years ago.
+
+        An exception is what proves a statusless row actually failed.
+        """
+        df = _build_df(
+            spark,
+            [
+                # succeeded, old log format: no status, no exception, HAS a resource
+                (
+                    "endpoint-aaa",
+                    "resource-aaa",
+                    "",
+                    "",
+                    "dataset-a",
+                    "organisation-x",
+                ),
+                # same but status read as NULL rather than empty string
+                (
+                    "endpoint-bbb",
+                    "resource-bbb",
+                    None,
+                    None,
+                    "dataset-a",
+                    "organisation-x",
+                ),
+                # genuinely failed: no status, but an exception to prove it
+                (
+                    "endpoint-ccc",
+                    "",
+                    "",
+                    "ConnectTimeout",
+                    "dataset-a",
+                    "organisation-x",
+                ),
+            ],
+            LOG_COLUMNS,
+        )
+        result = transform_log_to_tasks(df)
+        assert result is not None
+        rows = result.collect()
+        assert len(rows) == 1, "only the row carrying an exception is a failure"
+        assert rows[0]["endpoint"] == "endpoint-ccc"
+
     def test_reference_is_16_chars(self, spark):
         df = _build_df(
             spark,
@@ -496,7 +544,11 @@ class TestTransformIssuesToTasks:
         assert result.count() == 1
         assert result.collect()[0]["severity"] == "critical"
 
-    def test_excludes_notice_severity_rows(self, spark):
+    def test_includes_notice_severity_rows(self, spark):
+        """notice rows became tasks when `notice` joined TASK_SEVERITIES. They are
+        carried so we can work out which checks belong at which severity; nothing
+        acts on them. provision_quality drops anything below `warning`, and submit
+        asks the API for severity=error, so a notice reaches neither."""
         df = _issue_df(
             spark,
             [
@@ -523,8 +575,50 @@ class TestTransformIssuesToTasks:
             ],
         )
         result = transform_issues_to_tasks(df)
+        assert result.count() == 2
+        assert {r["severity"] for r in result.collect()} == {"error", "notice"}
+
+    def test_still_excludes_info_and_debug_severity_rows(self, spark):
+        """The line moved down to `notice`, it did not disappear — info and debug
+        stay in the raw issue log."""
+        df = _issue_df(
+            spark,
+            [
+                (
+                    "dataset-a",
+                    "resource-aaa",
+                    "name",
+                    "unknown entity",
+                    "notice",
+                    "internal",
+                    "organisation-x",
+                    "endpoint-aaa",
+                ),
+                (
+                    "dataset-a",
+                    "resource-aaa",
+                    "geometry",
+                    "some-info-issue",
+                    "info",
+                    "internal",
+                    "organisation-x",
+                    "endpoint-aaa",
+                ),
+                (
+                    "dataset-a",
+                    "resource-aaa",
+                    "geometry",
+                    "some-debug-issue",
+                    "debug",
+                    "internal",
+                    "organisation-x",
+                    "endpoint-aaa",
+                ),
+            ],
+        )
+        result = transform_issues_to_tasks(df)
         assert result.count() == 1
-        assert result.collect()[0]["severity"] == "error"
+        assert result.collect()[0]["severity"] == "notice"
 
     def test_returns_none_when_no_matching_rows(self, spark):
         df = _issue_df(
@@ -975,6 +1069,23 @@ class TestTransformExpectationsToTasks:
         result = transform_expectations_to_tasks(df, _org_df(spark))
         assert result.count() == 1
 
+    def test_includes_notice_severity_rows(self, spark):
+        """Most deployed expectations are severity=notice — 462 of the 470 live
+        expect.csv rows. They become tasks so we can see what they would flag;
+        provision_quality ignores anything below `warning`, so they cannot move a
+        score, and submit never requests them."""
+        df = _build_df(
+            spark,
+            [
+                _expectation_row(severity="notice", operation="count_lpa_boundary"),
+                _expectation_row(severity="info", operation="other_check"),
+            ],
+            EXPECTATION_COLUMNS,
+        )
+        result = transform_expectations_to_tasks(df, _org_df(spark))
+        assert result.count() == 1
+        assert result.collect()[0]["severity"] == "notice"
+
     def test_includes_critical_severity_rows(self, spark):
         df = _build_df(
             spark, [_expectation_row(severity="critical")], EXPECTATION_COLUMNS
@@ -983,9 +1094,11 @@ class TestTransformExpectationsToTasks:
         assert result.count() == 1
         assert result.collect()[0]["severity"] == "critical"
 
-    def test_excludes_notice_severity_rows(self, spark):
+    def test_notice_operations_from_config_now_become_tasks(self, spark):
         """count_lpa_boundary and count_deleted_entities are notice in config
-        expect.csv, and are the bulk of what stops being generated."""
+        expect.csv and are the bulk of what is deployed — 462 of the 470 live
+        rows. They used to be dropped here; they are now carried so we can see
+        what they would flag before deciding their real severity."""
         df = _build_df(
             spark,
             [
@@ -995,7 +1108,8 @@ class TestTransformExpectationsToTasks:
             EXPECTATION_COLUMNS,
         )
         result = transform_expectations_to_tasks(df, _org_df(spark))
-        assert result.count() == 1
+        assert result.count() == 2
+        assert {r["severity"] for r in result.collect()} == {"warning", "notice"}
 
     def test_includes_internal_responsibility_rows(self, spark):
         """Control A copies the issue filter, which has no responsibility
