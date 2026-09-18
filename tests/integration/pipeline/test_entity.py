@@ -12,6 +12,7 @@ import pytest
 
 from jobs.pipeline.base import PipelineConfig
 from jobs.pipeline.entity import EntityPipeline
+
 from ._test_helpers import write_csv, write_parquet
 
 # -- Test data ----------------------------------------------------------------

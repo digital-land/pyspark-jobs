@@ -216,6 +216,7 @@ def clean_provision_quality_table(db_conn):
             quality TEXT,
             entity_count BIGINT NOT NULL,
             quality_score DOUBLE PRECISION,
+            start_date DATE,
             PRIMARY KEY (dataset, organisation)
         );
         """

@@ -14,13 +14,18 @@ from pyspark.sql.functions import (
     first,
     lit,
     lower,
-    split,
 )
-
-from pyspark.sql.functions import sum as spark_sum
 from pyspark.sql.functions import max as spark_max
-from pyspark.sql.functions import when
-
+from pyspark.sql.functions import min as spark_min
+from pyspark.sql.functions import (
+    split,
+    substring,
+)
+from pyspark.sql.functions import sum as spark_sum
+from pyspark.sql.functions import (
+    to_date,
+    when,
+)
 
 from jobs.config.quality_dimensions import AUTHORITATIVENESS
 from jobs.pipeline.authority import (
@@ -150,8 +155,40 @@ def _task_state(tasks_df, severity_priorities, error_priority, scoring_priority)
     )
 
 
+def _provision_start_dates(dated_source_df):
+    """Earliest entry-date per (dataset, organisation) — when an endpoint was first
+    added for that provision.
+
+    Ended source rows are kept deliberately. A provider whose URL changed got a new
+    source row and the old one was end-dated, so counting only live rows would report
+    a provider active since 2021 as having started in 2025. That differs for 42% of
+    provisions, which is the decision this function exists to hold.
+
+    entry-date is an ISO timestamp ("2023-07-07T13:13:02Z"). The date part is taken by
+    substring rather than by cast, because casting a Z-suffixed timestamp is
+    version-dependent and can silently return null.
+    """
+    return (
+        dated_source_df.filter(col("endpoint").isNotNull() & (col("endpoint") != ""))
+        .select(
+            explode(split(col("pipelines"), ";")).alias("dataset"),
+            col("organisation"),
+            to_date(substring(col("entry_date"), 1, 10)).alias("start_date"),
+        )
+        .filter(col("start_date").isNotNull())
+        .groupBy("dataset", "organisation")
+        .agg(spark_min("start_date").alias("start_date"))
+    )
+
+
 def _build_provision_quality(
-    providers_df, org_df, entity_org_df, lookup_df, entity_quality_df, declared_df
+    providers_df,
+    org_df,
+    entity_org_df,
+    lookup_df,
+    entity_quality_df,
+    declared_df,
+    start_dates_df,
 ):
     """Base table: one row per (dataset, organisation) that has an active endpoint
     OR owns entities OR is a detected seeder. Nothing dropped; flags distinguish
@@ -193,6 +230,7 @@ def _build_provision_quality(
             on="organisation",
             how="left",
         )
+        .join(start_dates_df, on=["dataset", "organisation"], how="left")
     )
 
     return pq.select(
@@ -209,6 +247,7 @@ def _build_provision_quality(
         coalesce(col("owned_entity_count"), col("seeder_entity_count"), lit(0)).alias(
             "entity_count"
         ),
+        "start_date",
     )
 
 
@@ -261,6 +300,7 @@ def _assign_quality(provision_quality, task_state, quality_priorities):
         word[col("priority")].alias("quality"),
         "entity_count",
         col("priority").cast("double").alias("quality_score"),
+        "start_date",
     )
 
 
@@ -328,6 +368,7 @@ PROVISION_QUALITY_PG_TYPES = [
     ("quality", "TEXT"),
     ("entity_count", "BIGINT"),
     ("quality_score", "DOUBLE PRECISION"),
+    ("start_date", "DATE"),
 ]
 
 DATASET_QUALITY_PG_TYPES = [
@@ -383,6 +424,16 @@ class ProvisionQualityPipeline(BasePipeline):
             )
             .distinct()
         )
+
+        # -- Provision start date (source.csv → when the endpoint was added) ----
+        # Read separately from the active-source read above: read_csvs_by_name
+        # SKIPS any file missing a requested column, so folding entry_date into
+        # that select would silently drop a whole collection's providers if one
+        # source.csv predates the column.
+        dated_source_df = read_csvs_by_name(
+            spark, source_files, ["endpoint", "organisation", "pipelines", "entry_date"]
+        )
+        start_dates = _provision_start_dates(dated_source_df)
 
         # -- Active resources (resource.csv → is data still arriving) -----------
         # A resource's end-date is the last date the collector saw it, so blank
@@ -477,6 +528,7 @@ class ProvisionQualityPipeline(BasePipeline):
             lookup_df,
             entity_quality_df,
             declared_df,
+            start_dates,
         ).localCheckpoint(
             eager=True
         )  # materialise once AND truncate the huge plan

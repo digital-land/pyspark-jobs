@@ -4,6 +4,8 @@ Integration tests for ProvisionQualityPipeline and its module-level helpers.
 Uses a real Spark session and local filesystem for reads/writes.
 """
 
+from datetime import date
+
 from jobs.pipeline.authority import load_entity_quality
 from jobs.pipeline.provision_quality import (
     _assign_quality,
@@ -11,6 +13,7 @@ from jobs.pipeline.provision_quality import (
     _build_organisation_quality,
     _build_provision_quality,
     _drop_blank_organisations,
+    _provision_start_dates,
     _task_state,
 )
 
@@ -138,6 +141,17 @@ def _provision_quality_inputs(spark):
         ],
         ["dataset", "organisation"],
     )
+    # Pre-aggregated in execute(): one row per (dataset, organisation) that has
+    # ever had a source row. Lewes and Declared DC are deliberately absent —
+    # neither ever supplied through an endpoint of its own, so neither has a date.
+    start_dates_df = spark.createDataFrame(
+        [
+            (PQ_DATASET, PQ_ADU, date(2021, 3, 4)),
+            (PQ_DATASET, PQ_MHCLG, date(2022, 7, 1)),
+            (PQ_DATASET, PQ_NEW, date(2024, 11, 12)),
+        ],
+        ["dataset", "organisation", "start_date"],
+    )
     return (
         providers_df,
         org_df,
@@ -145,6 +159,7 @@ def _provision_quality_inputs(spark):
         lookup_df,
         entity_quality_df,
         declared_df,
+        start_dates_df,
     )
 
 
@@ -208,6 +223,86 @@ class TestProvisionQuality:
         assert dec["is_designated_provider"] is False
         assert dec["entity_quality"] is None
         assert dec["entity_count"] == 0
+
+    def test_provision_start_dates_takes_earliest_including_ended_rows(self, spark):
+        """The decision this column rests on: a provider whose URL changed has an
+        end-dated source row and a live one, and the provision began at the older of
+        the two. Counting only live rows would report a 2021 provider as starting in
+        2025, which differs for 42% of provisions."""
+        source_df = spark.createDataFrame(
+            [
+                # Adur replaced its URL — the 2021 row was end-dated, 2025 is live
+                (
+                    "https://adur.example/old.csv",
+                    PQ_ADU,
+                    PQ_DATASET,
+                    "2021-03-04T09:00:00Z",
+                ),
+                (
+                    "https://adur.example/new.csv",
+                    PQ_ADU,
+                    PQ_DATASET,
+                    "2025-01-09T09:00:00Z",
+                ),
+                # one source row feeding two datasets via ';'-split pipelines
+                (
+                    "https://mhclg.example/a.csv",
+                    PQ_MHCLG,
+                    f"{PQ_DATASET};article-4-direction",
+                    "2022-07-01T13:13:02Z",
+                ),
+                # no endpoint configured — not a provision at all
+                ("", PQ_NEW, PQ_DATASET, "2020-01-01T00:00:00Z"),
+                # endpoint but no entry-date — nothing to report
+                ("https://new.example/a.csv", PQ_NEW, PQ_DATASET, None),
+            ],
+            ["endpoint", "organisation", "pipelines", "entry_date"],
+        )
+
+        rows = {
+            (r["dataset"], r["organisation"]): r["start_date"]
+            for r in _provision_start_dates(source_df).collect()
+        }
+
+        # the earlier, end-dated row wins
+        assert rows[(PQ_DATASET, PQ_ADU)] == date(2021, 3, 4)
+
+        # a ';'-joined pipelines value produces one row per dataset
+        assert rows[(PQ_DATASET, PQ_MHCLG)] == date(2022, 7, 1)
+        assert rows[("article-4-direction", PQ_MHCLG)] == date(2022, 7, 1)
+
+        # a blank endpoint is not a provision, and a missing entry-date has no date
+        assert (PQ_DATASET, PQ_NEW) not in rows
+        assert len(rows) == 3
+
+    def test_start_date_is_null_where_there_is_no_source_row(self, spark):
+        """The date comes from source.csv, so only an organisation that supplied
+        through an endpoint of its own has one. Lewes owns entities seeded on its
+        behalf and Declared DC has supplied nothing, so neither is the provider and
+        neither has a date to report — a blank here means "not the provider", not
+        "has not started"."""
+        pq = _build_provision_quality(*_provision_quality_inputs(spark))
+        rows = {r["organisation"]: r.asDict() for r in pq.collect()}
+
+        assert rows[PQ_ADU]["start_date"] == date(2021, 3, 4)
+        assert rows[PQ_MHCLG]["start_date"] == date(2022, 7, 1)
+        assert rows[PQ_NEW]["start_date"] == date(2024, 11, 12)
+
+        assert rows[PQ_LEW]["start_date"] is None
+        assert rows[PQ_DEC]["start_date"] is None
+
+        # a left join onto the key set must not add or duplicate provisions
+        assert pq.count() == 5
+
+    def test_start_date_survives_scoring(self, spark):
+        """_assign_quality re-selects every output column by name, so a new column is
+        silently dropped unless it is named there too. That failure is quiet in the
+        CSV and fatal at the Postgres write, whose column list comes from
+        PROVISION_QUALITY_PG_TYPES."""
+        rows = _scored_rows(spark)
+
+        assert rows[PQ_ADU]["start_date"] == date(2021, 3, 4)
+        assert rows[PQ_LEW]["start_date"] is None
 
     def test_dataset_quality_rollup(self, spark):
         ds = {
