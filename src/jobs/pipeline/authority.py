@@ -12,8 +12,9 @@ import logging
 from functools import reduce
 
 from cloudpathlib import AnyPath
-from pyspark.sql.functions import coalesce, col, countDistinct, lit, when
+from pyspark.sql.functions import coalesce, col, countDistinct, lit
 from pyspark.sql.functions import sum as spark_sum
+from pyspark.sql.functions import when
 
 logger = logging.getLogger(__name__)
 

@@ -591,6 +591,7 @@ def test_write_table_to_postgres_provision_quality(
             StructField("quality", StringType(), True),
             StructField("entity_count", LongType(), True),
             StructField("quality_score", DoubleType(), True),
+            StructField("start_date", DateType(), True),
         ]
     )
     rows = [
@@ -605,6 +606,7 @@ def test_write_table_to_postgres_provision_quality(
             "authoritative",
             42,
             None,
+            date(2021, 3, 4),
         ),
         (
             "conservation-area",
@@ -617,6 +619,7 @@ def test_write_table_to_postgres_provision_quality(
             None,
             0,
             None,
+            None,
         ),
     ]
     df = spark.createDataFrame(rows, schema)
@@ -626,7 +629,8 @@ def test_write_table_to_postgres_provision_quality(
     cur = db_conn.cursor()
     cur.execute(
         "SELECT organisation, organisation_name, has_active_endpoint, quality, "
-        "entity_count, quality_score FROM provision_quality ORDER BY organisation;"
+        "entity_count, quality_score, start_date FROM provision_quality "
+        "ORDER BY organisation;"
     )
     result = cur.fetchall()
     cur.close()
@@ -642,9 +646,11 @@ def test_write_table_to_postgres_provision_quality(
     assert adu[3] == "authoritative"
     assert adu[4] == 42
     assert adu[5] is None
+    assert adu[6] == date(2021, 3, 4)  # the only DATE column these writers handle
     mhclg = by_org["government-organisation:MHCLG"]
     assert mhclg[1] is None  # organisation_name null preserved
     assert mhclg[3] is None  # quality null preserved
+    assert mhclg[6] is None  # start_date null preserved
 
     # A second write replaces (TRUNCATE + INSERT), it does not append.
     df2 = spark.createDataFrame(
@@ -660,6 +666,7 @@ def test_write_table_to_postgres_provision_quality(
                 "some",
                 5,
                 None,
+                date(2023, 5, 6),
             )
         ],
         schema,
