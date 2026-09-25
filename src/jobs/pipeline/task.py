@@ -61,7 +61,7 @@ def _load_issue_type_df(spark):
                 row["issue-type"],
                 row["severity"],
                 row["responsibility"],
-                row.get("quality_dimension") or "",
+                row.get("quality-dimension") or row.get("quality_dimension") or "",
             )
             for row in reader
         ]
