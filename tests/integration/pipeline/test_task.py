@@ -7,6 +7,8 @@ Uses a real Spark session and local filesystem for reads/writes.
 import csv
 import os
 
+import pytest
+
 from jobs.pipeline.base import PipelineConfig
 from jobs.pipeline.task import (
     TaskPipeline,
@@ -14,6 +16,7 @@ from jobs.pipeline.task import (
     _backfill_dataset_from_source,
     _backfill_organisation_from_source,
     _latest_log_entry_per_endpoint,
+    _load_issue_type_df,
 )
 
 from ._test_helpers import write_csv
@@ -925,3 +928,20 @@ class TestRetiredAndRecoveredEndpoints:
         assert any(
             r["task_source"] == "issue" and r["endpoint"] == "endpoint-a" for r in tasks
         )
+
+
+@pytest.mark.parametrize("header", ["quality-dimension", "quality_dimension"])
+def test_load_issue_type_df_reads_either_dimension_header(spark, mocker, header):
+    """Specification PR #219 renames issue-type.csv's quality_dimension to
+    quality-dimension. The file is fetched from spec main at runtime, so both
+    spellings must resolve or every issue task silently loses its dimension."""
+    lines = [
+        f"issue-type,severity,responsibility,{header}\n".encode(),
+        b"invalid date,error,external,validity\n",
+    ]
+    urlopen = mocker.patch("urllib.request.urlopen")
+    urlopen.return_value.__enter__.return_value.readlines.return_value = lines
+
+    row = _load_issue_type_df(spark).collect()[0]
+
+    assert row["quality_dimension"] == "validity"
