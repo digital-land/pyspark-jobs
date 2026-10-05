@@ -744,12 +744,12 @@ def _write_issue(base, collection, dataset, resource):
     )
 
 
-def _run_task_pipeline(spark, base):
+def _run_task_pipeline(spark, base, env="local"):
     parquet_base = os.path.join(base, "parquet-output/")
     config = PipelineConfig(
         spark=spark,
         dataset="",
-        env="local",
+        env=env,
         collection_data_path=f"{base}/",
         parquet_datasets_path=parquet_base,
     )
@@ -928,6 +928,91 @@ class TestRetiredAndRecoveredEndpoints:
         assert any(
             r["task_source"] == "issue" and r["endpoint"] == "endpoint-a" for r in tasks
         )
+
+
+class TestDatasetsSwitchedOffForEnvironment:
+    """A dataset switched off for an environment in the specification is no
+    longer built there, but its frozen log and issue files stay in the bucket.
+    Those must stop producing tasks, as planning-application's did in production
+    for a year after it was moved to staging only."""
+
+    def test_switched_off_dataset_produces_no_tasks(self, spark, tmp_path, mocker):
+        base = str(tmp_path)
+        collection = "test-collection"
+
+        # Both endpoints worked, then broke: a log task and an issue task each
+        _write_log(
+            base,
+            collection,
+            [
+                row
+                for endpoint, resource in (
+                    ("endpoint-a", "resource-aaa"),
+                    ("endpoint-b", "resource-bbb"),
+                )
+                for row in (
+                    {
+                        "endpoint": endpoint,
+                        "resource": resource,
+                        "status": "200",
+                        "exception": "",
+                        "entry-date": "2026-01-01",
+                    },
+                    {
+                        "endpoint": endpoint,
+                        "resource": "",
+                        "status": "404",
+                        "exception": "",
+                        "entry-date": "2026-01-02",
+                    },
+                )
+            ],
+        )
+        _write_source(
+            base,
+            collection,
+            [
+                {
+                    "endpoint": "endpoint-a",
+                    "pipelines": "dataset-a",
+                    "organisation": "organisation:1",
+                    "end-date": "",
+                },
+                {
+                    "endpoint": "endpoint-b",
+                    "pipelines": "dataset-b",
+                    "organisation": "organisation:1",
+                    "end-date": "",
+                },
+            ],
+        )
+        _write_issue(base, collection, "dataset-a", "resource-aaa")
+        _write_issue(base, collection, "dataset-b", "resource-bbb")
+
+        mocker.patch(
+            "jobs.pipeline.task._load_issue_type_df",
+            return_value=spark.createDataFrame(
+                [("invalid-geometry", "error", "external", "validity")],
+                ["issue_type", "severity", "responsibility", "quality_dimension"],
+            ),
+        )
+        _write_empty_authority_fixtures(base)
+        # Overwrite the fixture's specification: dataset-b is staging only
+        write_csv(
+            os.path.join(base, "specification", "dataset.csv"),
+            ["dataset", "environment", "end-date"],
+            [
+                {"dataset": "dataset-a", "environment": "production", "end-date": ""},
+                {"dataset": "dataset-b", "environment": "staging", "end-date": ""},
+            ],
+        )
+
+        tasks = _run_task_pipeline(spark, base, env="production").collect()
+
+        datasets = {r["dataset"] for r in tasks}
+        assert datasets == {"dataset-a"}, f"switched-off dataset made tasks: {datasets}"
+        # The live dataset is untouched: still both of its tasks
+        assert {r["task_source"] for r in tasks} == {"log", "issue"}
 
 
 @pytest.mark.parametrize("header", ["quality-dimension", "quality_dimension"])
