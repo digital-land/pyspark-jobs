@@ -379,7 +379,8 @@ class TaskPipeline(BasePipeline):
         # -- Authority (provide authoritative data) tasks ---------------------
         # Independent of the active-resource / issue-file legs above: a
         # statement about the whole dataset-organisation provision, not any
-        # single resource. Uses org_df / entity_org_df read above.
+        # single resource. Uses org_df / entity_org_df read above. The live
+        # datasets read here also filter every other task below the union.
         dataset_path = str(base / "specification" / "dataset.csv")
         dataset_df = normalise_column_names(
             spark.read.option("header", "true").csv(dataset_path)
@@ -411,6 +412,23 @@ class TaskPipeline(BasePipeline):
             frames[0]
             if len(frames) == 1
             else reduce(lambda a, b: a.unionByName(b), frames)
+        )
+
+        # -- Live datasets only -------------------------------------------------
+        # Switching a dataset off for this environment in the specification stops
+        # it being built, but its frozen log and issue files stay in the bucket and
+        # would keep producing tasks every night. So we apply this live-dataset
+        # filter to every task. Tasks with a blank dataset are deliberately kept:
+        # blank means the task couldn't be attributed, not that the dataset is off.
+
+        live_dataset_names = [row["dataset"] for row in live_datasets_df.collect()]
+        logger.info(
+            f"TaskPipeline: keeping tasks for {len(live_dataset_names)} live datasets"
+        )
+        tasks_df = tasks_df.filter(
+            col("dataset").isNull()
+            | (col("dataset") == "")
+            | col("dataset").isin(live_dataset_names)
         )
 
         # Dimension coverage, one pass logged at INFO in the same spirit as the
