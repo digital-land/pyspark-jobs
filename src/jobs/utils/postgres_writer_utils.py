@@ -19,6 +19,30 @@ SUBDIVIDED_DATASETS = [
 ]
 
 
+# The atomic commit rewrites a whole dataset in the live entity table in one transaction.
+# title-boundary's INSERT (22.8M rows) took 94 minutes in August 2026 and over 2 hours in
+# October 2026, so allow 6 hours. The connection's own timeout must outlast the statement
+# timeout, so Postgres cancels the statement cleanly rather than the client giving up
+# while the statement is still running on the server.
+ATOMIC_COMMIT_STATEMENT_TIMEOUT_SECONDS = 6 * 60 * 60  # 6 hours
+ATOMIC_COMMIT_CONNECTION_TIMEOUT_SECONDS = (
+    ATOMIC_COMMIT_STATEMENT_TIMEOUT_SECONDS + 10 * 60
+)  # 6 hours + 10 mins
+
+# SQLSTATE query_canceled, raised when statement_timeout cancels a statement
+QUERY_CANCELED = "57014"
+
+
+def _is_statement_timeout(error):
+    """Whether a pg8000 error is a statement cancelled by statement_timeout.
+
+    pg8000 puts the server's error fields in the exception's first argument, keyed by
+    their protocol codes, with C holding the SQLSTATE.
+    """
+    fields = error.args[0] if error.args else None
+    return isinstance(fields, dict) and fields.get("C") == QUERY_CANCELED
+
+
 def _ensure_required_columns(df, required_cols, defaults=None, logger=None):
     """
     Ensures all required columns exist in df. Adds missing columns as NULL (or default values).
@@ -226,10 +250,12 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, database_url):
     attempt = 0
     while attempt < max_attempts:
         try:
-            conn_params["timeout"] = 7200  # 2 hours
+            conn_params["timeout"] = ATOMIC_COMMIT_CONNECTION_TIMEOUT_SECONDS
             conn = pg8000.connect(**conn_params)
             cur = conn.cursor()
-            cur.execute("SET statement_timeout = '7200000';")
+            cur.execute(
+                f"SET statement_timeout = '{ATOMIC_COMMIT_STATEMENT_TIMEOUT_SECONDS * 1000}';"
+            )
             cur.execute("BEGIN;")
 
             # Delete existing dataset rows. Logged before/after (with timing)
@@ -295,6 +321,15 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, database_url):
                 pass
             attempt += 1
             logger.warning(f"Atomic commit failed (attempt {attempt}): {e}")
+
+            # Retrying a timeout would only time out again, holding the live table
+            # for another full timeout each time
+            if _is_statement_timeout(e):
+                logger.error(
+                    "Atomic commit hit the statement timeout, not retrying. Failing job."
+                )
+                raise
+
             if attempt < max_attempts:
                 sleep_time = 5 * attempt
                 logger.info(f"Retrying atomic commit in {sleep_time}s...")
