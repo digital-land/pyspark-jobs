@@ -6,6 +6,7 @@ from datetime import date, datetime
 
 import boto3
 from cloudpathlib import AnyPath, S3Path
+from pyspark import StorageLevel
 from pyspark.sql.functions import col
 
 from jobs.config.metadata import load_metadata
@@ -152,6 +153,10 @@ class EntityPipeline(BasePipeline):
         )
         logger.info("EntityPipeline: entity transform completed")
 
+        # Built once and reused by every write below; recomputing it per write filled
+        # title-boundary's executor disks. DISK_ONLY to keep executor memory free.
+        entity_df = entity_df.persist(StorageLevel.DISK_ONLY)
+
         # -- Load: parquet ----------------------------------------------------
         parquet_base = AnyPath(parquet_path)
         for table_name, df in [
@@ -168,6 +173,7 @@ class EntityPipeline(BasePipeline):
 
         # -- Load: Postgres ---------------------------------------------------
         self._write_postgres(entity_df)
+        entity_df.unpersist()
 
     def _write_consumer_formats(self, entity_df):
         """Write CSV, parquet, JSON, GeoJSON consumer formats for entity data."""

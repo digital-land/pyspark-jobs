@@ -9,6 +9,7 @@ Postgres is mocked.
 import os
 
 import pytest
+from pyspark import StorageLevel
 
 from jobs.pipeline.base import PipelineConfig
 from jobs.pipeline.entity import EntityPipeline
@@ -473,6 +474,72 @@ class TestEntityPipeline:
         EntityPipeline(config).run(collection=collection)
 
         assert mock_pg.call_count == 1
+
+    def test_entity_df_is_persisted_for_every_writer_then_released(
+        self, spark, tmp_path, mocker
+    ):
+        """Every writer must get entity_df already persisted, so the pivot runs
+        once rather than once per action. Recomputing it per action filled
+        title-boundary's executor disks in production. It is released once the
+        Postgres write has finished."""
+        dataset = "test-dataset"
+        collection = "test-dataset"
+        base = str(tmp_path)
+        collection_dir = os.path.join(base, f"{collection}-collection")
+
+        write_parquet(
+            spark,
+            os.path.join(collection_dir, "transformed", dataset),
+            TRANSFORMED_COLUMNS,
+            TRANSFORMED_ROWS,
+        )
+        write_csv(
+            os.path.join(
+                base, "organisation-collection", "dataset", "organisation.csv"
+            ),
+            ["organisation", "entity"],
+            ORGANISATION_ROWS,
+        )
+        write_csv(
+            os.path.join(
+                base, f"{collection}-collection", "collection", "resource.csv"
+            ),
+            ["resource", "start-date", "end-date"],
+            RESOURCE_ROWS,
+        )
+
+        mocker.patch(
+            "jobs.transform.entity_transformer.get_dataset_typology",
+            return_value="geography",
+        )
+        # Record the storage level each writer sees at the moment it is called
+        seen = {}
+        mocker.patch.object(
+            EntityPipeline,
+            "_write_consumer_formats",
+            autospec=True,
+            side_effect=lambda self, df: seen.update(consumer=df.storageLevel),
+        )
+        mocker.patch.object(
+            EntityPipeline,
+            "_write_postgres",
+            autospec=True,
+            side_effect=lambda self, df: seen.update(postgres=df.storageLevel, df=df),
+        )
+
+        config = PipelineConfig(
+            spark=spark,
+            dataset=dataset,
+            env="local",
+            collection_data_path=f"{base}/",
+            parquet_datasets_path=os.path.join(base, "parquet-output/"),
+        )
+
+        EntityPipeline(config).run(collection=collection)
+
+        assert seen["consumer"] == StorageLevel.DISK_ONLY
+        assert seen["postgres"] == StorageLevel.DISK_ONLY
+        assert seen["df"].storageLevel == StorageLevel.NONE
 
     def test_execute_raises_value_error_on_empty_input(self, spark, tmp_path, mocker):
         """execute() raises ValueError if transformed data is empty."""
