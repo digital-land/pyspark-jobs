@@ -299,6 +299,89 @@ def test_write_handles_null_geometry(spark, db_url, db_conn, clean_entity_table)
     assert row[1] is None  # point
 
 
+BOWTIE = "MULTIPOLYGON(((0 0, 10 10, 10 0, 0 10, 0 0)))"  # self-intersecting: made valid as a multipolygon
+SPIKE = "MULTIPOLYGON(((0 0, 10 0, 10 10, 0 10, 0 0, -5 0, 0 0)))"  # made valid as a polygon plus a line
+SQUARE = "MULTIPOLYGON(((0 0, 10 0, 10 10, 0 10, 0 0)))"
+
+
+def _geometry_row(entity, dataset, geometry):
+    from datetime import date
+
+    return (
+        entity,
+        None,
+        date(2024, 1, 1),
+        None,
+        None,
+        dataset,
+        None,
+        None,
+        "test",
+        f"REF-{entity}",
+        "geography",
+        geometry,
+        None,
+        None,
+    )
+
+
+@pytest.mark.database
+def test_write_repairs_invalid_geometry(spark, db_url, db_conn, clean_entity_table):
+    """Invalid geometry is repaired as the old Postgres loader did; valid geometry is untouched."""
+    df = _build_entity_df(
+        spark,
+        [
+            _geometry_row(2001, "repair-ds", BOWTIE),
+            _geometry_row(2002, "repair-ds", SPIKE),
+            _geometry_row(2003, "repair-ds", SQUARE),
+        ],
+    )
+    write_dataframe_to_postgres_jdbc(df, "entity", "repair-ds", db_url)
+
+    cur = db_conn.cursor()
+    cur.execute(
+        "SELECT entity, ST_IsValid(geometry), ST_GeometryType(geometry), ST_Area(geometry), ST_AsText(geometry) "
+        "FROM entity WHERE dataset = %s ORDER BY entity;",
+        ("repair-ds",),
+    )
+    rows = {row[0]: row[1:] for row in cur.fetchall()}
+    cur.close()
+
+    assert rows[2001][:3] == [
+        True,
+        "ST_MultiPolygon",
+        50.0,
+    ]  # the bowtie's two triangles
+    assert rows[2002][:3] == [
+        True,
+        "ST_MultiPolygon",
+        100.0,
+    ]  # the square, without the spike
+    assert rows[2003][3] == "MULTIPOLYGON(((0 0,10 0,10 10,0 10,0 0)))"
+
+
+@pytest.mark.database
+def test_geometry_repair_leaves_other_datasets_untouched(
+    spark, db_url, db_conn, clean_entity_table
+):
+    """Only the dataset being written is repaired, as with the old Postgres loader."""
+    cur = db_conn.cursor()
+    cur.execute(
+        "INSERT INTO entity (entity, dataset, geometry) VALUES (3001, 'other-ds', ST_GeomFromText(%s, 4326));",
+        (BOWTIE,),
+    )
+    db_conn.commit()
+
+    df = _build_entity_df(spark, [_geometry_row(3002, "repair-ds", BOWTIE)])
+    write_dataframe_to_postgres_jdbc(df, "entity", "repair-ds", db_url)
+
+    cur.execute("SELECT entity, ST_IsValid(geometry) FROM entity ORDER BY entity;")
+    rows = dict(cur.fetchall())
+    cur.close()
+
+    assert rows == {3001: False, 3002: True}
+
+
 @pytest.mark.database
 def test_write_entity_subdivided_creates_rows(
     spark, db_url, db_conn, clean_entity_subdivided_table
