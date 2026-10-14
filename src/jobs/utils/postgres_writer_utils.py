@@ -33,6 +33,47 @@ ATOMIC_COMMIT_CONNECTION_TIMEOUT_SECONDS = (
 QUERY_CANCELED = "57014"
 
 
+# The geometry repairs the old Postgres loader (digital-land-postgres task/pgload/load.py) makes
+# after loading a dataset, with the same SQL and in the same order: make invalid geometry valid,
+# keeping only the polygons where that gives a geometry collection, then null any geometry that
+# is still invalid. Each is limited to the entities found invalid in Spark, so the dataset's rows
+# in the live table don't all have to be checked.
+GEOMETRY_REPAIRS = [
+    (
+        "make valid",
+        """
+        UPDATE entity SET geometry = ST_MakeValid(geometry)
+        WHERE geometry IS NOT NULL
+            AND ST_GeometryType(ST_MakeValid(geometry)) = 'ST_MultiPolygon'
+            AND dataset = %s
+            AND ((ST_IsSimple(geometry) AND NOT ST_IsValid(geometry)) OR NOT ST_IsSimple(geometry))
+            AND entity = ANY(%s);
+        """,
+    ),
+    (
+        "make valid and extract polygons",
+        """
+        UPDATE entity SET geometry = ST_CollectionExtract(ST_MakeValid(geometry))
+        WHERE geometry IS NOT NULL
+            AND ST_GeometryType(ST_MakeValid(geometry)) = 'ST_GeometryCollection'
+            AND dataset = %s
+            AND ((ST_IsSimple(geometry) AND NOT ST_IsValid(geometry)) OR NOT ST_IsSimple(geometry))
+            AND entity = ANY(%s);
+        """,
+    ),
+    (
+        "null geometry still invalid",
+        """
+        UPDATE entity SET geometry = NULL, geojson = NULL
+        WHERE dataset = %s
+            AND geometry IS NOT NULL
+            AND NOT ST_IsValid(geometry)
+            AND entity = ANY(%s);
+        """,
+    ),
+]
+
+
 def _is_statement_timeout(error):
     """Whether a pg8000 error is a statement cancelled by statement_timeout.
 
@@ -123,6 +164,22 @@ def _ensure_required_columns(df, required_cols, defaults=None, logger=None):
             df = df.withColumn(c, col(c).cast("string"))
 
     return df
+
+
+def _invalid_geometry_entities(df):
+    """Return the entities whose geometry is invalid, so only those are repaired in Postgres.
+
+    Uses Sedona, whose validity check (JTS) found exactly the same invalid geometries as
+    PostGIS (GEOS) across title-boundary, conservation-area, listed-building-outline and
+    central-activities-zone.
+    """
+    rows = (
+        df.where("geometry IS NOT NULL AND geometry <> ''")
+        .where("NOT ST_IsValid(ST_GeomFromWKT(geometry))")
+        .select("entity")
+        .collect()
+    )
+    return [int(row.entity) for row in rows]
 
 
 def write_dataframe_to_postgres_jdbc(df, table_name, data_set, database_url):
@@ -246,6 +303,12 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, database_url):
                 logger.error("Max retries reached for JDBC write. Failing job.")
                 raise
 
+    invalid_entities = _invalid_geometry_entities(df_typed)
+    logger.info(
+        f"write_dataframe_to_postgres_jdbc: {len(invalid_entities):,} entities have invalid geometry, "
+        "to be repaired after the insert"
+    )
+
     # Step 4: Atomic transaction with explicit column list and casts
     attempt = 0
     while attempt < max_attempts:
@@ -306,6 +369,14 @@ def write_dataframe_to_postgres_jdbc(df, table_name, data_set, database_url):
                 f"Atomic commit: INSERT wrote {inserted:,} rows in "
                 f"{time.monotonic() - insert_start:.1f}s"
             )
+
+            # Repair invalid geometry the way the old Postgres loader did after a load
+            if invalid_entities:
+                for label, repair_sql in GEOMETRY_REPAIRS:
+                    cur.execute(repair_sql, (data_set, invalid_entities))
+                    logger.info(
+                        f"Atomic commit: geometry repair '{label}' updated {cur.rowcount:,} rows"
+                    )
 
             # Drop staging and commit
             cur.execute(f"DROP TABLE {staging_table};")
