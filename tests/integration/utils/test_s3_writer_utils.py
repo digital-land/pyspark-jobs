@@ -8,6 +8,7 @@ from pyspark.sql.types import IntegerType, StringType, StructField, StructType
 
 from jobs.utils.s3_writer_utils import (
     _nonempty_partition_bounds,
+    ensure_schema_fields,
     write_delta,
     write_geojson_entities_s3,
     write_json_entities_s3,
@@ -117,6 +118,89 @@ def test_write_delta_raises_on_non_delta_existing_files(spark, tmp_path):
     df = spark.createDataFrame([Row(dataset="ds-a", value="x")])
     with pytest.raises(ValueError, match="not a Delta table"):
         write_delta(df, str(output), dataset="ds-a", partition_by=["dataset"])
+
+
+def _write_specification(path, dataset_schema, schema_field, field):
+    """Write the three specification CSVs ensure_schema_fields reads."""
+    path.mkdir()
+    (path / "dataset-schema.csv").write_text(
+        "dataset,schema\n" + "".join(f"{d},{s}\n" for d, s in dataset_schema)
+    )
+    (path / "schema-field.csv").write_text(
+        "schema,field\n" + "".join(f"{s},{f}\n" for s, f in schema_field)
+    )
+    (path / "field.csv").write_text(
+        "field,end-date\n" + "".join(f"{f},{e}\n" for f, e in field)
+    )
+
+
+def test_ensure_schema_fields_adds_missing_fields_and_orders_columns(spark, tmp_path):
+    """Missing specification fields are added empty; entity table fields come first
+    and every other field follows sorted by name, as in the old pipeline's files."""
+    specification = tmp_path / "specification"
+    _write_specification(
+        specification,
+        dataset_schema=[("my-dataset", "my-dataset")],
+        schema_field=[
+            ("my-dataset", "reference"),
+            ("my-dataset", "notes"),
+            ("my-dataset", "documentation-url"),
+            ("my-dataset", "description"),
+        ],
+        field=[
+            ("reference", ""),
+            ("notes", ""),
+            ("documentation-url", ""),
+            ("description", ""),
+        ],
+    )
+    df = spark.createDataFrame(
+        [(1, "ref-1", "a note")], "entity int, reference string, notes string"
+    )
+
+    result = ensure_schema_fields(df, "my-dataset", str(specification))
+
+    assert result.columns == [
+        "entity",
+        "reference",
+        "description",
+        "documentation-url",
+        "notes",
+    ]
+    assert result.collect()[0].asDict() == {
+        "entity": 1,
+        "reference": "ref-1",
+        "description": "",
+        "documentation-url": "",
+        "notes": "a note",
+    }
+
+
+def test_ensure_schema_fields_uses_every_schema_and_skips_ended_fields(spark, tmp_path):
+    """Fields come from all the dataset's schemas; a field whose end-date has
+    passed is not added."""
+    specification = tmp_path / "specification"
+    _write_specification(
+        specification,
+        dataset_schema=[("my-dataset", "schema-a"), ("my-dataset", "schema-b")],
+        schema_field=[
+            ("schema-a", "notes"),
+            ("schema-b", "site-address"),
+            ("schema-b", "OldField"),
+            ("other-schema", "unrelated"),
+        ],
+        field=[
+            ("notes", ""),
+            ("site-address", ""),
+            ("OldField", "2020-01-01"),
+            ("unrelated", ""),
+        ],
+    )
+    df = spark.createDataFrame([(1,)], "entity int")
+
+    result = ensure_schema_fields(df, "my-dataset", str(specification))
+
+    assert result.columns == ["entity", "notes", "site-address"]
 
 
 def test_nonempty_partition_bounds_covers_all_rows_when_evenly_distributed(spark):
