@@ -354,3 +354,63 @@ list(fn(0, iter(rows)))
     assert features[2]["geometry"] == {"type": "Point", "coordinates": [9.0, 9.0]}
 
     assert features[3]["geometry"] is None
+
+
+def test_write_geojson_entities_s3_closure_keeps_multipolygon_parts_separate(
+    spark, monkeypatch
+):
+    """The shipped closure's own copy of the WKT parser splits a MULTIPOLYGON
+    into its parts, each keeping its own holes. Before this was fixed every
+    part was merged into one Polygon, so parts after the first rendered as
+    holes in the first."""
+    capture_df = spark.createDataFrame(
+        [Row(id=0, geometry=None, point=None)],
+        "id: int, geometry: string, point: string",
+    )
+    fn = capture_upload_closure(
+        monkeypatch,
+        lambda: write_geojson_entities_s3(
+            capture_df, _NoopMultipartS3Client(), "bucket", "key", "my-dataset"
+        ),
+    )
+
+    child_body = """
+class FakeRow:
+    def __init__(self, d):
+        self._d = d
+    def asDict(self):
+        return dict(self._d)
+
+rows = [
+    FakeRow({
+        "id": 1,
+        "geometry": (
+            "MULTIPOLYGON (((0 0, 10 0, 10 10, 0 10, 0 0), (2 2, 3 2, 3 3, 2 2)), "
+            "((20 20, 21 20, 21 21, 20 20)))"
+        ),
+        "point": None,
+    }),
+    FakeRow({
+        "id": 2, "geometry": "MULTIPOLYGON (((0 0, 1 0, 1 1, 0 0)))", "point": None,
+    }),
+]
+list(fn(0, iter(rows)))
+"""
+    bodies = run_closure_without_jobs_importable(fn, child_body)
+    assert len(bodies) == 1
+    features = {f["properties"]["id"]: f for f in bodies[0]["features"]}
+
+    assert features[1]["geometry"] == {
+        "type": "MultiPolygon",
+        "coordinates": [
+            [
+                [[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0], [0.0, 0.0]],
+                [[2.0, 2.0], [3.0, 2.0], [3.0, 3.0], [2.0, 2.0]],
+            ],
+            [[[20.0, 20.0], [21.0, 20.0], [21.0, 21.0], [20.0, 20.0]]],
+        ],
+    }
+    assert features[2]["geometry"] == {
+        "type": "Polygon",
+        "coordinates": [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 0.0]]],
+    }
