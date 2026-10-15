@@ -1,11 +1,22 @@
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, from_json, schema_of_json
-from pyspark.sql.types import ArrayType, DoubleType, StringType, StructField, StructType
+from pyspark.sql.functions import col, explode, from_json, map_keys
+from pyspark.sql.types import (
+    ArrayType,
+    DoubleType,
+    MapType,
+    StringType,
+    StructField,
+    StructType,
+)
 
 
 def flatten_json_column(df: DataFrame) -> DataFrame:
     """
     Flatten JSON data from 'json' column into separate columns.
+
+    Every key found in any row's JSON becomes a column, so a field only some
+    entities have is kept for those entities and left null for the rest.
+    Values stay the strings they were stored as.
 
     Args:
         df: DataFrame containing a 'json' column with JSON string data
@@ -16,20 +27,23 @@ def flatten_json_column(df: DataFrame) -> DataFrame:
     if "json" not in df.columns:
         return df
 
-    # Infer schema from a sample JSON string
-    sample_json = df.select(col("json")).filter(col("json").isNotNull()).first()
-    if not sample_json or not sample_json[0]:
-        return df
+    df_parsed = df.withColumn(
+        "_json_map", from_json(col("json"), MapType(StringType(), StringType()))
+    )
 
-    json_schema = schema_of_json(sample_json[0])
+    # Collect the keys across all rows
+    keys = sorted(
+        row["key"]
+        for row in df_parsed.select(explode(map_keys(col("_json_map"))).alias("key"))
+        .distinct()
+        .collect()
+        if row["key"] not in df.columns
+    )
 
-    # Parse JSON and flatten
-    df_parsed = df.withColumn("parsed", from_json(col("json"), json_schema))
-
-    # Extract all fields from parsed struct
-    df_flattened = df_parsed.select(*[c for c in df.columns if c != "json"], "parsed.*")
-
-    return df_flattened
+    return df_parsed.select(
+        *[c for c in df.columns if c != "json"],
+        *[col("_json_map").getItem(key).alias(key) for key in keys],
+    )
 
 
 def flatten_geojson_column(df: DataFrame) -> DataFrame:

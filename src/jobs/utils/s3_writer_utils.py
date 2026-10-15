@@ -1,5 +1,6 @@
 """S3 Writer utilities for data transformation and writing."""
 
+import csv
 import json
 import logging
 import re
@@ -7,6 +8,7 @@ from datetime import date, datetime
 from typing import List, Optional
 
 import boto3
+from cloudpathlib import AnyPath
 from pyspark.sql.functions import lit
 
 logger = logging.getLogger(__name__)
@@ -761,53 +763,68 @@ def s3_rename_and_move(dataset_name, file_type, bucket_name):
         logger.info(f"Renamed: {data_file} -> {target_key}")
 
 
-def ensure_schema_fields(df, dataset_name):
-    """Ensure DataFrame has all required fields from schema specification."""
-    try:
-        import requests
+# The entity table's fields, in the order the old pipeline's flattened files put
+# them before the dataset's other fields
+ENTITY_TABLE_FIELDS = [
+    "dataset",
+    "end-date",
+    "entity",
+    "entry-date",
+    "geojson",
+    "geometry",
+    "name",
+    "organisation-entity",
+    "point",
+    "prefix",
+    "quality",
+    "reference",
+    "start-date",
+    "typology",
+]
 
-        url = f"https://raw.githubusercontent.com/digital-land/specification/main/content/dataset/{dataset_name}.md"
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
 
-        content = response.text
-        fields = []
-        in_frontmatter = False
-        in_fields_section = False
+def _read_specification_csv(specification_path, name):
+    with (AnyPath(specification_path) / f"{name}.csv").open(newline="") as f:
+        return list(csv.DictReader(f))
 
-        for line in content.split("\n"):
-            if line.strip() == "---":
-                if not in_frontmatter:
-                    in_frontmatter = True
-                else:
-                    break
-                continue
 
-            if in_frontmatter:
-                if line.startswith("fields:"):
-                    in_fields_section = True
-                    continue
-                if in_fields_section:
-                    if line.startswith("- field:"):
-                        field_name = line.split("- field:")[1].strip()
-                        fields.append(field_name)
-                    elif not line.startswith(" ") and not line.startswith("-"):
-                        in_fields_section = False
+def current_dataset_fields(specification_path, dataset_name):
+    """The dataset's current fields, resolved the same way as digital-land-python's
+    Specification.current_fieldnames: every field of every schema the dataset
+    uses, less any field whose end-date has passed."""
+    today = date.today().isoformat()
+    ended = {
+        row["field"]
+        for row in _read_specification_csv(specification_path, "field")
+        if row.get("end-date") and row["end-date"] <= today
+    }
+    schemas = {
+        row["schema"]
+        for row in _read_specification_csv(specification_path, "dataset-schema")
+        if row["dataset"] == dataset_name
+    }
+    fields = {
+        row["field"]
+        for row in _read_specification_csv(specification_path, "schema-field")
+        if row["schema"] in schemas
+    }
+    return (fields - ended) | {"entity"}
 
-        if not fields:
-            return df
 
-        current_columns = set(df.columns)
-        missing_fields = [field for field in fields if field not in current_columns]
+def ensure_schema_fields(df, dataset_name, specification_path):
+    """Add the dataset's specification fields the DataFrame lacks as empty columns,
+    and order the columns as the old pipeline's flattened files do: entity table
+    fields first, then every other field sorted by name.
 
-        if missing_fields:
-            existing_cols = df.columns
-            for field in missing_fields:
-                df = df.withColumn(field, lit(""))
-            final_columns = existing_cols + missing_fields
-            df = df.select(final_columns)
+    Args:
+        df: DataFrame with kebab-case column names
+        dataset_name: Dataset whose fields to add
+        specification_path: Directory holding the specification CSVs
+            (dataset-schema.csv, schema-field.csv and field.csv)
+    """
+    fields = current_dataset_fields(specification_path, dataset_name)
+    for field in sorted(fields - set(df.columns)):
+        df = df.withColumn(field, lit(""))
 
-        return df
-    except Exception as e:
-        logger.error(f"Error ensuring schema fields: {e}")
-        return df
+    leading = [field for field in ENTITY_TABLE_FIELDS if field in df.columns]
+    return df.select(*leading, *sorted(c for c in df.columns if c not in leading))
