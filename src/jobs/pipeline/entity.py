@@ -185,7 +185,8 @@ class EntityPipeline(BasePipeline):
         _is_s3 = isinstance(base, S3Path)
         temp_output_path = str(base / "dataset" / "temp" / dataset)
 
-        temp_df = flatten_json_column(entity_df)
+        # processed_timestamp is pipeline bookkeeping, not part of the dataset
+        temp_df = flatten_json_column(entity_df.drop("processed_timestamp"))
 
         # For CSVs and JSONs in the consumer layer '-' should be used
         for column in temp_df.columns:
@@ -193,7 +194,7 @@ class EntityPipeline(BasePipeline):
                 temp_df = temp_df.withColumnRenamed(column, column.replace("_", "-"))
 
         # Align fields with spec
-        temp_df = ensure_schema_fields(temp_df, dataset)
+        temp_df = ensure_schema_fields(temp_df, dataset, base / "specification")
 
         if _is_s3:
             cleanup_temp_path(env, dataset)
