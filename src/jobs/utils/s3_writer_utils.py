@@ -9,11 +9,29 @@ from typing import List, Optional
 
 import boto3
 from cloudpathlib import AnyPath
-from pyspark.sql.functions import lit
+from pyspark.sql.functions import coalesce, col, lit
 
 logger = logging.getLogger(__name__)
 
 MULTIPART_TARGET_PARTITION_BYTES = 64 * 1024 * 1024
+
+# Content types the download files are served with
+DOWNLOAD_CONTENT_TYPES = {
+    "csv": "text/csv",
+    "json": "application/json",
+    "geojson": "application/geo+json",
+    "parquet": "binary/octet-stream",
+}
+
+
+def download_object_args(file_type):
+    """S3 object settings for a download file, so it is served with its content
+    type and saved by the browser rather than opened in it."""
+    return {
+        "ContentType": DOWNLOAD_CONTENT_TYPES[file_type],
+        "ContentDisposition": "attachment",
+    }
+
 
 df_entity = None
 
@@ -119,13 +137,12 @@ def cleanup_temp_path(env, dataset_name):
 
 
 def _sanitize_json_row(row) -> dict:
-    """Convert a Row to a JSON-safe dict: dates/datetimes to ISO strings, None to ''."""
-    row_dict = row.asDict()
+    """Convert a Row to a JSON-safe dict: dates/datetimes to ISO strings, and
+    fields with no value left out."""
+    row_dict = {k: v for k, v in row.asDict().items() if v is not None}
     for key, value in row_dict.items():
         if isinstance(value, (date, datetime)):
             row_dict[key] = value.isoformat() if value else ""
-        elif value is None:
-            row_dict[key] = ""
     return row_dict
 
 
@@ -213,14 +230,28 @@ def _nonempty_partition_bounds(rdd):
     return min(nonempty_indices), max(nonempty_indices)
 
 
+def _partition_for_upload(df, num_partitions, order_by=None):
+    """Split df into num_partitions for a multipart upload. With order_by, each
+    partition holds a consecutive range of rows, sorted, so the parts join up
+    in order."""
+    if order_by is None:
+        return df.repartition(num_partitions)
+    return df.repartitionByRange(num_partitions, order_by).sortWithinPartitions(
+        order_by
+    )
+
+
 def write_json_entities_s3(
     df,
     s3_client,
     bucket: str,
     key: str,
     target_partition_bytes: int = MULTIPART_TARGET_PARTITION_BYTES,
+    order_by=None,
 ):
     """Write `df` as `{"entities": [...]}` JSON to S3 via a distributed multipart upload.
+
+    If `order_by` (a Column) is given, entities are written in that order.
 
     Each partition serializes and uploads its own rows directly to S3 from
     the executor that holds them, so the driver only orchestrates the
@@ -234,7 +265,12 @@ def write_json_entities_s3(
     """
     row_count = df.count()
     if row_count == 0:
-        s3_client.put_object(Bucket=bucket, Key=key, Body='{"entities":[]}')
+        s3_client.put_object(
+            Bucket=bucket,
+            Key=key,
+            Body='{"entities":[]}',
+            **download_object_args("json"),
+        )
         logger.info(f"write_json_entities_s3: wrote empty entities array to {key}")
         return
 
@@ -258,9 +294,11 @@ def write_json_entities_s3(
     # Cached because it drives two actions below (the row-count pass and the
     # upload pass) -- without caching, everything upstream of temp_df would
     # be recomputed a second time.
-    partitioned = df.repartition(num_partitions).cache()
+    partitioned = _partition_for_upload(df, num_partitions, order_by).cache()
 
-    mpu = s3_client.create_multipart_upload(Bucket=bucket, Key=key)
+    mpu = s3_client.create_multipart_upload(
+        Bucket=bucket, Key=key, **download_object_args("json")
+    )
     upload_id = mpu["UploadId"]
 
     try:
@@ -282,12 +320,10 @@ def write_json_entities_s3(
             # duplication is necessary.
             pieces = []
             for row in rows:
-                row_dict = row.asDict()
+                row_dict = {k: v for k, v in row.asDict().items() if v is not None}
                 for field, value in row_dict.items():
                     if isinstance(value, (date, datetime)):
                         row_dict[field] = value.isoformat() if value else ""
-                    elif value is None:
-                        row_dict[field] = ""
                 pieces.append(json.dumps(row_dict))
             if not pieces:
                 return iter([])
@@ -359,14 +395,12 @@ def _upload_geojson_entities_partition(
     """
     pieces = []
     for row in rows:
-        row_dict = row.asDict()
+        row_dict = {k: v for k, v in row.asDict().items() if v is not None}
         geometry_wkt = row_dict.pop("geometry", None)
         point_wkt = row_dict.pop("point", None)
         for field, value in row_dict.items():
             if isinstance(value, (date, datetime)):
                 row_dict[field] = value.isoformat() if value else ""
-            elif value is None:
-                row_dict[field] = ""
         feature = {
             "type": "Feature",
             "properties": row_dict,
@@ -403,14 +437,12 @@ def _sample_avg_geojson_feature_bytes(sample):
     since this never runs on an executor."""
     sizes = []
     for row in sample:
-        row_dict = row.asDict()
+        row_dict = {k: v for k, v in row.asDict().items() if v is not None}
         geometry_wkt = row_dict.pop("geometry", None)
         point_wkt = row_dict.pop("point", None)
         for field, value in row_dict.items():
             if isinstance(value, (date, datetime)):
                 row_dict[field] = value.isoformat() if value else ""
-            elif value is None:
-                row_dict[field] = ""
         feature = {
             "type": "Feature",
             "properties": row_dict,
@@ -427,6 +459,7 @@ def write_geojson_entities_s3(
     key: str,
     dataset_name: str,
     target_partition_bytes: int = MULTIPART_TARGET_PARTITION_BYTES,
+    order_by=None,
 ):
     """Write `df` as a GeoJSON FeatureCollection to S3 via a distributed
     multipart upload. See write_json_entities_s3's docstring for the general
@@ -435,7 +468,8 @@ def write_geojson_entities_s3(
     a sampled byte-size estimate, a heuristic rather than a guarantee).
 
     geometry/point WKT columns are popped from each row and converted to a
-    GeoJSON geometry, same as the driver-side writers this replaces.
+    GeoJSON geometry, same as the driver-side writers this replaces. If
+    `order_by` (a Column) is given, features are written in that order.
     """
     row_count = df.count()
     if row_count == 0:
@@ -447,6 +481,7 @@ def write_geojson_entities_s3(
                 + dataset_name
                 + '","features":[]}'
             ),
+            **download_object_args("geojson"),
         )
         logger.info(
             f"write_geojson_entities_s3: wrote empty feature collection to {key}"
@@ -469,9 +504,11 @@ def write_geojson_entities_s3(
     # Cached because it drives two actions below (the row-count pass and the
     # upload pass) -- without caching, everything upstream of df would be
     # recomputed a second time.
-    partitioned = df.repartition(num_partitions).cache()
+    partitioned = _partition_for_upload(df, num_partitions, order_by).cache()
 
-    mpu = s3_client.create_multipart_upload(Bucket=bucket, Key=key)
+    mpu = s3_client.create_multipart_upload(
+        Bucket=bucket, Key=key, **download_object_args("geojson")
+    )
     upload_id = mpu["UploadId"]
 
     try:
@@ -490,10 +527,12 @@ def write_geojson_entities_s3(
             def wkt_to_geojson(wkt_string):
                 if not wkt_string:
                     return None
+                number = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?"
+                coordinate_pair = rf"({number})\s+({number})"
                 wkt_string = wkt_string.strip()
 
                 if wkt_string.startswith("POINT"):
-                    coords = re.findall(r"[-\d.]+", wkt_string)
+                    coords = re.findall(number, wkt_string)
                     return {
                         "type": "Point",
                         "coordinates": [float(coords[0]), float(coords[1])],
@@ -504,7 +543,7 @@ def write_geojson_entities_s3(
                     coordinates = []
                     for ring in rings:
                         points = []
-                        coords = re.findall(r"([-\d.]+)\s+([-\d.]+)", ring)
+                        coords = re.findall(coordinate_pair, ring)
                         for lon, lat in coords:
                             points.append([float(lon), float(lat)])
                         coordinates.append(points)
@@ -530,7 +569,7 @@ def write_geojson_entities_s3(
                                 coordinates = []
                                 for ring in rings:
                                     points = []
-                                    coords = re.findall(r"([-\d.]+)\s+([-\d.]+)", ring)
+                                    coords = re.findall(coordinate_pair, ring)
                                     for lon, lat in coords:
                                         points.append([float(lon), float(lat)])
                                     coordinates.append(points)
@@ -547,14 +586,12 @@ def write_geojson_entities_s3(
 
             pieces = []
             for row in rows:
-                row_dict = row.asDict()
+                row_dict = {k: v for k, v in row.asDict().items() if v is not None}
                 geometry_wkt = row_dict.pop("geometry", None)
                 point_wkt = row_dict.pop("point", None)
                 for field, value in row_dict.items():
                     if isinstance(value, (date, datetime)):
                         row_dict[field] = value.isoformat() if value else ""
-                    elif value is None:
-                        row_dict[field] = ""
                 wkt = geometry_wkt or point_wkt
                 feature = {
                     "type": "Feature",
@@ -623,10 +660,14 @@ def wkt_to_geojson(wkt_string):
     if not wkt_string:
         return None
 
+    # A coordinate, including ones written in scientific notation (2.3e-05)
+    number = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?"
+    coordinate_pair = rf"({number})\s+({number})"
+
     wkt_string = wkt_string.strip()
 
     if wkt_string.startswith("POINT"):
-        coords = re.findall(r"[-\d.]+", wkt_string)
+        coords = re.findall(number, wkt_string)
         return {"type": "Point", "coordinates": [float(coords[0]), float(coords[1])]}
 
     elif wkt_string.startswith("POLYGON"):
@@ -634,7 +675,7 @@ def wkt_to_geojson(wkt_string):
         coordinates = []
         for ring in rings:
             points = []
-            coords = re.findall(r"([-\d.]+)\s+([-\d.]+)", ring)
+            coords = re.findall(coordinate_pair, ring)
             for lon, lat in coords:
                 points.append([float(lon), float(lat)])
             coordinates.append(points)
@@ -660,7 +701,7 @@ def wkt_to_geojson(wkt_string):
                     coordinates = []
                     for ring in rings:
                         points = []
-                        coords = re.findall(r"([-\d.]+)\s+([-\d.]+)", ring)
+                        coords = re.findall(coordinate_pair, ring)
                         for lon, lat in coords:
                             points.append([float(lon), float(lat)])
                         coordinates.append(points)
@@ -680,11 +721,15 @@ S3_COPY_OBJECT_MAX_BYTES = 5 * 1024 * 1024 * 1024  # CopyObject's hard limit
 S3_MULTIPART_COPY_PART_BYTES = 1 * 1024 * 1024 * 1024  # comfortably within [5MB, 5GB]
 
 
-def _copy_large_s3_object(s3_client, bucket_name, source_key, target_key, size_bytes):
+def _copy_large_s3_object(
+    s3_client, bucket_name, source_key, target_key, size_bytes, object_args=None
+):
     """Copy an S3 object larger than CopyObject's 5GB limit via a multipart
     upload using UploadPartCopy, which copies byte ranges (server-side, no
     data through this process) instead of one atomic copy."""
-    mpu = s3_client.create_multipart_upload(Bucket=bucket_name, Key=target_key)
+    mpu = s3_client.create_multipart_upload(
+        Bucket=bucket_name, Key=target_key, **(object_args or {})
+    )
     upload_id = mpu["UploadId"]
     try:
         parts = []
@@ -719,6 +764,30 @@ def _copy_large_s3_object(s3_client, bucket_name, source_key, target_key, size_b
         raise
 
 
+def copy_s3_object(s3_client, bucket_name, source_key, target_key, object_args):
+    """Copy an object to another key in the same bucket, server-side, giving the
+    copy the S3 object settings in object_args (e.g. its content type)."""
+    size_bytes = s3_client.head_object(Bucket=bucket_name, Key=source_key)[
+        "ContentLength"
+    ]
+    if size_bytes > S3_COPY_OBJECT_MAX_BYTES:
+        logger.info(
+            f"copy_s3_object: {source_key} is {size_bytes:,} bytes, over "
+            "CopyObject's 5GB limit -- using a multipart copy"
+        )
+        _copy_large_s3_object(
+            s3_client, bucket_name, source_key, target_key, size_bytes, object_args
+        )
+    else:
+        s3_client.copy_object(
+            Bucket=bucket_name,
+            CopySource={"Bucket": bucket_name, "Key": source_key},
+            Key=target_key,
+            MetadataDirective="REPLACE",
+            **object_args,
+        )
+
+
 def s3_rename_and_move(dataset_name, file_type, bucket_name):
     """Rename and move files in S3."""
     s3_client = boto3.client("s3")
@@ -742,23 +811,13 @@ def s3_rename_and_move(dataset_name, file_type, bucket_name):
     ]
 
     for data_file in data_files:
-        size_bytes = s3_client.head_object(Bucket=bucket_name, Key=data_file)[
-            "ContentLength"
-        ]
-        if size_bytes > S3_COPY_OBJECT_MAX_BYTES:
-            logger.info(
-                f"s3_rename_and_move: {data_file} is {size_bytes:,} bytes, over "
-                "CopyObject's 5GB limit -- using a multipart copy"
-            )
-            _copy_large_s3_object(
-                s3_client, bucket_name, data_file, target_key, size_bytes
-            )
-        else:
-            s3_client.copy_object(
-                Bucket=bucket_name,
-                CopySource={"Bucket": bucket_name, "Key": data_file},
-                Key=target_key,
-            )
+        copy_s3_object(
+            s3_client,
+            bucket_name,
+            data_file,
+            target_key,
+            download_object_args(file_type),
+        )
         s3_client.delete_object(Bucket=bucket_name, Key=data_file)
         logger.info(f"Renamed: {data_file} -> {target_key}")
 
@@ -770,7 +829,6 @@ ENTITY_TABLE_FIELDS = [
     "end-date",
     "entity",
     "entry-date",
-    "geojson",
     "geometry",
     "name",
     "organisation-entity",
@@ -812,7 +870,7 @@ def current_dataset_fields(specification_path, dataset_name):
 
 
 def ensure_schema_fields(df, dataset_name, specification_path):
-    """Add the dataset's specification fields the DataFrame lacks as empty columns,
+    """Add the dataset's specification fields the DataFrame lacks as null columns,
     and order the columns as the old pipeline's flattened files do: entity table
     fields first, then every other field sorted by name.
 
@@ -824,7 +882,18 @@ def ensure_schema_fields(df, dataset_name, specification_path):
     """
     fields = current_dataset_fields(specification_path, dataset_name)
     for field in sorted(fields - set(df.columns)):
-        df = df.withColumn(field, lit(""))
+        df = df.withColumn(field, lit(None).cast("string"))
 
     leading = [field for field in ENTITY_TABLE_FIELDS if field in df.columns]
     return df.select(*leading, *sorted(c for c in df.columns if c not in leading))
+
+
+def as_download_values(df):
+    """Return df with its values as the download files hold them: every value
+    as text, and entity table fields always present (empty rather than null)."""
+    leading = [field for field in ENTITY_TABLE_FIELDS if field in df.columns]
+    rest = [c for c in df.columns if c not in leading]
+    return df.select(
+        *[coalesce(col(c).cast("string"), lit("")).alias(c) for c in leading],
+        *[col(c).cast("string").alias(c) for c in rest],
+    )

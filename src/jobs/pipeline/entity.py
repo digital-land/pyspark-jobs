@@ -24,7 +24,10 @@ from jobs.utils.postgres_writer_utils import (
     write_entity_subdivided_to_postgres,
 )
 from jobs.utils.s3_writer_utils import (
+    as_download_values,
     cleanup_temp_path,
+    copy_s3_object,
+    download_object_args,
     ensure_schema_fields,
     resolve_geometry,
     s3_rename_and_move,
@@ -196,42 +199,77 @@ class EntityPipeline(BasePipeline):
         # Align fields with spec
         temp_df = ensure_schema_fields(temp_df, dataset, base / "specification")
 
+        # Every file lists entities in entity order, with values as text
+        temp_df = as_download_values(temp_df)
+        entity_order = col("entity").cast("long")
+        sorted_df = temp_df.orderBy(entity_order)
+
         if _is_s3:
             cleanup_temp_path(env, dataset)
 
-        temp_df.coalesce(1).write.mode("overwrite").option("header", "true").csv(
-            temp_output_path
+        sorted_df.coalesce(1).write.mode("overwrite").options(
+            header="true",
+            escape='"',
+            emptyValue="",
+            ignoreLeadingWhiteSpace="false",
+            ignoreTrailingWhiteSpace="false",
+        ).csv(temp_output_path)
+
+        self._write_single_parquet(
+            sorted_df.withColumn("entity", entity_order), base / "dataset", dataset
         )
 
-        self._write_single_parquet(temp_df, base / "dataset", dataset)
+        # GeoJSON holds only geography entities with a geometry or point to draw
+        geojson_df = temp_df.filter(
+            (col("typology") == "geography")
+            & ((col("geometry") != "") | (col("point") != ""))
+        )
+        has_features = not geojson_df.isEmpty()
 
         if _is_s3:
             s3_rename_and_move(dataset, "csv", f"{env}-collection-data")
             s3_client = boto3.client("s3")
-            self._write_json_s3(s3_client, temp_df, dataset, env)
-            self._write_geojson_s3(s3_client, temp_df, dataset, env)
+            self._write_json_s3(s3_client, temp_df, dataset, env, entity_order)
+            if has_features:
+                self._write_geojson_s3(
+                    s3_client, geojson_df, dataset, env, entity_order
+                )
         else:
-            self._write_json_local(temp_df, dataset, base)
-            self._write_geojson_local(temp_df, dataset, base)
+            self._write_json_local(temp_df.orderBy(entity_order), dataset, base)
+            if has_features:
+                self._write_geojson_local(
+                    geojson_df.orderBy(entity_order), dataset, base
+                )
 
     def _write_single_parquet(self, df, output_path, name):
         """Write df as a single parquet file at output_path/name.parquet.
 
         Spark writes a directory of part-files, so we coalesce(1) into a temp
         dir, then move the one part-file to the target name. Uses AnyPath
-        throughout so it works uniformly for local and S3 output_paths.
+        throughout so it works uniformly for local and S3 output_paths; on S3
+        the move is a server-side copy, so the file never passes through the
+        driver.
         """
         tmp_dir = AnyPath(output_path) / f"_tmp_{name}_parquet"
         df.coalesce(1).write.mode("overwrite").parquet(str(tmp_dir))
         part = next(p for p in tmp_dir.glob("part-*.parquet"))
         target = AnyPath(output_path) / f"{name}.parquet"
-        target.write_bytes(part.read_bytes())
+        if isinstance(target, S3Path):
+            copy_s3_object(
+                boto3.client("s3"),
+                target.bucket,
+                part.key,
+                target.key,
+                download_object_args("parquet"),
+            )
+        else:
+            target.write_bytes(part.read_bytes())
         for p in tmp_dir.glob("*"):
             p.unlink()
         tmp_dir.rmdir()
         logger.info(f"EntityPipeline: Wrote {target}")
 
-    def _write_json_s3(self, s3_client, temp_df, dataset, env):
+    def _write_json_s3(self, s3_client, temp_df, dataset, env, order_by=None):
         """Write entity JSON to S3.
 
         Delegates to write_json_entities_s3, which uploads each partition's
@@ -242,9 +280,15 @@ class EntityPipeline(BasePipeline):
         is big enough) and the driver bottleneck of a sequential row loop.
         """
         target_key = f"dataset/{dataset}.json"
-        write_json_entities_s3(temp_df, s3_client, f"{env}-collection-data", target_key)
+        write_json_entities_s3(
+            temp_df,
+            s3_client,
+            f"{env}-collection-data",
+            target_key,
+            order_by=order_by,
+        )
 
-    def _write_geojson_s3(self, s3_client, temp_df, dataset, env):
+    def _write_geojson_s3(self, s3_client, temp_df, dataset, env, order_by=None):
         """Write entity GeoJSON to S3.
 
         Delegates to write_geojson_entities_s3, which uploads each
@@ -256,7 +300,12 @@ class EntityPipeline(BasePipeline):
         """
         target_key = f"dataset/{dataset}.geojson"
         write_geojson_entities_s3(
-            temp_df, s3_client, f"{env}-collection-data", target_key, dataset
+            temp_df,
+            s3_client,
+            f"{env}-collection-data",
+            target_key,
+            dataset,
+            order_by=order_by,
         )
 
     def _write_json_local(self, temp_df, dataset, base):
@@ -267,12 +316,10 @@ class EntityPipeline(BasePipeline):
             if not first:
                 json_buffer += ","
             first = False
-            row_dict = row.asDict()
+            row_dict = {k: v for k, v in row.asDict().items() if v is not None}
             for key, value in row_dict.items():
                 if isinstance(value, (date, datetime)):
                     row_dict[key] = value.isoformat() if value else ""
-                elif value is None:
-                    row_dict[key] = ""
             json_buffer += json.dumps(row_dict)
         json_buffer += "]}"
 
@@ -288,15 +335,13 @@ class EntityPipeline(BasePipeline):
         buffer = header
         first_row = True
         for row in temp_df.toLocalIterator():
-            row_dict = row.asDict()
+            row_dict = {k: v for k, v in row.asDict().items() if v is not None}
             geometry_wkt = row_dict.pop("geometry", None)
             point_wkt = row_dict.pop("point", None)
 
             for key, value in row_dict.items():
                 if isinstance(value, (date, datetime)):
                     row_dict[key] = value.isoformat() if value else ""
-                elif value is None:
-                    row_dict[key] = ""
 
             geojson_geom = resolve_geometry(geometry_wkt, point_wkt)
             feature = {

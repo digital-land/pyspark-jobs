@@ -103,6 +103,18 @@ def test_wkt_to_geojson_splits_multipolygon_parts_without_space_after_type():
     assert len(result["coordinates"]) == 2
 
 
+def test_wkt_to_geojson_reads_coordinates_in_scientific_notation():
+    """Coordinates written like 2.3e-05 (near the prime meridian) keep their value."""
+    assert wkt_to_geojson("POINT(2.3e-05 51.334751)") == {
+        "type": "Point",
+        "coordinates": [2.3e-05, 51.334751],
+    }
+    assert wkt_to_geojson("MULTIPOLYGON (((-1e-05 0, 1 0, 1 1, -1e-05 0)))") == {
+        "type": "Polygon",
+        "coordinates": [[[-1e-05, 0.0], [1.0, 0.0], [1.0, 1.0], [-1e-05, 0.0]]],
+    }
+
+
 def test_wkt_to_geojson_returns_single_part_multipolygon_as_polygon():
     """A one-part MULTIPOLYGON is still written as a Polygon."""
     result = wkt_to_geojson("MULTIPOLYGON (((0 0, 1 0, 1 1, 0 0)))")
@@ -118,10 +130,10 @@ def test_sanitize_json_row_converts_date_to_isoformat():
     assert _sanitize_json_row(row) == {"d": "2024-01-02"}
 
 
-def test_sanitize_json_row_converts_none_to_empty_string():
-    """None values are converted to empty strings, not JSON null."""
-    row = FakeRow({"name": None})
-    assert _sanitize_json_row(row) == {"name": ""}
+def test_sanitize_json_row_leaves_out_fields_with_no_value():
+    """Fields whose value is None are left out of the record."""
+    row = FakeRow({"id": 1, "name": None})
+    assert _sanitize_json_row(row) == {"id": 1}
 
 
 def test_sanitize_json_row_leaves_other_values_unchanged():
@@ -444,6 +456,7 @@ class FakeS3RenameClient:
         self.temp_files = dict(temp_files)  # key -> size_bytes
         self.target_exists = target_exists
         self.copy_calls = []
+        self.create_multipart_args = None
         self.copy_part_calls = []
         self.deleted = []
         self.completed_parts = None
@@ -470,10 +483,11 @@ class FakeS3RenameClient:
             ]
         }
 
-    def copy_object(self, Bucket, CopySource, Key):
-        self.copy_calls.append({"CopySource": CopySource, "Key": Key})
+    def copy_object(self, Bucket, CopySource, Key, **object_args):
+        self.copy_calls.append({"CopySource": CopySource, "Key": Key, **object_args})
 
-    def create_multipart_upload(self, Bucket, Key):
+    def create_multipart_upload(self, Bucket, Key, **object_args):
+        self.create_multipart_args = object_args
         return {"UploadId": "upload-1"}
 
     def upload_part_copy(
@@ -509,6 +523,9 @@ def test_s3_rename_and_move_uses_simple_copy_under_the_5gb_limit():
         {
             "CopySource": {"Bucket": "bucket", "Key": "dataset/temp/ds/part-0.csv"},
             "Key": "dataset/ds.csv",
+            "MetadataDirective": "REPLACE",
+            "ContentType": "text/csv",
+            "ContentDisposition": "attachment",
         }
     ]
     assert fake.copy_part_calls == []
@@ -530,6 +547,10 @@ def test_s3_rename_and_move_uses_multipart_copy_over_the_5gb_limit(monkeypatch):
         s3_rename_and_move("ds", "csv", "bucket")
 
     assert fake.copy_calls == []
+    assert fake.create_multipart_args == {
+        "ContentType": "text/csv",
+        "ContentDisposition": "attachment",
+    }
     assert fake.copy_part_calls == [
         {"PartNumber": 1, "CopySourceRange": "bytes=0-9"},
         {"PartNumber": 2, "CopySourceRange": "bytes=10-19"},
