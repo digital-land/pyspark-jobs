@@ -13,6 +13,7 @@ from jobs.utils.s3_writer_utils import (
     _upload_json_entities_partition,
     resolve_geometry,
     s3_rename_and_move,
+    wkt_to_geojson,
 )
 
 
@@ -58,6 +59,57 @@ def test_resolve_geometry_returns_none_when_both_absent():
 def test_resolve_geometry_returns_none_when_both_empty():
     """Returns None when both geometry and point are empty strings."""
     assert resolve_geometry("", "") is None
+
+
+def test_wkt_to_geojson_keeps_multipolygon_parts_separate():
+    """Each part of a MULTIPOLYGON becomes its own polygon, rather than every
+    part's rings being merged into one polygon where they render as holes."""
+    result = wkt_to_geojson(
+        "MULTIPOLYGON (((0 0, 1 0, 1 1, 0 0)), ((5 5, 6 5, 6 6, 5 5)))"
+    )
+    assert result == {
+        "type": "MultiPolygon",
+        "coordinates": [
+            [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 0.0]]],
+            [[[5.0, 5.0], [6.0, 5.0], [6.0, 6.0], [5.0, 5.0]]],
+        ],
+    }
+
+
+def test_wkt_to_geojson_keeps_holes_with_their_own_part():
+    """A hole stays in the part it belongs to."""
+    result = wkt_to_geojson(
+        "MULTIPOLYGON (((0 0, 10 0, 10 10, 0 10, 0 0), (2 2, 3 2, 3 3, 2 2)), "
+        "((20 20, 21 20, 21 21, 20 20)))"
+    )
+    assert result == {
+        "type": "MultiPolygon",
+        "coordinates": [
+            [
+                [[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0], [0.0, 0.0]],
+                [[2.0, 2.0], [3.0, 2.0], [3.0, 3.0], [2.0, 2.0]],
+            ],
+            [[[20.0, 20.0], [21.0, 20.0], [21.0, 21.0], [20.0, 20.0]]],
+        ],
+    }
+
+
+def test_wkt_to_geojson_splits_multipolygon_parts_without_space_after_type():
+    """WKT written as MULTIPOLYGON(((...))) is split into parts the same way."""
+    result = wkt_to_geojson(
+        "MULTIPOLYGON(((0 0, 1 0, 1 1, 0 0)),((5 5, 6 5, 6 6, 5 5)))"
+    )
+    assert result["type"] == "MultiPolygon"
+    assert len(result["coordinates"]) == 2
+
+
+def test_wkt_to_geojson_returns_single_part_multipolygon_as_polygon():
+    """A one-part MULTIPOLYGON is still written as a Polygon."""
+    result = wkt_to_geojson("MULTIPOLYGON (((0 0, 1 0, 1 1, 0 0)))")
+    assert result == {
+        "type": "Polygon",
+        "coordinates": [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 0.0]]],
+    }
 
 
 def test_sanitize_json_row_converts_date_to_isoformat():

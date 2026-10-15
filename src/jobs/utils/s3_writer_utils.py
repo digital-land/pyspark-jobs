@@ -521,9 +521,9 @@ def write_geojson_entities_s3(
                                 current_polygon += char
                         elif char == ")":
                             depth -= 1
-                            if depth > 0:
+                            if depth > 1:
                                 current_polygon += char
-                            elif depth == 0 and current_polygon:
+                            elif depth == 1 and current_polygon:
                                 rings = re.findall(r"\(([^()]+)\)", current_polygon)
                                 coordinates = []
                                 for ring in rings:
@@ -651,9 +651,9 @@ def wkt_to_geojson(wkt_string):
                     current_polygon += char
             elif char == ")":
                 depth -= 1
-                if depth > 0:
+                if depth > 1:
                     current_polygon += char
-                elif depth == 0 and current_polygon:
+                elif depth == 1 and current_polygon:
                     rings = re.findall(r"\(([^()]+)\)", current_polygon)
                     coordinates = []
                     for ring in rings:
