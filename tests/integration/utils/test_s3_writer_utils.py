@@ -2,12 +2,19 @@
 
 import os
 
+import boto3
 import pytest
+from moto import mock_aws
 from pyspark.sql import Row
+from pyspark.sql.functions import col
 from pyspark.sql.types import IntegerType, StringType, StructField, StructType
 
+from jobs.utils import s3_writer_utils
 from jobs.utils.s3_writer_utils import (
     _nonempty_partition_bounds,
+    _partition_for_upload,
+    as_download_values,
+    copy_s3_object,
     ensure_schema_fields,
     write_delta,
     write_geojson_entities_s3,
@@ -170,8 +177,8 @@ def test_ensure_schema_fields_adds_missing_fields_and_orders_columns(spark, tmp_
     assert result.collect()[0].asDict() == {
         "entity": 1,
         "reference": "ref-1",
-        "description": "",
-        "documentation-url": "",
+        "description": None,
+        "documentation-url": None,
         "notes": "a note",
     }
 
@@ -201,6 +208,97 @@ def test_ensure_schema_fields_uses_every_schema_and_skips_ended_fields(spark, tm
     result = ensure_schema_fields(df, "my-dataset", str(specification))
 
     assert result.columns == ["entity", "notes", "site-address"]
+
+
+@pytest.fixture()
+def s3_bucket():
+    with mock_aws():
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket="bucket")
+        yield s3
+
+
+def test_copy_s3_object_copies_with_object_settings(s3_bucket):
+    s3_bucket.put_object(Bucket="bucket", Key="tmp/part-0.parquet", Body=b"data")
+
+    copy_s3_object(
+        s3_bucket,
+        "bucket",
+        "tmp/part-0.parquet",
+        "dataset/ds.parquet",
+        {"ContentType": "binary/octet-stream", "ContentDisposition": "attachment"},
+    )
+
+    copied = s3_bucket.get_object(Bucket="bucket", Key="dataset/ds.parquet")
+    assert copied["Body"].read() == b"data"
+    assert copied["ContentType"] == "binary/octet-stream"
+    assert copied["ContentDisposition"] == "attachment"
+
+
+def test_copy_s3_object_uses_multipart_copy_over_the_copy_limit(s3_bucket, monkeypatch):
+    """Objects over CopyObject's limit are copied in parts, keeping their
+    content and object settings."""
+    monkeypatch.setattr(s3_writer_utils, "S3_COPY_OBJECT_MAX_BYTES", 10)
+    monkeypatch.setattr(s3_writer_utils, "S3_MULTIPART_COPY_PART_BYTES", 5 * 1024**2)
+    body = os.urandom(11 * 1024**2)
+    s3_bucket.put_object(Bucket="bucket", Key="tmp/big.csv", Body=body)
+
+    copy_s3_object(
+        s3_bucket,
+        "bucket",
+        "tmp/big.csv",
+        "dataset/big.csv",
+        {"ContentType": "text/csv", "ContentDisposition": "attachment"},
+    )
+
+    copied = s3_bucket.get_object(Bucket="bucket", Key="dataset/big.csv")
+    assert copied["Body"].read() == body
+    assert copied["ContentType"] == "text/csv"
+    assert copied["ContentDisposition"] == "attachment"
+
+
+def test_as_download_values_holds_every_value_as_text(spark):
+    """Values become text, entity table fields are never null, and other fields
+    with no value stay null."""
+    df = spark.createDataFrame(
+        [(1, 600001, None, None, "a note")],
+        "entity bigint, `organisation-entity` bigint, `end-date` date, "
+        "description string, notes string",
+    )
+
+    result = as_download_values(df)
+
+    assert result.columns == [
+        "end-date",
+        "entity",
+        "organisation-entity",
+        "description",
+        "notes",
+    ]
+    assert dict(result.dtypes) == {c: "string" for c in result.columns}
+    assert result.collect()[0].asDict() == {
+        "end-date": "",
+        "entity": "1",
+        "organisation-entity": "600001",
+        "description": None,
+        "notes": "a note",
+    }
+
+
+def test_partition_for_upload_with_order_by_keeps_rows_in_order(spark):
+    """With order_by, each partition holds a consecutive range of sorted rows,
+    so reading the partitions in turn gives every row in order."""
+    df = spark.createDataFrame(
+        [(str(n),) for n in [5, 120, 3, 77, 1000, 42, 9, 650, 18, 300]], "entity string"
+    ).repartition(3)
+    order = col("entity").cast("long")
+
+    partitioned = _partition_for_upload(df, 4, order)
+
+    rows = [
+        int(row["entity"]) for part in partitioned.rdd.glom().collect() for row in part
+    ]
+    assert rows == [3, 5, 9, 18, 42, 77, 120, 300, 650, 1000]
 
 
 def test_nonempty_partition_bounds_covers_all_rows_when_evenly_distributed(spark):
@@ -238,8 +336,10 @@ class FakeS3Client:
     def __init__(self):
         self.put_calls = []
 
-    def put_object(self, Bucket, Key, Body):
-        self.put_calls.append({"Bucket": Bucket, "Key": Key, "Body": Body})
+    def put_object(self, Bucket, Key, Body, **object_args):
+        self.put_calls.append(
+            {"Bucket": Bucket, "Key": Key, "Body": Body, **object_args}
+        )
 
 
 def test_write_json_entities_s3_empty_dataframe_writes_empty_entities_array(spark):
@@ -257,6 +357,8 @@ def test_write_json_entities_s3_empty_dataframe_writes_empty_entities_array(spar
             "Bucket": "test-bucket",
             "Key": "dataset/test.json",
             "Body": '{"entities":[]}',
+            "ContentType": "application/json",
+            "ContentDisposition": "attachment",
         }
     ]
 
@@ -278,6 +380,8 @@ def test_write_geojson_entities_s3_empty_dataframe_writes_empty_feature_collecti
             "Bucket": "test-bucket",
             "Key": "dataset/test.geojson",
             "Body": '{"type":"FeatureCollection","name":"test-dataset","features":[]}',
+            "ContentType": "application/geo+json",
+            "ContentDisposition": "attachment",
         }
     ]
 
@@ -297,7 +401,7 @@ class _NoopMultipartS3Client:
     def delete_object(self, Bucket, Key):
         pass
 
-    def create_multipart_upload(self, Bucket, Key):
+    def create_multipart_upload(self, Bucket, Key, **object_args):
         return {"UploadId": "u1"}
 
     def abort_multipart_upload(self, Bucket, Key, UploadId):
@@ -308,10 +412,9 @@ def test_write_json_entities_s3_closure_preserves_all_fields(spark, monkeypatch)
     """Regression test for the actual closure write_json_entities_s3 ships
     to executors (not the reference implementation _upload_json_entities_
     partition, which the closure duplicates rather than calls -- see
-    _closure_test_helpers for why). Every property field must survive,
-    dates must become ISO strings, and None must become '' -- the exact
-    output shape the pre-refactor sequential toLocalIterator writer
-    produced."""
+    _closure_test_helpers for why). Every property field with a value must
+    survive, dates must become ISO strings, and fields with no value are left
+    out of the record."""
     capture_df = spark.createDataFrame([Row(id=0)])
     fn = capture_upload_closure(
         monkeypatch,
@@ -351,14 +454,11 @@ list(fn(0, iter(rows)))
         "score": 3.5,
         "active": True,
         "entry-date": "2024-01-02",
-        "note": "",
     }
     assert entities[2] == {
         "id": 2,
         "name": "Beta",
-        "score": "",
         "active": False,
-        "entry-date": "",
         "note": "hello",
     }
 
@@ -404,6 +504,9 @@ rows = [
         "id": 3, "name": "Gamma", "entry-date": None, "note": None,
         "geometry": None, "point": None,
     }),
+    FakeRow({
+        "id": 4, "name": "Delta", "geometry": None, "point": "POINT(2.3e-05 51.334751)",
+    }),
 ]
 list(fn(0, iter(rows)))
 """
@@ -420,7 +523,6 @@ list(fn(0, iter(rows)))
         "id": 1,
         "name": "Alpha",
         "entry-date": "2024-01-02",
-        "note": "",
     }
     assert "geometry" not in features[1]["properties"]
     assert "point" not in features[1]["properties"]
@@ -432,12 +534,16 @@ list(fn(0, iter(rows)))
     assert features[2]["properties"] == {
         "id": 2,
         "name": "Beta",
-        "entry-date": "",
         "note": "hello",
     }
     assert features[2]["geometry"] == {"type": "Point", "coordinates": [9.0, 9.0]}
 
     assert features[3]["geometry"] is None
+
+    assert features[4]["geometry"] == {
+        "type": "Point",
+        "coordinates": [2.3e-05, 51.334751],
+    }
 
 
 def test_write_geojson_entities_s3_closure_keeps_multipolygon_parts_separate(

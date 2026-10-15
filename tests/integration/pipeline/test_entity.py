@@ -6,7 +6,9 @@ Parquet I/O uses local disk; S3 (_write_consumer_formats) uses moto.
 Postgres is mocked.
 """
 
+import json
 import os
+from datetime import date, datetime
 
 import pytest
 from pyspark import StorageLevel
@@ -614,3 +616,119 @@ class TestEntityPipeline:
 
         tmp_dir = os.path.join(output_path, "_tmp_test-dataset_parquet")
         assert not os.path.exists(tmp_dir), "temp directory was not cleaned up"
+
+
+class TestWriteConsumerFormats:
+    """_write_consumer_formats end to end against local files."""
+
+    @staticmethod
+    def _write_specification(base):
+        specification = base / "specification"
+        specification.mkdir()
+        (specification / "dataset-schema.csv").write_text(
+            "dataset,schema\ntest-dataset,test-dataset\n"
+        )
+        (specification / "schema-field.csv").write_text(
+            "schema,field\n"
+            "test-dataset,name\n"
+            "test-dataset,notes\n"
+            "test-dataset,documentation-url\n"
+        )
+        (specification / "field.csv").write_text(
+            "field,end-date\nname,\nnotes,\ndocumentation-url,\n"
+        )
+
+    @staticmethod
+    def _entity_df(spark):
+        rows = [
+            (
+                1002,
+                'The "Old" Mill, Bath',
+                '{"notes":"has a quote"}',
+                "POINT (1 2)",
+                None,
+            ),
+            (
+                1001,
+                "",
+                '{"documentation_url":"https://example.com/1001"}',
+                None,
+                "MULTIPOLYGON (((0 0, 1 0, 1 1, 0 0)))",
+            ),
+            (1003, " No geometry ", "{}", None, None),
+        ]
+        return spark.createDataFrame(
+            [
+                (
+                    "test-dataset",
+                    None,
+                    entity,
+                    date(2024, 1, 2),
+                    geometry,
+                    json_value,
+                    name,
+                    600001,
+                    point,
+                    "test-dataset",
+                    "authoritative",
+                    f"REF{entity}",
+                    None,
+                    "geography",
+                    datetime(2026, 10, 15, 10, 0),
+                )
+                for entity, name, json_value, point, geometry in rows
+            ],
+            "dataset string, end_date date, entity bigint, entry_date date, "
+            "geometry string, json string, name string, organisation_entity bigint, "
+            "point string, prefix string, quality string, reference string, "
+            "start_date date, typology string, processed_timestamp timestamp",
+        )
+
+    def test_writes_download_files_in_the_published_formats(self, spark, tmp_path):
+        self._write_specification(tmp_path)
+        config = PipelineConfig(
+            spark=spark,
+            dataset="test-dataset",
+            env="local",
+            collection_data_path=f"{tmp_path}/",
+            parquet_datasets_path=str(tmp_path / "parquet"),
+        )
+
+        EntityPipeline(config)._write_consumer_formats(self._entity_df(spark))
+
+        dataset_dir = tmp_path / "dataset"
+        csv_part = next((dataset_dir / "temp" / "test-dataset").glob("part-*.csv"))
+        assert csv_part.read_text().splitlines() == [
+            "dataset,end-date,entity,entry-date,geometry,name,"
+            "organisation-entity,point,prefix,quality,reference,start-date,"
+            "typology,documentation-url,notes",
+            'test-dataset,,1001,2024-01-02,"MULTIPOLYGON (((0 0, 1 0, 1 1, 0 0)))",,'
+            "600001,,test-dataset,authoritative,REF1001,,geography,"
+            "https://example.com/1001,",
+            'test-dataset,,1002,2024-01-02,,"The ""Old"" Mill, Bath",600001,'
+            "POINT (1 2),test-dataset,authoritative,REF1002,,geography,,has a quote",
+            "test-dataset,,1003,2024-01-02,, No geometry ,600001,,test-dataset,"
+            "authoritative,REF1003,,geography,,",
+        ]
+
+        parquet_df = spark.read.parquet(str(dataset_dir / "test-dataset.parquet"))
+        assert dict(parquet_df.dtypes)["entity"] == "bigint"
+        assert {t for c, t in parquet_df.dtypes if c != "entity"} == {"string"}
+        assert [r["entity"] for r in parquet_df.collect()] == [1001, 1002, 1003]
+
+        entities = json.loads((dataset_dir / "test-dataset.json").read_text())[
+            "entities"
+        ]
+        assert [e["entity"] for e in entities] == ["1001", "1002", "1003"]
+        assert entities[0]["documentation-url"] == "https://example.com/1001"
+        assert "notes" not in entities[0]
+        assert entities[1]["notes"] == "has a quote"
+        assert "documentation-url" not in entities[1]
+        assert all("geojson" not in e for e in entities)
+        assert entities[2]["end-date"] == ""
+
+        geojson = json.loads((dataset_dir / "test-dataset.geojson").read_text())
+        assert [f["properties"]["entity"] for f in geojson["features"]] == [
+            "1001",
+            "1002",
+        ]
