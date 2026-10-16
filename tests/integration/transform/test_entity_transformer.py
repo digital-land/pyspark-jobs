@@ -5,6 +5,8 @@ These tests run the full transform pipeline on real Spark DataFrames
 with only external HTTP calls (typology lookup) mocked.
 """
 
+import json
+
 from jobs.transform.entity_transformer import transform_entity
 
 
@@ -389,3 +391,36 @@ def test_transform_entity_is_deterministic_under_repartition(spark, mocker):
 
     assert first[0]["name"] == "FROM-RES-A"
     assert [r["name"] for r in first] == [r["name"] for r in second]
+
+
+def test_transform_entity_json_keys_use_spec_field_names(spark, mocker):
+    """Fields outside the standard columns are stored in json under their kebab-case field names."""
+    mocker.patch(
+        "jobs.transform.entity_transformer.get_dataset_typology",
+        return_value="geography",
+    )
+
+    rows = _base_rows("2010", priority="1") + [
+        {
+            "entity": "2010",
+            "field": "listed-building",
+            "value": "1024710",
+            "entry_date": "2024-03-01",
+            "entry_number": "1",
+            "priority": "1",
+            "resource": "res-a",
+            "fact": "fact-2010-listed-building",
+        }
+    ]
+
+    fact_resource_df, fact_df = _split_rows(spark, rows)
+    result = transform_entity(
+        fact_resource_df,
+        fact_df,
+        "test-dataset",
+        _build_organisation_df(spark),
+        _build_resource_df(spark),
+    )
+    row = result.collect()[0]
+
+    assert json.loads(row["json"]) == {"listed-building": "1024710"}
