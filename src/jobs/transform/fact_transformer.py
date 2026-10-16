@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime
 
-from pyspark.sql.functions import col, lit, row_number
+from pyspark.sql.functions import col, desc, lit, row_number
 from pyspark.sql.types import TimestampType
 from pyspark.sql.window import Window
 
@@ -17,7 +17,7 @@ def transform_fact(df, dataset):
 
     window_spec = (
         Window.partitionBy("fact")
-        .orderBy("priority", "entry_date", "entry_number")
+        .orderBy("priority", desc("entry_date"), desc("entry_number"))
         .rowsBetween(Window.unboundedPreceding, Window.currentRow)
     )
 
