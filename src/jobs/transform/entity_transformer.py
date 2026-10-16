@@ -214,7 +214,11 @@ def _build_json_column(df):
 
     diff_columns = [c for c in df.columns if c not in _STANDARD_COLUMNS]
     if diff_columns:
-        df = df.withColumn("json", to_json(struct(*[col(c) for c in diff_columns])))
+        # json keys use the spec's kebab-case field names, as the DLP pipeline does
+        df = df.withColumn(
+            "json",
+            to_json(struct(*[col(c).alias(c.replace("_", "-")) for c in diff_columns])),
+        )
     else:
         df = df.withColumn("json", lit("{}"))
     return df
