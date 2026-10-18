@@ -17,6 +17,7 @@ from jobs.pipeline.column_field import ColumnFieldPipeline
 from jobs.pipeline.dataset_resource import DatasetResourcePipeline
 from jobs.pipeline.entity import EntityPipeline
 from jobs.pipeline.issue import IssuePipeline
+from jobs.pipeline.old_entity import OldEntityPipeline
 from jobs.pipeline.provision_quality import (
     DATASET_QUALITY_PG_TYPES,
     ORGANISATION_QUALITY_PG_TYPES,
@@ -32,6 +33,7 @@ __all__ = [
     "DatasetResourcePipeline",
     "EntityPipeline",
     "IssuePipeline",
+    "OldEntityPipeline",
     "ProvisionQualityPipeline",
     "TaskPipeline",
     "PROVISION_QUALITY_PG_TYPES",

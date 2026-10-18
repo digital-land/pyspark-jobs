@@ -795,6 +795,63 @@ def write_old_entity_to_postgres(df, database_url):
         logger.warning(f"write_old_entity_to_postgres: Cleanup failed: {e}")
 
 
+def write_dataset_old_entity_to_postgres(df, dataset, database_url):
+    """
+    Replace one dataset's rows in the old_entity table in a single transaction.
+
+    A dataset has at most a few thousand old entities, so the rows are inserted directly
+    rather than through a staging table.
+
+    Args:
+        df: Spark DataFrame with old_entity columns, all for the given dataset.
+        dataset: The dataset whose rows are replaced.
+        database_url: PostgreSQL connection URL (postgresql://user:pass@host:port/dbname)
+    """
+    rows = [
+        tuple(row)
+        for row in df.select(
+            "old_entity",
+            "status",
+            "entity",
+            "notes",
+            "end_date",
+            "entry_date",
+            "start_date",
+            "dataset",
+        ).collect()
+    ]
+    logger.info(
+        f"write_dataset_old_entity_to_postgres: Writing {len(rows):,} rows for {dataset}"
+    )
+
+    conn = pg8000.connect(**parse_database_url(database_url))
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM old_entity WHERE dataset = %s;", (dataset,))
+        deleted = cur.rowcount
+        if rows:
+            cur.executemany(
+                """
+                INSERT INTO old_entity (
+                    old_entity, status, entity, notes,
+                    end_date, entry_date, start_date, dataset
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+                """,
+                rows,
+            )
+        conn.commit()
+        cur.close()
+        logger.info(
+            f"write_dataset_old_entity_to_postgres: Replaced {deleted:,} rows with {len(rows):,} for {dataset}"
+        )
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def write_task_to_postgres(df, database_url):
     """
     Write the task DataFrame to PostgreSQL using a staging table and full table swap.
