@@ -26,6 +26,7 @@ from jobs.pipeline.provision_quality import (
 )
 from jobs.utils.postgres_writer_utils import (
     write_dataframe_to_postgres_jdbc,
+    write_dataset_old_entity_to_postgres,
     write_entity_subdivided_to_postgres,
     write_old_entity_to_postgres,
     write_table_to_postgres,
@@ -655,6 +656,75 @@ def test_write_old_entity_handles_nulls(spark, db_url, db_conn, clean_old_entity
     assert row[2] is None  # entity
     assert row[3] is None  # notes
     assert _count_tables_matching(db_conn, "old_entity_staging_%") == 0
+
+
+@pytest.mark.database
+def test_write_dataset_old_entity_replaces_only_that_dataset(
+    spark, db_url, db_conn, clean_old_entity_table
+):
+    """The dataset's rows are replaced and other datasets' rows are left alone."""
+    write_old_entity_to_postgres(
+        _build_old_entity_df(
+            spark,
+            [
+                (111, 410, None, None, None, None, None, "listed-building"),
+                (222, 301, 333, None, None, None, None, "conservation-area"),
+            ],
+        ),
+        db_url,
+    )
+
+    write_dataset_old_entity_to_postgres(
+        _build_old_entity_df(
+            spark,
+            [
+                (
+                    444,
+                    410,
+                    None,
+                    "gone",
+                    None,
+                    date(2026, 10, 1),
+                    None,
+                    "listed-building",
+                ),
+                (555, 410, None, None, None, None, None, "listed-building"),
+            ],
+        ),
+        "listed-building",
+        db_url,
+    )
+
+    rows = _query_old_entity_rows(db_conn)
+    assert [(r[0], r[7]) for r in rows] == [
+        (222, "conservation-area"),
+        (444, "listed-building"),
+        (555, "listed-building"),
+    ]
+    assert rows[1][3] == "gone"
+    assert rows[1][5] == date(2026, 10, 1)
+
+
+@pytest.mark.database
+def test_write_dataset_old_entity_with_no_rows_clears_the_dataset(
+    spark, db_url, db_conn, clean_old_entity_table
+):
+    write_old_entity_to_postgres(
+        _build_old_entity_df(
+            spark,
+            [
+                (111, 410, None, None, None, None, None, "listed-building"),
+                (222, 301, 333, None, None, None, None, "conservation-area"),
+            ],
+        ),
+        db_url,
+    )
+
+    write_dataset_old_entity_to_postgres(
+        _build_old_entity_df(spark, []), "listed-building", db_url
+    )
+
+    assert [r[0] for r in _query_old_entity_rows(db_conn)] == [222]
 
 
 @pytest.mark.database

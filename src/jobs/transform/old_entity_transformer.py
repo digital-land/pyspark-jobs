@@ -81,3 +81,27 @@ def transform_old_entity(old_entity_df: DataFrame, dataset_df: DataFrame) -> Dat
 
     logger.info(f"transform_old_entity: Complete, columns: {result.columns}")
     return result
+
+
+def filter_old_entity_for_dataset(
+    old_entity_df: DataFrame, dataset: str, entity_minimum: int, entity_maximum: int
+) -> DataFrame:
+    """
+    Keep the old-entity.csv records for one dataset: those whose old entity number falls
+    in the dataset's entity range, the same rule the dataset package and the Postgres
+    loader use.
+
+    Args:
+        old_entity_df: Records from one collection's old-entity.csv. Column names may use
+            hyphens (old-entity, end-date) — they are normalised internally.
+        dataset: The dataset the records are for.
+        entity_minimum: First entity number in the dataset's range.
+        entity_maximum: Last entity number in the dataset's range.
+    """
+    old_entity_df = normalise_column_names(old_entity_df)
+
+    result = old_entity_df.filter(
+        col("old_entity").cast("long").between(entity_minimum, entity_maximum)
+    ).withColumn("dataset", lit(dataset))
+
+    return get_schema("old_entity").enforce(result)

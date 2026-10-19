@@ -19,6 +19,7 @@ from jobs.pipeline import (
     DatasetResourcePipeline,
     EntityPipeline,
     IssuePipeline,
+    OldEntityPipeline,
     PipelineConfig,
     ProvisionQualityPipeline,
     TaskPipeline,
@@ -84,6 +85,9 @@ def assemble_and_load_entity(
         entity_pipeline = EntityPipeline(config)
         entity_pipeline.run(collection=collection)
 
+        old_entity_pipeline = OldEntityPipeline(config)
+        old_entity_pipeline.run(collection=collection)
+
         issue_pipeline = IssuePipeline(config)
         issue_pipeline.run(collection=collection)
 
@@ -95,6 +99,7 @@ def assemble_and_load_entity(
 
         report = [
             entity_pipeline.result,
+            old_entity_pipeline.result,
             issue_pipeline.result,
             dataset_resource_pipeline.result,
             column_field_pipeline.result,

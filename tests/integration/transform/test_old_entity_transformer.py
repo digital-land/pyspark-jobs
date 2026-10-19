@@ -5,7 +5,11 @@ from unittest.mock import patch
 from pyspark.sql.types import LongType, StringType, StructField, StructType
 
 from jobs.config.schema import get_schema
-from jobs.transform.old_entity_transformer import fetch_dataset_df, transform_old_entity
+from jobs.transform.old_entity_transformer import (
+    fetch_dataset_df,
+    filter_old_entity_for_dataset,
+    transform_old_entity,
+)
 
 _SPEC_CSV = """\
 dataset,collection,entity_minimum,entity_maximum,other_col
@@ -309,3 +313,55 @@ def test_transform_old_entity_allows_null_entity(spark):
     row = result.collect()[0]
     assert row["entity"] is None
     assert row["dataset"] is not None
+
+
+def _make_old_entity_csv_df(spark, rows):
+    """old-entity.csv as Spark reads it: hyphenated headers, every value a string."""
+    return spark.createDataFrame(
+        rows, ["old-entity", "status", "entity", "notes", "end-date"]
+    )
+
+
+def test_filter_old_entity_for_dataset_keeps_only_the_dataset_range(spark):
+    df = _make_old_entity_csv_df(
+        spark,
+        [
+            ("44000000", "410", "", "", ""),
+            ("44999999", "301", "44000001", "", ""),
+            ("4000001", "410", "", "", ""),
+        ],
+    )
+
+    result = filter_old_entity_for_dataset(df, "conservation-area", 44000000, 44999999)
+
+    rows = sorted(result.collect(), key=lambda r: r.old_entity)
+    assert [r.old_entity for r in rows] == [44000000, 44999999]
+    assert {r.dataset for r in rows} == {"conservation-area"}
+
+
+def test_filter_old_entity_for_dataset_keeps_redirects_to_another_range(spark):
+    df = _make_old_entity_csv_df(spark, [("44000001", "301", "4000001", "", "")])
+
+    result = filter_old_entity_for_dataset(df, "conservation-area", 44000000, 44999999)
+
+    assert [(r.old_entity, r.entity) for r in result.collect()] == [(44000001, 4000001)]
+
+
+def test_filter_old_entity_for_dataset_blank_values_become_null(spark):
+    df = _make_old_entity_csv_df(spark, [("44000001", "410", "", "", "")])
+
+    row = filter_old_entity_for_dataset(
+        df, "conservation-area", 44000000, 44999999
+    ).first()
+
+    assert row.status == 410
+    assert row.entity is None
+    assert row.end_date is None
+
+
+def test_filter_old_entity_for_dataset_output_columns_match_schema(spark):
+    df = _make_old_entity_csv_df(spark, [("44000001", "410", "", "", "")])
+
+    result = filter_old_entity_for_dataset(df, "conservation-area", 44000000, 44999999)
+
+    assert result.columns == [f.field for f in get_schema("old_entity").fields]
