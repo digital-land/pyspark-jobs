@@ -86,6 +86,35 @@ def issue_files_for_resources(
     return files
 
 
+def dataset_issue_files(collection_dir: AnyPath, dataset: str) -> list[str]:
+    """Issue CSV paths for the resources a dataset is assembled from.
+
+    Issue files live at {collection}-collection/issue/{dataset}/{resource}.csv,
+    and the directory also holds files for resources the collection no longer
+    assembles. Only a resource with a transformed file at
+    {collection}-collection/transformed/{dataset}/{resource}.parquet is kept,
+    so the issue table covers the same resources as EntityPipeline's facts.
+
+    Args:
+        collection_dir: The {collection}-collection folder
+        dataset: Dataset whose issue files to find
+
+    Returns:
+        Sorted paths as strings, ready to hand to read_issue_csvs; empty if
+        either directory is missing
+    """
+    transformed_dir = collection_dir / "transformed" / dataset
+    issue_dir = collection_dir / "issue" / dataset
+    if not transformed_dir.exists() or not issue_dir.exists():
+        return []
+    resources = {p.stem for p in transformed_dir.iterdir() if p.suffix == ".parquet"}
+    return sorted(
+        str(p)
+        for p in issue_dir.iterdir()
+        if p.suffix == ".csv" and p.stem in resources
+    )
+
+
 def expectation_files(base: AnyPath) -> list[str]:
     """Paths to the per-dataset expectation parquet files.
 

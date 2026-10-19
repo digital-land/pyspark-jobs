@@ -5,10 +5,11 @@ import logging
 from cloudpathlib import AnyPath
 
 from jobs.pipeline.base import BasePipeline
-from jobs.read import read_old_resources
+from jobs.read import read_issue_csvs, read_old_resources
 from jobs.transform.filter import filter_old_resources
 from jobs.transform.issue_transformer import transform_issue
-from jobs.utils.df_utils import normalise_column_names, show_df
+from jobs.utils.collection_paths import dataset_issue_files
+from jobs.utils.df_utils import show_df
 from jobs.utils.s3_writer_utils import write_delta
 
 logger = logging.getLogger(__name__)
@@ -18,7 +19,8 @@ class IssuePipeline(BasePipeline):
     """
     Pipeline for issue data.
 
-    Reads issue CSV, runs IssueTransformer, writes parquet output.
+    Reads the issue CSVs of the resources the dataset is assembled from, runs
+    IssueTransformer, writes parquet output.
     """
 
     def execute(self, collection):
@@ -29,18 +31,22 @@ class IssuePipeline(BasePipeline):
 
         # -- Extract ----------------------------------------------------------
         base = AnyPath(collection_data_path)
-        issue_path = (
-            str(base / f"{collection}-collection" / "issue" / dataset) + "/*.csv"
-        )
+        collection_dir = base / f"{collection}-collection"
+        issue_files = dataset_issue_files(collection_dir, dataset)
+        if not issue_files:
+            raise ValueError(
+                f"IssuePipeline: No issue files for the transformed resources of {dataset} in {collection_dir}"
+            )
 
-        logger.info(f"IssuePipeline: Reading issue data from {issue_path}")
-        issue_df = spark.read.option("header", "true").csv(issue_path)
+        # issue CSVs exist in three column layouts, which a single
+        # spark.read.csv would misalign - read_issue_csvs reads each by its own header
+        logger.info(
+            f"IssuePipeline: Reading {len(issue_files)} issue files from {collection_dir / 'issue' / dataset}"
+        )
+        issue_df = read_issue_csvs(spark, issue_files)
         issue_df.cache()
         issue_df.printSchema()
         show_df(issue_df, 5, env)
-
-        issue_df = normalise_column_names(issue_df)
-        logger.info(f"IssuePipeline: Columns after renaming: {issue_df.columns}")
 
         # -- Filter old resources ---------------------------------------------
         old_resource_path = (
