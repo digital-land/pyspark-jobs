@@ -218,13 +218,13 @@ TRANSFORMED_ROWS = [
 ]
 
 ISSUE_COLUMNS = [
-    "entity",
-    "entry-number",
-    "field",
-    "issue-type",
-    "line-number",
     "dataset",
     "resource",
+    "line-number",
+    "entry-number",
+    "field",
+    "entity",
+    "issue-type",
     "value",
     "message",
 ]
@@ -320,17 +320,18 @@ def test_e2e_full_load_pipeline(cli_runner, run_main_cmd, spark, tmp_path, mocke
     collection_dir = os.path.join(base, f"{dataset}-collection")
     parquet_base = os.path.join(base, "parquet-output/")
 
-    # Write transformed parquet (source for fact, fact_resource, entity)
+    # Write transformed parquet (source for fact, fact_resource, entity), named
+    # after its resource like the transformed files IssuePipeline lists
     _write_parquet(
         spark,
-        os.path.join(collection_dir, "transformed", dataset),
+        os.path.join(collection_dir, "transformed", dataset, "res-001.parquet"),
         TRANSFORMED_COLUMNS,
         TRANSFORMED_ROWS,
     )
 
     # Write issue CSV
     _write_csv(
-        os.path.join(collection_dir, "issue", dataset, "issue.csv"),
+        os.path.join(collection_dir, "issue", dataset, "res-001.csv"),
         ISSUE_COLUMNS,
         ISSUE_ROWS,
     )
