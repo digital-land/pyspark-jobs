@@ -219,8 +219,12 @@ def _build_json_column(df):
             "json",
             to_json(struct(*[col(c).alias(c.replace("_", "-")) for c in diff_columns])),
         )
+        # to_json leaves out null fields, so an entity with none of its extra fields set gives {}
+        df = df.withColumn(
+            "json", when(col("json") == "{}", None).otherwise(col("json"))
+        )
     else:
-        df = df.withColumn("json", lit("{}"))
+        df = df.withColumn("json", lit(None).cast("string"))
     return df
 
 

@@ -650,12 +650,12 @@ class TestWriteConsumerFormats:
             ),
             (
                 1001,
-                "",
+                None,
                 '{"documentation_url":"https://example.com/1001"}',
                 None,
                 "MULTIPOLYGON (((0 0, 1 0, 1 1, 0 0)))",
             ),
-            (1003, " No geometry ", "{}", None, None),
+            (1003, " No geometry ", None, None, None),
         ]
         return spark.createDataFrame(
             [

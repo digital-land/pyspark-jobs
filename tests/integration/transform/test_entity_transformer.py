@@ -488,3 +488,61 @@ def test_transform_entity_quality_null_for_other_priorities(spark, mocker):
     )
 
     assert result.collect()[0]["quality"] is None
+
+
+def test_transform_entity_json_null_without_extra_fields(spark, mocker):
+    """A dataset with only standard fields has nothing for json, so it is null rather than {}."""
+    mocker.patch(
+        "jobs.transform.entity_transformer.get_dataset_typology",
+        return_value="geography",
+    )
+
+    fact_resource_df, fact_df = _split_rows(spark, _base_rows("4004", priority="1"))
+    result = transform_entity(
+        fact_resource_df,
+        fact_df,
+        "test-dataset",
+        _build_organisation_df(spark),
+        _build_resource_df(spark),
+    )
+
+    assert result.collect()[0]["json"] is None
+
+
+def test_transform_entity_json_null_when_extra_fields_unset(spark, mocker):
+    """An entity with none of the dataset's extra fields set has a null json, while
+    an entity that has them keeps its json."""
+    mocker.patch(
+        "jobs.transform.entity_transformer.get_dataset_typology",
+        return_value="geography",
+    )
+
+    rows = (
+        _base_rows("4005", priority="1")
+        + [
+            {
+                "entity": "4005",
+                "field": "listed-building",
+                "value": "1024710",
+                "entry_date": "2024-03-01",
+                "entry_number": "1",
+                "priority": "1",
+                "resource": "res-a",
+                "fact": "fact-4005-listed-building",
+            }
+        ]
+        + _base_rows("4006", priority="1")
+    )
+
+    fact_resource_df, fact_df = _split_rows(spark, rows)
+    result = transform_entity(
+        fact_resource_df,
+        fact_df,
+        "test-dataset",
+        _build_organisation_df(spark),
+        _build_resource_df(spark),
+    )
+    json_by_entity = {str(row["entity"]): row["json"] for row in result.collect()}
+
+    assert json.loads(json_by_entity["4005"]) == {"listed-building": "1024710"}
+    assert json_by_entity["4006"] is None
