@@ -75,3 +75,18 @@ def test_transform_issue_preserves_existing_field_values(spark):
 
     assert row["value"] == "my-value"
     assert row["line_number"] == "42"
+
+
+def test_transform_issue_dates_are_null(spark):
+    """Issues carry no dates of their own, so all three are null rather than empty strings."""
+    df = _build_df(
+        spark,
+        [("ds-a", "res-001", "field-a", "some value")],
+        ["dataset", "resource", "field", "value"],
+    )
+
+    row = transform_issue(df, "ds-a").collect()[0]
+
+    assert row["start_date"] is None
+    assert row["entry_date"] is None
+    assert row["end_date"] is None

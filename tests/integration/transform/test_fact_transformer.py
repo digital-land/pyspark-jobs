@@ -63,3 +63,15 @@ def test_transform_fact_returns_one_row_per_fact(spark):
     result = transform_fact(df, "ds-a")
 
     assert sorted(r["fact"] for r in result.collect()) == ["fact-1", "fact-2"]
+
+
+def test_transform_fact_keeps_blank_value(spark):
+    """A blank value is what the provider supplied, such as an empty end-date, so it stays an empty string."""
+    df = _build_df(
+        spark,
+        [("fact-1", 700000, "end-date", "", 1, "2024-10-17", "1", "res-a")],
+    )
+
+    row = transform_fact(df, "ds-a").collect()[0]
+
+    assert row["value"] == ""
