@@ -424,3 +424,67 @@ def test_transform_entity_json_keys_use_spec_field_names(spark, mocker):
     row = result.collect()[0]
 
     assert json.loads(row["json"]) == {"listed-building": "1024710"}
+
+
+def test_transform_entity_name_null_when_no_name_fact(spark, mocker):
+    """A dataset with no name facts gets a null name rather than an empty string."""
+    mocker.patch(
+        "jobs.transform.entity_transformer.get_dataset_typology",
+        return_value="geography",
+    )
+
+    rows = [row for row in _base_rows("4001", priority="1") if row["field"] != "name"]
+
+    fact_resource_df, fact_df = _split_rows(spark, rows)
+    result = transform_entity(
+        fact_resource_df,
+        fact_df,
+        "test-dataset",
+        _build_organisation_df(spark),
+        _build_resource_df(spark),
+    )
+
+    assert result.collect()[0]["name"] is None
+
+
+def test_transform_entity_name_null_when_name_fact_blank(spark, mocker):
+    """A blank name supplied by the provider is stored as null."""
+    mocker.patch(
+        "jobs.transform.entity_transformer.get_dataset_typology",
+        return_value="geography",
+    )
+
+    rows = [
+        dict(row, value="") if row["field"] == "name" else row
+        for row in _base_rows("4002", priority="1")
+    ]
+
+    fact_resource_df, fact_df = _split_rows(spark, rows)
+    result = transform_entity(
+        fact_resource_df,
+        fact_df,
+        "test-dataset",
+        _build_organisation_df(spark),
+        _build_resource_df(spark),
+    )
+
+    assert result.collect()[0]["name"] is None
+
+
+def test_transform_entity_quality_null_for_other_priorities(spark, mocker):
+    """Priorities other than 1 and 2 have no quality, so it is null rather than an empty string."""
+    mocker.patch(
+        "jobs.transform.entity_transformer.get_dataset_typology",
+        return_value="geography",
+    )
+
+    fact_resource_df, fact_df = _split_rows(spark, _base_rows("4003", priority="3"))
+    result = transform_entity(
+        fact_resource_df,
+        fact_df,
+        "test-dataset",
+        _build_organisation_df(spark),
+        _build_resource_df(spark),
+    )
+
+    assert result.collect()[0]["quality"] is None

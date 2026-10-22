@@ -15,9 +15,9 @@ def transform_issue(df, dataset):
     logger.info("transform_issue: Transforming data for Issue table")
 
     transf_df = (
-        df.withColumn("start_date", lit("").cast("string"))
-        .withColumn("entry_date", lit("").cast("string"))
-        .withColumn("end_date", lit("").cast("string"))
+        df.withColumn("start_date", lit(None).cast("string"))
+        .withColumn("entry_date", lit(None).cast("string"))
+        .withColumn("end_date", lit(None).cast("string"))
     )
 
     transf_df = transf_df.filter(col("resource").isNotNull())

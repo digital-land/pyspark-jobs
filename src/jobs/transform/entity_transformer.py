@@ -158,13 +158,13 @@ def _pivot_to_entity(df, env):
 
 def _add_quality_column(pivot_df):
     if "priority" not in pivot_df.columns:
-        return pivot_df.withColumn("quality", lit(""))
+        return pivot_df.withColumn("quality", lit(None).cast("string"))
 
     return pivot_df.withColumn(
         "quality",
         when(col("priority") == 1, lit("some"))
         .when(col("priority") == 2, lit("authoritative"))
-        .otherwise(lit("")),
+        .otherwise(lit(None).cast("string")),
     ).drop("priority")
 
 
@@ -208,7 +208,7 @@ def _build_json_column(df):
     if "start_date" not in df.columns:
         df = df.withColumn("start_date", lit(None).cast("date"))
     if "name" not in df.columns:
-        df = df.withColumn("name", lit("").cast("string"))
+        df = df.withColumn("name", lit(None).cast("string"))
     if "point" not in df.columns:
         df = df.withColumn("point", lit(None).cast("string"))
 
@@ -248,6 +248,12 @@ def _normalise_geometry(df):
                 .when(col(geom_col).startswith("MULTIPOLYGON"), col(geom_col))
                 .otherwise(None),
             )
+    return df
+
+
+def _normalise_name(df):
+    if "name" in df.columns:
+        df = df.withColumn("name", when(col("name") == "", None).otherwise(col("name")))
     return df
 
 
@@ -317,7 +323,11 @@ def transform_entity(
     df = _normalise_geometry(df)
     show_df(df, 5, env)
 
-    logger.info("transform_entity: Step 13 — final projection")
+    logger.info("transform_entity: Step 13 — normalise name")
+    df = _normalise_name(df)
+    show_df(df, 5, env)
+
+    logger.info("transform_entity: Step 14 — final projection")
     df = _final_projection(df)
     show_df(df, 5, env)
 
