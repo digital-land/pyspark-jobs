@@ -4,7 +4,7 @@ Integration tests for transform/filter.py.
 Uses a real Spark session to verify filtering behaviour on DataFrames.
 """
 
-from jobs.transform.filter import filter_old_resources
+from jobs.transform.filter import filter_dataset_resources, filter_old_resources
 
 
 def _build_issue_df(spark, rows):
@@ -13,6 +13,10 @@ def _build_issue_df(spark, rows):
 
 def _build_old_resources_df(spark, rows):
     return spark.createDataFrame(rows, schema=["old_resource", "status"])
+
+
+def _build_resources_df(spark, rows):
+    return spark.createDataFrame(rows, schema=["resource", "datasets"])
 
 
 def test_filter_removes_410_resources(spark):
@@ -63,3 +67,53 @@ def test_filter_does_not_remove_null_resources(spark):
     resources = [row["resource"] for row in result.collect()]
 
     assert None in resources
+
+
+def test_filter_dataset_resources_removes_resources_not_listed_for_dataset(spark):
+    """A transformed file left behind for a resource now listed only for another dataset is removed."""
+    transformed_df = _build_issue_df(spark, [("abc123", "a"), ("def456", "b")])
+    resources_df = _build_resources_df(
+        spark, [("abc123", "tree-preservation-order"), ("def456", "tree")]
+    )
+
+    result = filter_dataset_resources(
+        transformed_df, resources_df, "tree-preservation-order"
+    )
+    resources = [row["resource"] for row in result.collect()]
+
+    assert resources == ["abc123"]
+
+
+def test_filter_dataset_resources_keeps_resource_listed_for_several_datasets(spark):
+    """A resource whose datasets include this one among others is kept."""
+    transformed_df = _build_issue_df(spark, [("abc123", "a")])
+    resources_df = _build_resources_df(
+        spark, [("abc123", "tree;tree-preservation-order")]
+    )
+
+    result = filter_dataset_resources(
+        transformed_df, resources_df, "tree-preservation-order"
+    )
+
+    assert result.count() == 1
+
+
+def test_filter_dataset_resources_matches_whole_dataset_names(spark):
+    """A dataset whose name contains this dataset's name does not count as a match."""
+    transformed_df = _build_issue_df(spark, [("abc123", "a")])
+    resources_df = _build_resources_df(spark, [("abc123", "tree-preservation-zone")])
+
+    result = filter_dataset_resources(transformed_df, resources_df, "tree")
+
+    assert result.count() == 0
+
+
+def test_filter_dataset_resources_removes_resources_missing_from_resource_csv(spark):
+    """A transformed file whose resource has no row in resource.csv is removed."""
+    transformed_df = _build_issue_df(spark, [("abc123", "a"), ("def456", "b")])
+    resources_df = _build_resources_df(spark, [("abc123", "tree")])
+
+    result = filter_dataset_resources(transformed_df, resources_df, "tree")
+    resources = [row["resource"] for row in result.collect()]
+
+    assert resources == ["abc123"]

@@ -15,7 +15,7 @@ from jobs.read import read_old_resources, read_resources
 from jobs.transform.entity_transformer import transform_entity
 from jobs.transform.fact_resource_transformer import transform_fact_resource
 from jobs.transform.fact_transformer import transform_fact
-from jobs.transform.filter import filter_old_resources
+from jobs.transform.filter import filter_dataset_resources, filter_old_resources
 from jobs.utils.df_utils import count_df, normalise_column_names, show_df
 from jobs.utils.flatten_csv import flatten_json_column
 from jobs.utils.postgres_writer_utils import (
@@ -135,6 +135,9 @@ class EntityPipeline(BasePipeline):
                 f"EntityPipeline: Dropping {dropped_count} row(s) with no resource"
             )
         transformed_df = transformed_df.filter(has_resource)
+
+        # -- Filter resources not listed for this dataset ---------------------
+        transformed_df = filter_dataset_resources(transformed_df, resource_df, dataset)
 
         # -- Transform --------------------------------------------------------
         fact_resource_df = transform_fact_resource(transformed_df, dataset)
