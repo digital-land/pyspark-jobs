@@ -248,8 +248,18 @@ ORGANISATION_ROWS = [
 ]
 
 RESOURCE_ROWS = [
-    {"resource": "res-001", "start-date": "2024-01-01", "end-date": ""},
-    {"resource": "res-002", "start-date": "2024-01-01", "end-date": ""},
+    {
+        "resource": "res-001",
+        "datasets": "test-dataset",
+        "start-date": "2024-01-01",
+        "end-date": "",
+    },
+    {
+        "resource": "res-002",
+        "datasets": "test-dataset",
+        "start-date": "2024-01-01",
+        "end-date": "",
+    },
 ]
 
 DATASET_RESOURCE_COLUMNS = [
@@ -346,7 +356,7 @@ def test_e2e_full_load_pipeline(cli_runner, run_main_cmd, spark, tmp_path, mocke
     # Write resource CSV (supplies the resource dates the entity ranking uses)
     _write_csv(
         os.path.join(collection_dir, "collection", "resource.csv"),
-        ["resource", "start-date", "end-date"],
+        ["resource", "datasets", "start-date", "end-date"],
         RESOURCE_ROWS,
     )
 
