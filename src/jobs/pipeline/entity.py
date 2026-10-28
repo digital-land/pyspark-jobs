@@ -101,6 +101,7 @@ class EntityPipeline(BasePipeline):
         old_resource_path = (
             base / "config" / "collection" / f"{collection}" / "old-resource.csv"
         )
+        old_resources_df = None
         try:
             if old_resource_path.exists():
                 old_resources_df = read_old_resources(spark, str(old_resource_path))
@@ -137,7 +138,9 @@ class EntityPipeline(BasePipeline):
         transformed_df = transformed_df.filter(has_resource)
 
         # -- Filter resources not listed for this dataset ---------------------
-        transformed_df = filter_dataset_resources(transformed_df, resource_df, dataset)
+        transformed_df = filter_dataset_resources(
+            transformed_df, resource_df, dataset, old_resources_df
+        )
 
         # -- Transform --------------------------------------------------------
         fact_resource_df = transform_fact_resource(transformed_df, dataset)

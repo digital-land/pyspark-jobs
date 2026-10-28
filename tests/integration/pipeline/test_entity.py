@@ -205,6 +205,102 @@ class TestEntityPipeline:
         )
         assert fact_resource_df.count() == len(TRANSFORMED_ROWS)
 
+    def test_execute_keeps_rows_of_redirected_resource_replacement(
+        self, spark, tmp_path, mocker
+    ):
+        """Transform saves a redirected (301) resource's replacement under the
+        redirected resource's name, so its rows carry the replacement's hash,
+        which resource.csv doesn't list. Those rows are assembled, as
+        digital-land-python does."""
+        dataset = "test-dataset"
+        collection = "test-dataset"
+        base = str(tmp_path)
+        collection_dir = os.path.join(base, f"{collection}-collection")
+        parquet_base = os.path.join(base, "parquet-output/")
+
+        write_parquet(
+            spark,
+            os.path.join(collection_dir, "transformed", dataset),
+            TRANSFORMED_COLUMNS,
+            [
+                (
+                    row
+                    if row["resource"] == "res-001"
+                    else {**row, "resource": "res-fixed"}
+                )
+                for row in TRANSFORMED_ROWS
+            ],
+        )
+        write_csv(
+            os.path.join(
+                base, "organisation-collection", "dataset", "organisation.csv"
+            ),
+            ["organisation", "entity"],
+            ORGANISATION_ROWS,
+        )
+        write_csv(
+            os.path.join(
+                base, f"{collection}-collection", "collection", "resource.csv"
+            ),
+            ["resource", "datasets", "start-date", "end-date"],
+            RESOURCE_ROWS,
+        )
+        write_csv(
+            os.path.join(base, "config", "collection", collection, "old-resource.csv"),
+            ["old-resource", "status", "resource", "notes"],
+            [
+                {
+                    "old-resource": "res-002",
+                    "status": "301",
+                    "resource": "res-fixed",
+                    "notes": "Migration from fixed file",
+                }
+            ],
+        )
+
+        mocker.patch(
+            "jobs.transform.entity_transformer.get_dataset_typology",
+            return_value="geography",
+        )
+        mock_consumer_df = mocker.MagicMock()
+        mock_consumer_df.columns = []
+        mock_consumer_df.count.return_value = 0
+        mock_consumer_df.toLocalIterator.return_value = iter([])
+        mock_consumer_df.repartition.return_value.toLocalIterator.return_value = iter(
+            []
+        )
+        mocker.patch(
+            "jobs.pipeline.entity.flatten_json_column",
+            return_value=mock_consumer_df,
+        )
+        mocker.patch(
+            "jobs.pipeline.entity.ensure_schema_fields",
+            return_value=mock_consumer_df,
+        )
+        mocker.patch("jobs.pipeline.entity.write_dataframe_to_postgres_jdbc")
+        mocker.patch("jobs.pipeline.entity.EntityPipeline._write_single_parquet")
+
+        config = PipelineConfig(
+            spark=spark,
+            dataset=dataset,
+            env="local",
+            collection_data_path=f"{base}/",
+            parquet_datasets_path=parquet_base,
+            database_url="postgresql://user:pass@localhost:5432/testdb",
+        )
+
+        EntityPipeline(config).run(collection=collection)
+
+        fact_resource_df = spark.read.format("delta").load(
+            os.path.join(parquet_base, "fact_resource")
+        )
+        resources = {
+            row["resource"]
+            for row in fact_resource_df.select("resource").distinct().collect()
+        }
+        assert resources == {"res-001", "res-fixed"}
+        assert fact_resource_df.count() == len(TRANSFORMED_ROWS)
+
     def test_execute_writes_correct_fact_row_count(self, spark, tmp_path, mocker):
         """execute() deduplicates facts to one row per unique fact."""
         dataset = "test-dataset"
