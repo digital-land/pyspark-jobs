@@ -125,9 +125,13 @@ def read_issue_csvs(spark: SparkSession, files: list[str]) -> DataFrame:
         entity, issue_type, value, message — entity and message are null for
         the layouts that lack them
     """
+    # issue CSVs are written by Python's csv module, which quotes a value holding
+    # line breaks and doubles any quote inside it
     raw = (
         spark.read.schema(_ISSUE_RAW_SCHEMA)
         .option("header", "false")
+        .option("multiLine", "true")
+        .option("escape", '"')
         .csv(files)
         .withColumn("_file", input_file_name())
     )
