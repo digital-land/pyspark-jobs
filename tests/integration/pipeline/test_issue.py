@@ -143,6 +143,67 @@ class TestIssuePipeline:
         assert rows["res-001"]["value"] == "Test Property A"
         assert rows["res-001"]["message"] == "Name format warning"
 
+    def test_execute_keeps_values_with_line_breaks_and_quotes_in_one_row(
+        self, spark, tmp_path
+    ):
+        """Issue CSVs are written by Python's csv module, which quotes a value
+        holding line breaks and doubles any quote inside it. Each such value must
+        stay in its own row and column rather than being split into new rows."""
+        dataset = "test-dataset"
+        collection = "test-dataset"
+        base = str(tmp_path)
+        collection_dir = os.path.join(base, f"{collection}-collection")
+
+        write_csv(
+            os.path.join(collection_dir, "issue", dataset, "res-001.csv"),
+            ISSUE_COLUMNS,
+            [
+                {
+                    "dataset": dataset,
+                    "resource": "res-001",
+                    "line-number": "14",
+                    "entry-number": "13",
+                    "field": "PlanningHistory",
+                    "entity": "",
+                    "issue-type": "invalid URI",
+                    "value": "15/03228/FULEXT\r\nsuperseded by \r\n20/02699/FULEXT",
+                    "message": "",
+                },
+                {
+                    "dataset": dataset,
+                    "resource": "res-001",
+                    "line-number": "15",
+                    "entry-number": "14",
+                    "field": "SiteNameAddress",
+                    "entity": "",
+                    "issue-type": "invalid category value",
+                    "value": 'The "Old" Mill, 1 High Street',
+                    "message": "",
+                },
+            ],
+        )
+        write_transformed(collection_dir, dataset, "res-001")
+
+        pipeline = IssuePipeline(make_config(spark, base, dataset))
+        pipeline.run(collection=collection)
+
+        assert pipeline.result["status"] == "success"
+        rows = {
+            r["field"]: r
+            for r in spark.read.format("delta")
+            .load(os.path.join(base, "parquet-output", "issue"))
+            .collect()
+        }
+        assert set(rows) == {"PlanningHistory", "SiteNameAddress"}
+        assert rows["PlanningHistory"]["value"].split() == [
+            "15/03228/FULEXT",
+            "superseded",
+            "by",
+            "20/02699/FULEXT",
+        ]
+        assert rows["SiteNameAddress"]["value"] == 'The "Old" Mill, 1 High Street'
+        assert rows["SiteNameAddress"]["issue_type"] == "invalid category value"
+
     def test_execute_skips_issues_of_resources_not_transformed(self, spark, tmp_path):
         """An issue CSV with no transformed file for the dataset belongs to a
         resource the dataset isn't assembled from, so its rows are left out."""
