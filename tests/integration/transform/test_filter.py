@@ -19,6 +19,10 @@ def _build_resources_df(spark, rows):
     return spark.createDataFrame(rows, schema=["resource", "datasets"])
 
 
+def _build_redirects_df(spark, rows):
+    return spark.createDataFrame(rows, schema=["old_resource", "status", "resource"])
+
+
 def test_filter_removes_410_resources(spark):
     """Rows matching a 410-status resource hash are removed."""
     issue_df = _build_issue_df(
@@ -117,3 +121,40 @@ def test_filter_dataset_resources_removes_resources_missing_from_resource_csv(sp
     resources = [row["resource"] for row in result.collect()]
 
     assert resources == ["abc123"]
+
+
+def test_filter_dataset_resources_keeps_replacement_of_redirected_resource(spark):
+    """Rows carrying the replacement a listed resource is redirected (301) to are
+    kept, though resource.csv lists only the redirected resource."""
+    transformed_df = _build_issue_df(spark, [("replacement", "a"), ("def456", "b")])
+    resources_df = _build_resources_df(
+        spark, [("redirected", "tree"), ("def456", "tree")]
+    )
+    old_resources_df = _build_redirects_df(
+        spark, [("redirected", "301", "replacement")]
+    )
+
+    result = filter_dataset_resources(
+        transformed_df, resources_df, "tree", old_resources_df
+    )
+    resources = sorted(row["resource"] for row in result.collect())
+
+    assert resources == ["def456", "replacement"]
+
+
+def test_filter_dataset_resources_removes_replacement_of_resource_not_listed(spark):
+    """A replacement is only kept when the resource redirected to it is listed for
+    this dataset."""
+    transformed_df = _build_issue_df(spark, [("replacement", "a")])
+    resources_df = _build_resources_df(
+        spark, [("redirected", "tree-preservation-order")]
+    )
+    old_resources_df = _build_redirects_df(
+        spark, [("redirected", "301", "replacement")]
+    )
+
+    result = filter_dataset_resources(
+        transformed_df, resources_df, "tree", old_resources_df
+    )
+
+    assert result.count() == 0
