@@ -5,6 +5,7 @@ Uses a real Spark session and local filesystem for reads/writes.
 """
 
 import csv
+import json
 import os
 
 import pytest
@@ -17,6 +18,10 @@ from jobs.pipeline.task import (
     _backfill_organisation_from_source,
     _latest_log_entry_per_endpoint,
     _load_issue_type_df,
+)
+from jobs.transform.task_transformer import (
+    CONVERSION_FAILED_EXCEPTION,
+    EMPTY_RESPONSE_EXCEPTION,
 )
 
 from ._test_helpers import write_csv
@@ -928,6 +933,274 @@ class TestRetiredAndRecoveredEndpoints:
         assert any(
             r["task_source"] == "issue" and r["endpoint"] == "endpoint-a" for r in tasks
         )
+
+
+def _write_converted_resource(base, collection, dataset, resource, status, exception):
+    write_csv(
+        os.path.join(
+            base, collection, "var", "converted-resource", dataset, f"{resource}.csv"
+        ),
+        ["dataset", "resource", "elapsed", "status", "exception"],
+        [
+            {
+                "dataset": dataset,
+                "resource": resource,
+                "elapsed": "0.1",
+                "status": status,
+                "exception": exception,
+            }
+        ],
+    )
+
+
+class TestFailedConversion:
+    """An endpoint returning a 200 whose resource could not be converted, e.g.
+    a WFS ExceptionReport, is not collecting data and gets a log task."""
+
+    def test_200_with_failed_conversion_produces_a_log_task(
+        self, spark, tmp_path, mocker
+    ):
+        base = str(tmp_path)
+        collection = "dataset-a-collection"
+
+        _write_log(
+            base,
+            collection,
+            [
+                # endpoint-a: converted to nothing
+                {
+                    "endpoint": "endpoint-a",
+                    "resource": "resource-aaa",
+                    "status": "200",
+                    "exception": "",
+                    "entry-date": "2026-01-01",
+                },
+                # endpoint-b: converted fine
+                {
+                    "endpoint": "endpoint-b",
+                    "resource": "resource-bbb",
+                    "status": "200",
+                    "exception": "",
+                    "entry-date": "2026-01-01",
+                },
+            ],
+        )
+        _write_source(
+            base,
+            collection,
+            [
+                {
+                    "endpoint": endpoint,
+                    "pipelines": "dataset-a",
+                    "organisation": "organisation:1",
+                    "end-date": "",
+                }
+                for endpoint in ("endpoint-a", "endpoint-b")
+            ],
+        )
+        # ogr2ogr's exception spans many lines; it must still read as one row
+        _write_converted_resource(
+            base,
+            collection,
+            "dataset-a",
+            "resource-aaa",
+            "failed",
+            "ogr2ogr failed (1). stderr='FAILURE:\n  -> `GML'\n  -> `WFS'\n'",
+        )
+        _write_converted_resource(
+            base, collection, "dataset-a", "resource-bbb", "success", ""
+        )
+
+        mocker.patch(
+            "jobs.pipeline.task._load_issue_type_df",
+            return_value=spark.createDataFrame(
+                [("invalid-geometry", "error", "external", "validity")],
+                ["issue_type", "severity", "responsibility", "quality_dimension"],
+            ),
+        )
+        _write_empty_authority_fixtures(base)
+
+        tasks = _run_task_pipeline(spark, base).collect()
+
+        log_tasks = [r for r in tasks if r["task_source"] == "log"]
+        assert [(r["endpoint"], r["resource"]) for r in log_tasks] == [
+            ("endpoint-a", "resource-aaa")
+        ]
+        assert log_tasks[0]["dataset"] == "dataset-a"
+        assert log_tasks[0]["organisation"] == "organisation:1"
+        assert json.loads(log_tasks[0]["details"]) == {
+            "status": 200,
+            "exception": CONVERSION_FAILED_EXCEPTION,
+        }
+
+
+def _write_dataset_resource(
+    base, collection, dataset, resource, entity_count, line_count
+):
+    write_csv(
+        os.path.join(
+            base, collection, "var", "dataset-resource", dataset, f"{resource}.csv"
+        ),
+        ["dataset", "resource", "entity-count", "entry-count", "line-count"],
+        [
+            {
+                "dataset": dataset,
+                "resource": resource,
+                "entity-count": entity_count,
+                "entry-count": entity_count,
+                "line-count": line_count,
+            }
+        ],
+    )
+
+
+def _write_raw_resource(base, collection, resource, content):
+    path = os.path.join(base, collection, "collection", "resource", resource)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        f.write(content)
+
+
+def _write_field_specification(base, dataset, fields):
+    """The three files current_dataset_fields resolves a dataset's fields from."""
+    spec = os.path.join(base, "specification")
+    write_csv(
+        os.path.join(spec, "dataset-schema.csv"),
+        ["dataset", "schema"],
+        [{"dataset": dataset, "schema": dataset}],
+    )
+    write_csv(
+        os.path.join(spec, "schema-field.csv"),
+        ["schema", "field"],
+        [{"schema": dataset, "field": field} for field in fields],
+    )
+    write_csv(
+        os.path.join(spec, "field.csv"),
+        ["field", "end-date"],
+        [{"field": field, "end-date": ""} for field in fields],
+    )
+
+
+class TestEmptyResponse:
+    """An endpoint returning a 200 that converts to no rows. A valid file for
+    the dataset with no rows in it is a notice; anything else, such as an
+    error page sent with a 200, is an error."""
+
+    def _run(self, spark, tmp_path, mocker, raw, entity_count="0", line_count="1"):
+        base = str(tmp_path)
+        collection = "dataset-a-collection"
+        _write_log(
+            base,
+            collection,
+            [
+                {
+                    "endpoint": "endpoint-a",
+                    "resource": "resource-aaa",
+                    "status": "200",
+                    "exception": "",
+                    "entry-date": "2026-01-01",
+                }
+            ],
+        )
+        _write_source(
+            base,
+            collection,
+            [
+                {
+                    "endpoint": "endpoint-a",
+                    "pipelines": "dataset-a",
+                    "organisation": "organisation:1",
+                    "end-date": "",
+                }
+            ],
+        )
+        _write_converted_resource(
+            base, collection, "dataset-a", "resource-aaa", "success", ""
+        )
+        _write_dataset_resource(
+            base, collection, "dataset-a", "resource-aaa", entity_count, line_count
+        )
+        _write_raw_resource(base, collection, "resource-aaa", raw)
+        # an issue task too, so the task table is written when no log task is
+        _write_issue(base, collection, "dataset-a", "resource-aaa")
+        mocker.patch(
+            "jobs.pipeline.task._load_issue_type_df",
+            return_value=spark.createDataFrame(
+                [("invalid-geometry", "error", "external", "validity")],
+                ["issue_type", "severity", "responsibility", "quality_dimension"],
+            ),
+        )
+        _write_empty_authority_fixtures(base)
+        _write_field_specification(base, "dataset-a", ["reference", "name"])
+        write_csv(
+            os.path.join(base, "config", "pipeline", "dataset-a", "column.csv"),
+            ["dataset", "endpoint", "resource", "column", "field"],
+            [
+                {"column": "SiteRef", "field": "reference"},
+                {"column": "Notes", "field": "IGNORE"},
+            ],
+        )
+
+        tasks = _run_task_pipeline(spark, base).collect()
+        return [r for r in tasks if r["task_source"] == "log"]
+
+    def test_header_only_csv_is_a_notice(self, spark, tmp_path, mocker):
+        log_tasks = self._run(spark, tmp_path, mocker, "reference,name\n")
+        assert [r["severity"] for r in log_tasks] == ["notice"]
+        assert json.loads(log_tasks[0]["details"]) == {
+            "status": 200,
+            "exception": EMPTY_RESPONSE_EXCEPTION,
+        }
+
+    def test_header_mapped_by_column_config_is_a_notice(self, spark, tmp_path, mocker):
+        """Publishers' headers rarely match field names; column.csv maps them,
+        and headers are normalised the way the pipeline normalises them."""
+        log_tasks = self._run(spark, tmp_path, mocker, "Site Ref,Description\n")
+        assert [r["severity"] for r in log_tasks] == ["notice"]
+
+    def test_empty_feature_collection_is_a_notice(self, spark, tmp_path, mocker):
+        raw = '{"type": "FeatureCollection", "features": []}'
+        log_tasks = self._run(spark, tmp_path, mocker, raw)
+        assert [r["severity"] for r in log_tasks] == ["notice"]
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "<h1>Mediaprotect configuration error</h1>We are very sorry, but",
+            "Required parameter 'SERVICE' missing, incorrect, or unsupported.",
+            # a column mapped to IGNORE does not make it a header for the dataset
+            "Notes\n",
+            "",
+        ],
+    )
+    def test_error_message_is_an_error(self, spark, tmp_path, mocker, raw):
+        log_tasks = self._run(spark, tmp_path, mocker, raw)
+        assert [r["severity"] for r in log_tasks] == ["error"]
+        assert json.loads(log_tasks[0]["details"]) == {
+            "status": 200,
+            "exception": CONVERSION_FAILED_EXCEPTION,
+        }
+
+    def test_resource_with_entities_is_not_a_task(self, spark, tmp_path, mocker):
+        log_tasks = self._run(
+            spark, tmp_path, mocker, "reference\nA1\n", entity_count="1", line_count="2"
+        )
+        assert log_tasks == []
+
+    def test_rows_dropped_by_issues_are_not_a_task(self, spark, tmp_path, mocker):
+        """Lines but no entities means every row was dropped, which issue tasks
+        already report."""
+        log_tasks = self._run(
+            spark, tmp_path, mocker, "x\n1\n2\n", entity_count="0", line_count="3"
+        )
+        assert log_tasks == []
+
+    def test_log_without_entity_count_is_left_alone(self, spark, tmp_path, mocker):
+        """Older dataset-resource logs predate entity-count and cannot say."""
+        log_tasks = self._run(
+            spark, tmp_path, mocker, "Notes\n", entity_count="", line_count="1"
+        )
+        assert log_tasks == []
 
 
 class TestDatasetsSwitchedOffForEnvironment:

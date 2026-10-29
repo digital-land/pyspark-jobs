@@ -13,6 +13,10 @@ from pyspark.sql.functions import lit
 from pyspark.sql.types import LongType, StringType, StructField, StructType
 
 from jobs.transform.task_transformer import (
+    CONVERSION_FAILED_EXCEPTION,
+    EMPTY,
+    EMPTY_RESPONSE_EXCEPTION,
+    UNREADABLE,
     transform_authority_to_tasks,
     transform_expectations_to_tasks,
     transform_issues_to_tasks,
@@ -431,6 +435,75 @@ class TestTransformLogToTasks:
         result = transform_log_to_tasks(df)
         references = [row["reference"] for row in result.collect()]
         assert len(references) == len(set(references))
+
+
+UNUSABLE_LOG_COLUMNS = LOG_COLUMNS + ["unusable_response"]
+
+
+def _log_row(endpoint, status, unusable_response, exception=""):
+    return (
+        endpoint,
+        f"resource-{endpoint}",
+        status,
+        exception,
+        "dataset-a",
+        "organisation-x",
+        unusable_response,
+    )
+
+
+class TestTransformLogToTasksUnusableResponse:
+    """A 200 with no data in it: the endpoint answered, but with an error
+    page (unreadable) or a valid file with no rows (empty)."""
+
+    def test_unreadable_200_is_an_error_task(self, spark):
+        df = spark.createDataFrame(
+            [_log_row("aaa", "200", UNREADABLE), _log_row("bbb", "200", None)],
+            schema=UNUSABLE_LOG_COLUMNS,
+        )
+        rows = transform_log_to_tasks(df).collect()
+        assert [r["endpoint"] for r in rows] == ["aaa"]
+        assert rows[0]["task_source"] == "log"
+        assert rows[0]["severity"] == "error"
+        assert json.loads(rows[0]["details"]) == {
+            "status": 200,
+            "exception": CONVERSION_FAILED_EXCEPTION,
+        }
+
+    def test_empty_200_is_a_notice_task(self, spark):
+        """A file with no rows may be correct, so it is a notice, which
+        provision_quality does not score."""
+        df = spark.createDataFrame(
+            [_log_row("aaa", "200", EMPTY)], schema=UNUSABLE_LOG_COLUMNS
+        )
+        row = transform_log_to_tasks(df).collect()[0]
+        assert row["severity"] == "notice"
+        assert row["task_source"] == "log"
+        assert json.loads(row["details"]) == {
+            "status": 200,
+            "exception": EMPTY_RESPONSE_EXCEPTION,
+        }
+
+    def test_non_200_keeps_its_own_exception_and_severity(self, spark):
+        """The flag only changes a 200. A failing status is already an error
+        task and keeps the exception the log recorded."""
+        df = spark.createDataFrame(
+            [_log_row("aaa", "500", EMPTY, exception="Connection refused")],
+            schema=UNUSABLE_LOG_COLUMNS,
+        )
+        row = transform_log_to_tasks(df).collect()[0]
+        assert row["severity"] == "error"
+        assert json.loads(row["details"]) == {
+            "status": 500,
+            "exception": "Connection refused",
+        }
+
+    def test_returns_none_when_every_200_has_data(self, spark):
+        df = spark.createDataFrame(
+            [_log_row("aaa", "200", None), _log_row("bbb", "200", "")],
+            schema=UNUSABLE_LOG_COLUMNS,
+        )
+        assert transform_log_to_tasks(df) is None
 
 
 ISSUE_COLUMNS = [
