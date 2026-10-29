@@ -4,7 +4,10 @@ Unit tests for collection_paths utilities.
 
 from cloudpathlib import AnyPath
 
-from jobs.utils.collection_paths import dataset_issue_files
+from jobs.utils.collection_paths import (
+    dataset_issue_files,
+    resource_log_files_for_resources,
+)
 
 # -- dataset_issue_files ------------------------------------------------------
 
@@ -44,3 +47,46 @@ def test_dataset_issue_files_returns_empty_when_a_folder_is_missing(tmp_path):
     touch(collection_dir / "issue" / "test-dataset" / "res-a.csv")
 
     assert dataset_issue_files(collection_dir, "test-dataset") == []
+
+
+# -- resource_log_files_for_resources -----------------------------------------
+
+
+def test_resource_log_files_keeps_only_requested_resources(tmp_path):
+    base = AnyPath(tmp_path)
+    log_dir = base / "test-collection" / "var" / "converted-resource"
+    for resource in ("res-a", "res-old"):
+        touch(log_dir / "dataset-a" / f"{resource}.csv")
+    touch(log_dir / "dataset-b" / "res-b.csv")
+
+    result = resource_log_files_for_resources(
+        base, ["test-collection"], "converted-resource", {"res-a", "res-b"}
+    )
+
+    assert sorted(result) == [
+        str(log_dir / "dataset-a" / "res-a.csv"),
+        str(log_dir / "dataset-b" / "res-b.csv"),
+    ]
+
+
+def test_resource_log_files_reads_only_the_named_log(tmp_path):
+    base = AnyPath(tmp_path)
+    var_dir = base / "test-collection" / "var"
+    touch(var_dir / "converted-resource" / "dataset-a" / "res-a.csv")
+    touch(var_dir / "dataset-resource" / "dataset-a" / "res-a.csv")
+
+    assert resource_log_files_for_resources(
+        base, ["test-collection"], "dataset-resource", {"res-a"}
+    ) == [str(var_dir / "dataset-resource" / "dataset-a" / "res-a.csv")]
+
+
+def test_resource_log_files_skips_collection_without_folder(tmp_path):
+    base = AnyPath(tmp_path)
+    (base / "test-collection").mkdir()
+
+    assert (
+        resource_log_files_for_resources(
+            base, ["test-collection"], "converted-resource", {"res-a"}
+        )
+        == []
+    )

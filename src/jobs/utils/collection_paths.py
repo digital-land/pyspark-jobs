@@ -4,6 +4,8 @@ Encodes where collected files live, so callers don't repeat the layout:
 
     {collection}-collection/collection/{filename}            log.csv, source.csv, ...
     {collection}-collection/issue/{dataset}/{resource}.csv
+    {collection}-collection/collection/resource/{resource}   the raw collected file
+    {collection}-collection/var/{log}/{dataset}/{resource}.csv
 
 Discovery is built from targeted listings rather than glob(). A glob() with a
 '/' in the pattern lists the WHOLE bucket and filters client-side, so finding a
@@ -83,6 +85,43 @@ def issue_files_for_resources(
             if not dataset_dir.is_dir():
                 continue
             files.extend(str(p) for p in dataset_dir.iterdir() if p.stem in resources)
+    return files
+
+
+def resource_log_files_for_resources(
+    base: AnyPath, collections: list[str], log: str, resources: set[str]
+) -> list[str]:
+    """Per-resource log paths under var/ for the given resources only.
+
+    The pipeline writes small per-resource logs to
+    {collection}-collection/var/{log}/{dataset}/{resource}.csv, e.g.
+    converted-resource (could the resource be converted) and dataset-resource
+    (how many lines and entities it produced). Listed per dataset directory and
+    intersected on resource, as with issue_files_for_resources, so only the
+    current resources are read.
+
+    Args:
+        base: Root of the collection-data bucket
+        collections: Folder names, from collection_names
+        log: Log folder under var/, e.g. "converted-resource"
+        resources: Resource hashes to keep
+
+    Returns:
+        Paths as strings, ready to hand to spark.read
+    """
+    files = []
+    for collection in collections:
+        log_dir = base / collection / "var" / log
+        if not log_dir.exists():
+            continue
+        for dataset_dir in log_dir.iterdir():
+            if not dataset_dir.is_dir():
+                continue
+            files.extend(
+                str(p)
+                for p in dataset_dir.iterdir()
+                if p.suffix == ".csv" and p.stem in resources
+            )
     return files
 
 
