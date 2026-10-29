@@ -37,7 +37,10 @@ class OldEntityPipeline(BasePipeline):
 
         dataset_path = str(base / "specification" / "dataset.csv")
         spec_df = normalise_column_names(
-            spark.read.option("header", "true").csv(dataset_path)
+            spark.read.option("header", "true")
+            .option("multiLine", "true")
+            .option("escape", '"')
+            .csv(dataset_path)
         )
         spec = spec_df.filter(col("dataset") == dataset).first()
         if spec is None or not spec["entity_minimum"] or not spec["entity_maximum"]:

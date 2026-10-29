@@ -124,3 +124,32 @@ class TestOldEntityPipeline:
         pipeline = OldEntityPipeline(_config(spark, base, "not-in-the-specification"))
         with pytest.raises(ValueError):
             pipeline.run(collection="listed-building")
+
+    def test_execute_reads_an_entity_range_after_a_value_with_line_breaks(
+        self, spark, tmp_path, mocker
+    ):
+        """A line break in a specification value before entity-minimum does not lose the range."""
+        base = str(tmp_path)
+        _write_inputs(base)
+        write_csv(
+            os.path.join(base, "specification", "dataset.csv"),
+            ["dataset", "guidance", "entity-minimum", "entity-maximum"],
+            [
+                {
+                    "dataset": "listed-building",
+                    "guidance": "First line\nsecond line",
+                    "entity-minimum": "31500000",
+                    "entity-maximum": "31999999",
+                }
+            ],
+        )
+        mock_write = mocker.patch(
+            "jobs.pipeline.old_entity.write_dataset_old_entity_to_postgres"
+        )
+
+        pipeline = OldEntityPipeline(_config(spark, base, "listed-building"))
+        pipeline.run(collection="listed-building")
+
+        assert pipeline.result["status"] == "success"
+        written_df, _, _ = mock_write.call_args.args
+        assert written_df.count() == 2
