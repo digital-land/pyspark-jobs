@@ -1033,6 +1033,80 @@ class TestFailedConversion:
             "exception": CONVERSION_FAILED_EXCEPTION,
         }
 
+    def test_200_with_nothing_collected_produces_a_log_task(
+        self, spark, tmp_path, mocker
+    ):
+        """The collector does not save a text/html response, so the log has a
+        200 with no resource. An endpoint that used to collect and now returns
+        HTML gets an error task, attributed from source.csv."""
+        base = str(tmp_path)
+        collection = "dataset-a-collection"
+
+        _write_log(
+            base,
+            collection,
+            [
+                # endpoint-a: collected, then started returning HTML
+                {
+                    "endpoint": "endpoint-a",
+                    "resource": "resource-aaa",
+                    "status": "200",
+                    "exception": "",
+                    "entry-date": "2026-01-01",
+                },
+                {
+                    "endpoint": "endpoint-a",
+                    "resource": "",
+                    "status": "200",
+                    "exception": "",
+                    "entry-date": "2026-01-02",
+                },
+                # endpoint-b: still collecting
+                {
+                    "endpoint": "endpoint-b",
+                    "resource": "resource-bbb",
+                    "status": "200",
+                    "exception": "",
+                    "entry-date": "2026-01-02",
+                },
+            ],
+        )
+        _write_source(
+            base,
+            collection,
+            [
+                {
+                    "endpoint": endpoint,
+                    "pipelines": "dataset-a",
+                    "organisation": "organisation:1",
+                    "end-date": "",
+                }
+                for endpoint in ("endpoint-a", "endpoint-b")
+            ],
+        )
+
+        mocker.patch(
+            "jobs.pipeline.task._load_issue_type_df",
+            return_value=spark.createDataFrame(
+                [("invalid-geometry", "error", "external", "validity")],
+                ["issue_type", "severity", "responsibility", "quality_dimension"],
+            ),
+        )
+        _write_empty_authority_fixtures(base)
+
+        tasks = _run_task_pipeline(spark, base).collect()
+
+        log_tasks = [r for r in tasks if r["task_source"] == "log"]
+        assert [r["endpoint"] for r in log_tasks] == ["endpoint-a"]
+        assert not log_tasks[0]["resource"]
+        assert log_tasks[0]["dataset"] == "dataset-a"
+        assert log_tasks[0]["organisation"] == "organisation:1"
+        assert log_tasks[0]["severity"] == "error"
+        assert json.loads(log_tasks[0]["details"]) == {
+            "status": 200,
+            "exception": CONVERSION_FAILED_EXCEPTION,
+        }
+
 
 def _write_dataset_resource(
     base, collection, dataset, resource, entity_count, line_count

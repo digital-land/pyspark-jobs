@@ -74,6 +74,9 @@ TASK_SEVERITIES = ("critical", "error", "warning", "notice")
 #
 #   UNREADABLE  not data at all: a WFS ExceptionReport, an HTML error page, an
 #               auth-token error body, a PDF. The endpoint is broken — error.
+#               A 200 with no resource is unreadable too, without the column:
+#               the collector does not save a text/html response, so the log
+#               records the 200 with nothing collected.
 #   EMPTY       a valid file with no rows, e.g. a CSV that is only a header. It
 #               may be correct (nothing to publish yet), so notice, which is not
 #               scored; it can be raised to warning later.
@@ -119,21 +122,22 @@ def transform_log_to_tasks(df: DataFrame, entry_date: str = None) -> DataFrame:
     a non-200 status, or no status at all, which is a connection-level
     failure carrying an exception instead.
 
-    A 200 also becomes a task when the optional `unusable_response` column is
-    UNREADABLE (severity error) or EMPTY (severity notice): the endpoint
-    answered, but not with data. Without the column, every 200 is a success.
+    A 200 also becomes a task when nothing was collected (no resource), or
+    when the optional `unusable_response` column is UNREADABLE (severity error)
+    or EMPTY (severity notice): the endpoint answered, but not with data.
     """
     entry_date = entry_date or str(date.today())
     logger.info("transform_log_to_tasks: Starting")
 
     status = coalesce(col("status"), lit(""))
     exception = coalesce(col("exception"), lit(""))
+    resource = coalesce(col("resource"), lit(""))
     unusable = (
         coalesce(col("unusable_response"), lit(""))
         if "unusable_response" in df.columns
         else lit("")
     )
-    unreadable = (status == "200") & (unusable == UNREADABLE)
+    unreadable = (status == "200") & ((resource == "") | (unusable == UNREADABLE))
     empty = (status == "200") & (unusable == EMPTY)
 
     # No status means a connection-level failure ONLY when an exception was recorded.

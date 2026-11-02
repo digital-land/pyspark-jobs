@@ -505,6 +505,35 @@ class TestTransformLogToTasksUnusableResponse:
         )
         assert transform_log_to_tasks(df) is None
 
+    def test_200_with_no_resource_is_an_error_task(self, spark):
+        """The collector does not save a text/html response, so the log has
+        the 200 and nothing collected. Spark reads the empty resource as null,
+        so both shapes are covered. No unusable_response column is needed."""
+        df = _build_df(
+            spark,
+            [
+                ("endpoint-aaa", "", "200", "", "dataset-a", "organisation-x"),
+                ("endpoint-bbb", None, "200", None, "dataset-a", "organisation-x"),
+                (
+                    "endpoint-ccc",
+                    "resource-ccc",
+                    "200",
+                    "",
+                    "dataset-a",
+                    "organisation-x",
+                ),
+            ],
+            LOG_COLUMNS,
+        )
+        rows = transform_log_to_tasks(df).collect()
+        assert sorted(r["endpoint"] for r in rows) == ["endpoint-aaa", "endpoint-bbb"]
+        assert {r["severity"] for r in rows} == {"error"}
+        for row in rows:
+            assert json.loads(row["details"]) == {
+                "status": 200,
+                "exception": CONVERSION_FAILED_EXCEPTION,
+            }
+
 
 ISSUE_COLUMNS = [
     "dataset",
