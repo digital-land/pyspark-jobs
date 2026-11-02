@@ -69,6 +69,28 @@ logger = logging.getLogger(__name__)
 TASK_SEVERITIES = ("critical", "error", "warning", "notice")
 
 
+# A 200 can still be a response with no data in it, flagged on the log row by
+# an `unusable_response` column:
+#
+#   UNREADABLE  not data at all: a WFS ExceptionReport, an HTML error page, an
+#               auth-token error body, a PDF. The endpoint is broken — error.
+#               A 200 with no resource is unreadable too, without the column:
+#               the collector does not save a text/html response, so the log
+#               records the 200 with nothing collected.
+#   EMPTY       a valid file with no rows, e.g. a CSV that is only a header. It
+#               may be correct (nothing to publish yet), so notice, which is not
+#               scored; it can be raised to warning later.
+#
+# The exceptions are fixed messages: the converter's own (ogr2ogr lists every
+# driver it tried) runs to hundreds of lines and would feed the reference hash.
+UNREADABLE = "unreadable"
+EMPTY = "empty"
+CONVERSION_FAILED_EXCEPTION = (
+    "Endpoint returned a response that could not be read as data"
+)
+EMPTY_RESPONSE_EXCEPTION = "Endpoint returned a valid file with no data"
+
+
 # Only the keys the bridge needs. from_json ignores everything else in the blob,
 # so checks can keep their own extra keys without this having to change.
 _EXPECTATION_DETAILS_SCHEMA = StructType(
@@ -100,21 +122,46 @@ def transform_log_to_tasks(df: DataFrame, entry_date: str = None) -> DataFrame:
     a non-200 status, or no status at all, which is a connection-level
     failure carrying an exception instead.
 
+    A 200 also becomes a task when nothing was collected (no resource), or
+    when the optional `unusable_response` column is UNREADABLE (severity error)
+    or EMPTY (severity notice): the endpoint answered, but not with data.
     """
     entry_date = entry_date or str(date.today())
     logger.info("transform_log_to_tasks: Starting")
 
+    status = coalesce(col("status"), lit(""))
+    exception = coalesce(col("exception"), lit(""))
+    resource = coalesce(col("resource"), lit(""))
+    unusable = (
+        coalesce(col("unusable_response"), lit(""))
+        if "unusable_response" in df.columns
+        else lit("")
+    )
+    unreadable = (status == "200") & ((resource == "") | (unusable == UNREADABLE))
+    empty = (status == "200") & (unusable == EMPTY)
+
     # No status means a connection-level failure ONLY when an exception was recorded.
     df = (
         df.filter(
-            (coalesce(col("status"), lit("")) != "200")
-            & (
-                (coalesce(col("status"), lit("")) != "")
-                | (coalesce(col("exception"), lit("")) != "")
-            )
+            ((status != "200") & ((status != "") | (exception != "")))
+            | unreadable
+            | empty
         )
+        .withColumn(
+            "exception",
+            when(unreadable, lit(CONVERSION_FAILED_EXCEPTION))
+            .when(empty, lit(EMPTY_RESPONSE_EXCEPTION))
+            .otherwise(col("exception")),
+        )
+        .withColumn("severity", when(empty, lit("notice")).otherwise(lit("error")))
         .select(
-            "dataset", "organisation", "endpoint", "resource", "status", "exception"
+            "dataset",
+            "organisation",
+            "endpoint",
+            "resource",
+            "status",
+            "exception",
+            "severity",
         )
         .distinct()
     )
@@ -133,7 +180,6 @@ def transform_log_to_tasks(df: DataFrame, entry_date: str = None) -> DataFrame:
                 )
             ),
         )
-        .withColumn("severity", lit("error"))
         .withColumn("responsibility", lit("external"))
         .withColumn("quality_dimension", lit(LOG_DIMENSION))
         .withColumn("task_source", lit("log"))

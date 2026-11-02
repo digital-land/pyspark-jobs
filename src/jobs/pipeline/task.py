@@ -1,7 +1,9 @@
 """TaskPipeline: cross-collection task generation from log and issue files."""
 
 import csv
+import io
 import logging
+import re
 import urllib.request
 from functools import reduce
 
@@ -28,7 +30,9 @@ from jobs.pipeline.authority import (
 from jobs.pipeline.base import BasePipeline
 from jobs.read import read_csvs_by_name, read_issue_csvs
 from jobs.transform.task_transformer import (
+    EMPTY,
     TASK_SEVERITIES,
+    UNREADABLE,
     transform_authority_to_tasks,
     transform_expectations_to_tasks,
     transform_issues_to_tasks,
@@ -39,12 +43,19 @@ from jobs.utils.collection_paths import (
     collection_names,
     expectation_files,
     issue_files_for_resources,
+    resource_log_files_for_resources,
 )
 from jobs.utils.df_utils import normalise_column_names
 from jobs.utils.postgres_writer_utils import write_task_to_postgres
-from jobs.utils.s3_writer_utils import write_single_csv
+from jobs.utils.s3_writer_utils import current_dataset_fields, write_single_csv
 
 logger = logging.getLogger(__name__)
+
+# As digital-land-python's MapPhase normalises a header before matching a field.
+_NORMALISE_PATTERN = re.compile(r"[^a-z0-9-_]")
+
+# Enough of a raw resource to see its first line, or that it is a FeatureCollection.
+_HEAD_BYTES = 64 * 1024
 
 ISSUE_TYPE_URL = "https://raw.githubusercontent.com/digital-land/specification/main/content/issue-type.csv"
 
@@ -161,6 +172,145 @@ def _latest_log_entry_per_endpoint(log_df):
         .filter(col("_rank") == 1)
         .drop("_rank")
     )
+
+
+def _failed_conversions(spark, files):
+    """Resources whose converted-resource log records a failed conversion.
+
+    The endpoint returned a 200 for these, but what came back — a WFS
+    ExceptionReport, an auth-token error, a PDF — could not be turned into rows.
+
+    Every converted-resource log has had the same columns since it was added,
+    so one positional multi-file read is safe here, unlike issue CSVs. The
+    exception holds ogr2ogr's multi-line output inside quotes, which needs
+    multiLine or each line of it is read as a row of its own.
+    """
+    df = normalise_column_names(
+        spark.read.option("header", "true")
+        .option("multiLine", "true")
+        .option("escape", '"')
+        .csv(files)
+    )
+    return df.filter(col("status") == "failed").select("resource").distinct()
+
+
+def _empty_resources(spark, files):
+    """{resource: datasets} for resources the pipeline found no data in.
+
+    Empty means every dataset-resource log for the resource records no entities
+    from at most one line: a header, a one-line error message, or nothing. A
+    resource with entities in any dataset is not empty.
+
+    The dataset-resource log's columns have changed over the years (entity-count
+    arrived in 2026), so a positional multi-file read would misalign them. The
+    files are a couple of lines each, so each is read whole and parsed against
+    its own header. A log without entity-count cannot say, and is left alone.
+    """
+    seen = {}
+    for row in spark.read.text(files, wholetext=True).collect():
+        for record in csv.DictReader(io.StringIO(row["value"])):
+            resource = record.get("resource")
+            if not resource:
+                continue
+            empty = record.get("entity-count") == "0" and record.get("line-count") in (
+                "0",
+                "1",
+            )
+            datasets, all_empty = seen.get(resource, (set(), True))
+            seen[resource] = (datasets | {record["dataset"]}, all_empty and empty)
+    return {resource: datasets for resource, (datasets, empty) in seen.items() if empty}
+
+
+def _normalise_column(name):
+    return _NORMALISE_PATTERN.sub("", name.replace("_", "-").lower())
+
+
+def _dataset_columns(base, dataset):
+    """Normalised header names that would map onto the dataset: its
+    specification fields, and the columns pipeline config maps to them."""
+    names = set(current_dataset_fields(base / "specification", dataset))
+    column_path = base / "config" / "pipeline" / dataset / "column.csv"
+    if column_path.exists():
+        with column_path.open(newline="") as f:
+            names |= {
+                row["column"]
+                for row in csv.DictReader(f)
+                if row.get("field") and row["field"] != "IGNORE"
+            }
+    return {_normalise_column(name) for name in names}
+
+
+def _is_valid_empty_response(head, columns):
+    """Whether the start of a response with no rows is a valid file for the
+    dataset, rather than an error message sent with a 200.
+
+    A FeatureCollection (WFS or GeoJSON) with no features is a valid answer;
+    a WFS error is an ExceptionReport instead. Anything else is valid if its
+    first line is a header with at least one column that maps to the dataset.
+    An HTML error page or a one-line message shares none.
+    """
+    lowered = head.lower()
+    if "featurecollection" in lowered and "exception" not in lowered:
+        return True
+    header = next(csv.reader(io.StringIO(head)), [])
+    return any(_normalise_column(column) in columns for column in header)
+
+
+def _unusable_responses(spark, base, collections, resources):
+    """{resource: UNREADABLE | EMPTY} for current resources that hold no data.
+
+    UNREADABLE: the resource could not be converted, or it converted to
+    nothing and is not a valid file for the dataset (an error page).
+    EMPTY: it is a valid file for the dataset with no rows in it.
+    """
+    unusable = {}
+
+    converted_files = resource_log_files_for_resources(
+        base, collections, "converted-resource", resources
+    )
+    logger.info(f"TaskPipeline: Found {len(converted_files)} converted-resource files")
+    if converted_files:
+        for row in _failed_conversions(spark, converted_files).collect():
+            unusable[row["resource"]] = UNREADABLE
+
+    dataset_resource_files = resource_log_files_for_resources(
+        base, collections, "dataset-resource", resources
+    )
+    logger.info(
+        f"TaskPipeline: Found {len(dataset_resource_files)} dataset-resource files"
+    )
+    if not dataset_resource_files:
+        return unusable
+
+    # The raw resource sits in the collection the log came from
+    collection_dirs = {
+        AnyPath(f).stem: AnyPath(f.split("/var/dataset-resource/")[0])
+        for f in dataset_resource_files
+    }
+    columns_by_dataset = {}
+    for resource, datasets in _empty_resources(spark, dataset_resource_files).items():
+        if resource in unusable:
+            continue
+        raw_path = collection_dirs[resource] / "collection" / "resource" / resource
+        if not raw_path.exists():
+            logger.warning(f"TaskPipeline: no raw resource at {raw_path}, skipping")
+            continue
+        with raw_path.open("rb") as f:
+            head = f.read(_HEAD_BYTES).decode("utf-8-sig", errors="replace")
+        columns = set()
+        for dataset in datasets:
+            if dataset not in columns_by_dataset:
+                columns_by_dataset[dataset] = _dataset_columns(base, dataset)
+            columns |= columns_by_dataset[dataset]
+        unusable[resource] = (
+            EMPTY if _is_valid_empty_response(head, columns) else UNREADABLE
+        )
+
+    logger.info(
+        f"TaskPipeline: {sum(v == UNREADABLE for v in unusable.values())} unreadable "
+        f"and {sum(v == EMPTY for v in unusable.values())} empty current resources"
+    )
+    return unusable
 
 
 class TaskPipeline(BasePipeline):
@@ -292,6 +442,16 @@ class TaskPipeline(BasePipeline):
             log_df = _backfill_organisation_from_source(
                 log_df, endpoint_organisation_df
             )
+
+        # A 200 with no data in it is a failure too: the endpoint answered, but
+        # not with data. Only the current resources are looked up, and a 200 is
+        # always its endpoint's current resource.
+        unusable = _unusable_responses(spark, base, collections, active_resources)
+        if unusable:
+            unusable_df = spark.createDataFrame(
+                list(unusable.items()), "resource string, unusable_response string"
+            )
+            log_df = log_df.join(unusable_df, on="resource", how="left")
 
         log_tasks = transform_log_to_tasks(log_df)
 
