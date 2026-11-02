@@ -489,6 +489,45 @@ def test_write_entity_subdivided_excludes_null_geometry(
 
 
 @pytest.mark.database
+def test_write_entity_subdivided_splits_large_geometry(
+    spark, db_url, db_conn, clean_entity_subdivided_table
+):
+    """A polygon with more than 256 vertices is split into several pieces that together cover it."""
+    import math
+
+    from pyspark.sql.types import LongType, StringType, StructField, StructType
+
+    schema = StructType(
+        [
+            StructField("entity", LongType(), True),
+            StructField("dataset", StringType(), True),
+            StructField("geometry", StringType(), True),
+        ]
+    )
+    points = [
+        (math.cos(2 * math.pi * i / 1000), math.sin(2 * math.pi * i / 1000))
+        for i in range(1000)
+    ]
+    ring = ", ".join(f"{x} {y}" for x, y in points + points[:1])
+    wkt = f"MULTIPOLYGON((({ring})))"
+    df = spark.createDataFrame([(1001, "flood-risk-zone", wkt)], schema)
+
+    write_entity_subdivided_to_postgres(df, "flood-risk-zone", db_url)
+
+    cur = db_conn.cursor()
+    cur.execute(
+        "SELECT count(*), ST_Area(ST_Union(geometry_subdivided)), ST_Area(ST_GeomFromText(%s, 4326)) "
+        "FROM entity_subdivided WHERE entity = 1001;",
+        (wkt,),
+    )
+    pieces, covered, original = cur.fetchone()
+    cur.close()
+
+    assert pieces > 1
+    assert covered == pytest.approx(original, rel=1e-9)
+
+
+@pytest.mark.database
 def test_write_stores_json_column(spark, db_url, db_conn, clean_entity_table):
     """JSON column string is stored as JSONB in the database."""
     from datetime import date
