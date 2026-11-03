@@ -9,7 +9,9 @@ from typing import List, Optional
 
 import boto3
 from cloudpathlib import AnyPath
-from pyspark.sql.functions import coalesce, col, lit
+from pyspark.sql.functions import coalesce, col, lit, octet_length, struct
+from pyspark.sql.functions import sum as spark_sum
+from pyspark.sql.functions import to_json
 
 logger = logging.getLogger(__name__)
 
@@ -241,6 +243,14 @@ def _partition_for_upload(df, num_partitions, order_by=None):
     )
 
 
+def _total_json_bytes(df):
+    """Total UTF-8 size of every row serialised as JSON, summed on the executors, so the
+    multipart part count does not depend on a sample of rows whose sizes vary widely."""
+    return (
+        df.select(spark_sum(octet_length(to_json(struct(*df.columns))))).first()[0] or 0
+    )
+
+
 def write_json_entities_s3(
     df,
     s3_client,
@@ -256,12 +266,9 @@ def write_json_entities_s3(
     Each partition serializes and uploads its own rows directly to S3 from
     the executor that holds them, so the driver only orchestrates the
     multipart upload rather than collecting every row itself. Partitions are
-    sized (via a byte-size estimate from a random sample) well above S3's
-    5MB-per-part minimum so that, in the common case, every partition except
-    the last produces a part large enough to be valid on its own. This is a
-    heuristic, not a guarantee: a sample that misses extreme outliers (e.g.
-    a few rows with unusually large geometries) could still under-size a
-    partition and fail the upload.
+    sized from the exact total JSON size of the rows, well above S3's
+    5MB-per-part minimum, so every partition except the last produces a part
+    large enough to be valid on its own.
     """
     row_count = df.count()
     if row_count == 0:
@@ -280,13 +287,7 @@ def write_json_entities_s3(
     except s3_client.exceptions.ClientError:
         pass
 
-    sample = df.rdd.takeSample(False, min(200, row_count), seed=42)
-    avg_row_bytes = max(
-        1,
-        sum(len(json.dumps(_sanitize_json_row(r)).encode("utf-8")) for r in sample)
-        // len(sample),
-    )
-    estimated_total_bytes = avg_row_bytes * row_count
+    estimated_total_bytes = _total_json_bytes(df)
     num_partitions = max(
         1, min(row_count, estimated_total_bytes // target_partition_bytes)
     )
@@ -432,26 +433,6 @@ def _upload_geojson_entities_partition(
     return iter([(part_number, part["ETag"])])
 
 
-def _sample_avg_geojson_feature_bytes(sample):
-    """Driver-side only -- safe to call resolve_geometry/wkt_to_geojson here
-    since this never runs on an executor."""
-    sizes = []
-    for row in sample:
-        row_dict = {k: v for k, v in row.asDict().items() if v is not None}
-        geometry_wkt = row_dict.pop("geometry", None)
-        point_wkt = row_dict.pop("point", None)
-        for field, value in row_dict.items():
-            if isinstance(value, (date, datetime)):
-                row_dict[field] = value.isoformat() if value else ""
-        feature = {
-            "type": "Feature",
-            "properties": row_dict,
-            "geometry": resolve_geometry(geometry_wkt, point_wkt),
-        }
-        sizes.append(len(json.dumps(feature).encode("utf-8")))
-    return max(1, sum(sizes) // len(sizes))
-
-
 def write_geojson_entities_s3(
     df,
     s3_client,
@@ -494,9 +475,7 @@ def write_geojson_entities_s3(
     except s3_client.exceptions.ClientError:
         pass
 
-    sample = df.rdd.takeSample(False, min(200, row_count), seed=42)
-    avg_row_bytes = _sample_avg_geojson_feature_bytes(sample)
-    estimated_total_bytes = avg_row_bytes * row_count
+    estimated_total_bytes = _total_json_bytes(df)
     num_partitions = max(
         1, min(row_count, estimated_total_bytes // target_partition_bytes)
     )
