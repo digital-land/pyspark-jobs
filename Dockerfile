@@ -8,6 +8,7 @@ USER root
 RUN set -eux; \
     mkdir -p /usr/lib/spark/jars && \
     curl -L -o /usr/lib/spark/jars/sedona-spark-shaded-3.5_2.12-1.8.0.jar https://repo1.maven.org/maven2/org/apache/sedona/sedona-spark-shaded-3.5_2.12/1.8.0/sedona-spark-shaded-3.5_2.12-1.8.0.jar && \
+    curl -L -o /usr/lib/spark/jars/geotools-wrapper-1.8.0-33.1.jar https://repo1.maven.org/maven2/org/datasyslab/geotools-wrapper/1.8.0-33.1/geotools-wrapper-1.8.0-33.1.jar && \
     curl -L -o /usr/lib/spark/jars/postgresql-42.7.4.jar https://jdbc.postgresql.org/download/postgresql-42.7.4.jar
 
 # Install Python dependencies

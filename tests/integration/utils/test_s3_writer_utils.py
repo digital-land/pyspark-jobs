@@ -1,5 +1,6 @@
 """Integration tests for s3_writer_utils write functions that need a real Spark session."""
 
+import json
 import os
 
 import boto3
@@ -13,6 +14,7 @@ from jobs.utils import s3_writer_utils
 from jobs.utils.s3_writer_utils import (
     _nonempty_partition_bounds,
     _partition_for_upload,
+    _total_json_bytes,
     as_download_values,
     copy_s3_object,
     ensure_schema_fields,
@@ -327,6 +329,22 @@ def test_nonempty_partition_bounds_handles_partitions_left_empty_by_repartition(
 
     assert first_idx == min(truly_nonempty)
     assert last_idx == max(truly_nonempty)
+
+
+def test_total_json_bytes_is_exact_for_rows_of_very_different_sizes(spark):
+    """The multipart part count is derived from this total, so it must be exact
+    even when one row dwarfs the rest -- a sampled estimate over-counted parts
+    for flood-risk-zone and left a part under S3's 5MB minimum."""
+    rows = [Row(entity=1, geometry="x" * 5_000_000)] + [
+        Row(entity=i, geometry="y") for i in range(2, 1002)
+    ]
+    df = spark.createDataFrame(rows)
+
+    expected = sum(
+        len(json.dumps(r.asDict(), separators=(",", ":")).encode("utf-8")) for r in rows
+    )
+
+    assert _total_json_bytes(df) == expected
 
 
 class FakeS3Client:

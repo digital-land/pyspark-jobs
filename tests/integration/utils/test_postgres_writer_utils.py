@@ -399,21 +399,21 @@ def test_write_entity_subdivided_creates_rows(
     )
     # A simple multipolygon — ST_SubDivide with 256 max vertices returns it unchanged
     wkt = "MULTIPOLYGON(((0 0, 1 0, 1 1, 0 1, 0 0)))"
-    df = spark.createDataFrame([(1001, "flood-risk-zones", wkt)], schema)
+    df = spark.createDataFrame([(1001, "flood-risk-zone", wkt)], schema)
 
-    write_entity_subdivided_to_postgres(df, "flood-risk-zones", db_url)
+    write_entity_subdivided_to_postgres(df, "flood-risk-zone", db_url)
 
     cur = db_conn.cursor()
     cur.execute(
         "SELECT entity, dataset FROM entity_subdivided WHERE dataset = %s ORDER BY entity;",
-        ("flood-risk-zones",),
+        ("flood-risk-zone",),
     )
     rows = cur.fetchall()
     cur.close()
 
     assert len(rows) >= 1
     assert rows[0][0] == 1001
-    assert rows[0][1] == "flood-risk-zones"
+    assert rows[0][1] == "flood-risk-zone"
 
 
 @pytest.mark.database
@@ -432,18 +432,18 @@ def test_write_entity_subdivided_replaces_existing(
     )
     wkt = "MULTIPOLYGON(((0 0, 1 0, 1 1, 0 1, 0 0)))"
 
-    df_v1 = spark.createDataFrame([(1001, "flood-risk-zones", wkt)], schema)
-    write_entity_subdivided_to_postgres(df_v1, "flood-risk-zones", db_url)
+    df_v1 = spark.createDataFrame([(1001, "flood-risk-zone", wkt)], schema)
+    write_entity_subdivided_to_postgres(df_v1, "flood-risk-zone", db_url)
 
     df_v2 = spark.createDataFrame(
-        [(2001, "flood-risk-zones", wkt), (2002, "flood-risk-zones", wkt)], schema
+        [(2001, "flood-risk-zone", wkt), (2002, "flood-risk-zone", wkt)], schema
     )
-    write_entity_subdivided_to_postgres(df_v2, "flood-risk-zones", db_url)
+    write_entity_subdivided_to_postgres(df_v2, "flood-risk-zone", db_url)
 
     cur = db_conn.cursor()
     cur.execute(
         "SELECT entity FROM entity_subdivided WHERE dataset = %s ORDER BY entity;",
-        ("flood-risk-zones",),
+        ("flood-risk-zone",),
     )
     rows = cur.fetchall()
     cur.close()
@@ -470,15 +470,15 @@ def test_write_entity_subdivided_excludes_null_geometry(
     )
     wkt = "MULTIPOLYGON(((0 0, 1 0, 1 1, 0 1, 0 0)))"
     df = spark.createDataFrame(
-        [(1001, "flood-risk-zones", wkt), (1002, "flood-risk-zones", None)], schema
+        [(1001, "flood-risk-zone", wkt), (1002, "flood-risk-zone", None)], schema
     )
 
-    write_entity_subdivided_to_postgres(df, "flood-risk-zones", db_url)
+    write_entity_subdivided_to_postgres(df, "flood-risk-zone", db_url)
 
     cur = db_conn.cursor()
     cur.execute(
         "SELECT entity FROM entity_subdivided WHERE dataset = %s ORDER BY entity;",
-        ("flood-risk-zones",),
+        ("flood-risk-zone",),
     )
     rows = cur.fetchall()
     cur.close()
@@ -486,6 +486,45 @@ def test_write_entity_subdivided_excludes_null_geometry(
     entities = [r[0] for r in rows]
     assert 1001 in entities
     assert 1002 not in entities
+
+
+@pytest.mark.database
+def test_write_entity_subdivided_splits_large_geometry(
+    spark, db_url, db_conn, clean_entity_subdivided_table
+):
+    """A polygon with more than 256 vertices is split into several pieces that together cover it."""
+    import math
+
+    from pyspark.sql.types import LongType, StringType, StructField, StructType
+
+    schema = StructType(
+        [
+            StructField("entity", LongType(), True),
+            StructField("dataset", StringType(), True),
+            StructField("geometry", StringType(), True),
+        ]
+    )
+    points = [
+        (math.cos(2 * math.pi * i / 1000), math.sin(2 * math.pi * i / 1000))
+        for i in range(1000)
+    ]
+    ring = ", ".join(f"{x} {y}" for x, y in points + points[:1])
+    wkt = f"MULTIPOLYGON((({ring})))"
+    df = spark.createDataFrame([(1001, "flood-risk-zone", wkt)], schema)
+
+    write_entity_subdivided_to_postgres(df, "flood-risk-zone", db_url)
+
+    cur = db_conn.cursor()
+    cur.execute(
+        "SELECT count(*), ST_Area(ST_Union(geometry_subdivided)), ST_Area(ST_GeomFromText(%s, 4326)) "
+        "FROM entity_subdivided WHERE entity = 1001;",
+        (wkt,),
+    )
+    pieces, covered, original = cur.fetchone()
+    cur.close()
+
+    assert pieces > 1
+    assert covered == pytest.approx(original, rel=1e-9)
 
 
 @pytest.mark.database

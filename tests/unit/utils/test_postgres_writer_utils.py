@@ -4,6 +4,7 @@ from pg8000.exceptions import DatabaseError, InterfaceError
 from jobs.utils.postgres_writer_utils import (
     ATOMIC_COMMIT_CONNECTION_TIMEOUT_SECONDS,
     ATOMIC_COMMIT_STATEMENT_TIMEOUT_SECONDS,
+    SUBDIVIDED_DATASETS,
     _invalid_geometry_entities,
     _is_statement_timeout,
 )
@@ -60,3 +61,9 @@ def test_invalid_geometry_entities_finds_only_invalid_geometry(spark):
     )
 
     assert sorted(_invalid_geometry_entities(df)) == [1, 2]
+
+
+def test_flood_risk_zone_is_written_to_entity_subdivided():
+    """The site answers spatial queries on flood-risk-zone from entity_subdivided alone, so
+    the name here must match the dataset exactly"""
+    assert "flood-risk-zone" in SUBDIVIDED_DATASETS

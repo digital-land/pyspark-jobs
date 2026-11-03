@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 # Datasets that require geometry to be subdivided and written to entity_subdivided.
 # Add dataset names here to include them in the subdivided write.
 SUBDIVIDED_DATASETS = [
-    "flood-risk-zones",
+    "flood-risk-zone",
 ]
 
 
