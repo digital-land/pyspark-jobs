@@ -9,6 +9,7 @@ tests/unit/transform/test_task_transformer.py
 
 import json
 
+import pytest
 from pyspark.sql.functions import lit
 from pyspark.sql.types import LongType, StringType, StructField, StructType
 
@@ -18,6 +19,7 @@ from jobs.transform.task_transformer import (
     EMPTY_RESPONSE_EXCEPTION,
     UNREADABLE,
     transform_authority_to_tasks,
+    transform_documentation_url_to_tasks,
     transform_expectations_to_tasks,
     transform_issues_to_tasks,
     transform_log_to_tasks,
@@ -1577,3 +1579,84 @@ class TestTransformAuthorityToTasks:
             "quality_dimension",
             "reference",
         }
+
+
+DOCUMENTATION_URL_SCHEMA = (
+    "dataset string, organisation string, endpoint string, endpoint_url string, "
+    "documentation_urls array<string>, result string, fetch_errors array<string>, "
+    "redirects map<string,string>, candidate_links array<string>, "
+    "likely_replacement string"
+)
+
+
+def _documentation_url_row(
+    result="not-found",
+    endpoint="endpoint-a",
+    dataset="plan-timetable",
+    candidate_links=("https://council.gov.uk/new/timetable.csv",),
+):
+    return (
+        dataset,
+        "local-authority:BRO",
+        endpoint,
+        "https://council.gov.uk/old/timetable.csv",
+        ["https://council.gov.uk/local-plan"],
+        result,
+        [],
+        {},
+        list(candidate_links),
+        "https://council.gov.uk/new/timetable.csv",
+    )
+
+
+class TestTransformDocumentationUrlToTasks:
+
+    def _transform(self, spark, rows):
+        df = spark.createDataFrame(rows, schema=DOCUMENTATION_URL_SCHEMA)
+        return transform_documentation_url_to_tasks(df)
+
+    def test_found_endpoints_are_not_tasks(self, spark):
+        assert self._transform(spark, [_documentation_url_row(result="found")]) is None
+
+    @pytest.mark.parametrize(
+        "result, severity",
+        [
+            ("not-found", "warning"),
+            ("documentation-url-gone", "warning"),
+            ("unreachable", "notice"),
+        ],
+    )
+    def test_severity_follows_the_result(self, spark, result, severity):
+        row = self._transform(spark, [_documentation_url_row(result=result)]).collect()[
+            0
+        ]
+        assert row["severity"] == severity
+
+    def test_uses_fixed_rule_values(self, spark):
+        row = self._transform(spark, [_documentation_url_row()]).collect()[0]
+        assert row["responsibility"] == "external"
+        assert row["task_source"] == "documentation-url"
+        assert row["quality_dimension"] == "integrity"
+        assert row["endpoint"] == "endpoint-a"
+        assert row["resource"] == ""
+
+    def test_details_say_what_was_checked(self, spark):
+        row = self._transform(spark, [_documentation_url_row()]).collect()[0]
+        assert json.loads(row["details"]) == {
+            "task_type": "endpoint_url_in_documentation_url",
+            "result": "not-found",
+            "endpoint_url": "https://council.gov.uk/old/timetable.csv",
+            "documentation_urls": ["https://council.gov.uk/local-plan"],
+            "fetch_errors": [],
+            "redirects": {},
+            "candidate_links": ["https://council.gov.uk/new/timetable.csv"],
+            "likely_replacement": "https://council.gov.uk/new/timetable.csv",
+        }
+
+    def test_references_are_unique_per_dataset(self, spark):
+        rows = [
+            _documentation_url_row(dataset="plan-timetable"),
+            _documentation_url_row(dataset="local-plan"),
+        ]
+        refs = [r["reference"] for r in self._transform(spark, rows).collect()]
+        assert len(refs) == len(set(refs)) == 2

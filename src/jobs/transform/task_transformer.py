@@ -38,6 +38,7 @@ from pyspark.sql.types import (
 )
 
 from jobs.config.authoritativeness_task import load_authoritativeness_task_rule
+from jobs.config.documentation_url_task import load_documentation_url_task_rule
 from jobs.config.quality_dimensions import (
     LOG_DIMENSION,
     load_expectation_dimensions,
@@ -439,6 +440,75 @@ def transform_authority_to_tasks(population_df, entry_date: str = None) -> DataF
         .withColumn("endpoint", lit(""))
         .withColumn("resource", lit(""))
         .withColumn("severity", lit(rule["severity"]))
+        .withColumn("responsibility", lit(rule["responsibility"]))
+        .withColumn("task_source", lit(rule["task_source"]))
+        .withColumn("quality_dimension", lit(rule["quality_dimension"]))
+        .withColumn("entry_date", lit(entry_date))
+    )
+
+    df = _add_reference(df)
+
+    return df.select(
+        col("dataset"),
+        col("organisation"),
+        col("endpoint"),
+        col("resource"),
+        col("details"),
+        col("severity"),
+        col("responsibility"),
+        col("task_source"),
+        col("entry_date"),
+        col("quality_dimension"),
+        col("reference"),
+    )
+
+
+def transform_documentation_url_to_tasks(df: DataFrame, entry_date: str = None):
+    """
+    Transform documentation URL check results into task rows.
+
+    df: dataset, organisation, endpoint, endpoint_url, documentation_urls,
+    result, fetch_errors, redirects, candidate_links, likely_replacement — one
+    row per endpoint and dataset it serves
+    (jobs.utils.documentation_url.check_endpoints, attributed from source.csv).
+    Every result but FOUND becomes a task.
+
+    The endpoint is known but no resource is: the check is about where the
+    endpoint is published, not about anything it returned.
+    """
+    entry_date = entry_date or str(date.today())
+    logger.info("transform_documentation_url_to_tasks: Starting")
+
+    rule = load_documentation_url_task_rule()
+    severities = rule["severity"]
+
+    df = df.filter(col("result").isin(*severities))
+
+    if df.rdd.isEmpty():
+        logger.info(
+            "transform_documentation_url_to_tasks: every endpoint is linked from "
+            "its documentation page"
+        )
+        return None
+
+    df = (
+        df.withColumn(
+            "details",
+            to_json(
+                struct(
+                    lit(rule["task_type"]).alias("task_type"),
+                    col("result"),
+                    col("endpoint_url"),
+                    col("documentation_urls"),
+                    col("fetch_errors"),
+                    col("redirects"),
+                    col("candidate_links"),
+                    col("likely_replacement"),
+                )
+            ),
+        )
+        .withColumn("resource", lit(""))
+        .withColumn("severity", _dimension_map(severities)[col("result")])
         .withColumn("responsibility", lit(rule["responsibility"]))
         .withColumn("task_source", lit(rule["task_source"]))
         .withColumn("quality_dimension", lit(rule["quality_dimension"]))

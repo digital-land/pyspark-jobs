@@ -1377,3 +1377,108 @@ def test_load_issue_type_df_reads_either_dimension_header(spark, mocker, header)
     row = _load_issue_type_df(spark).collect()[0]
 
     assert row["quality_dimension"] == "validity"
+
+
+class TestDocumentationUrlTasks:
+    """A live endpoint whose documentation page no longer links to it becomes a
+    task. The pages are served by replacing fetch_page, so nothing goes to the
+    network."""
+
+    PAGE = "https://council.gov.uk/local-plan"
+
+    def _run(self, spark, tmp_path, mocker, hrefs):
+        base = str(tmp_path)
+        collection = "dataset-a-collection"
+        endpoints = {
+            "endpoint-a": ("https://council.gov.uk/a.csv", ""),
+            "endpoint-b": ("https://council.gov.uk/b.csv", ""),
+            "endpoint-c": (
+                "https://council.gov.uk/arcgis/rest/services/C/FeatureServer/0/query"
+                "?where=1%3D1&f=geojson",
+                "arcgis",
+            ),
+        }
+        _write_log(
+            base,
+            collection,
+            [
+                # endpoint-c fails, so there is always a log task and the
+                # table is written even when no endpoint is unlinked
+                {
+                    "endpoint": endpoint,
+                    "resource": (
+                        "" if endpoint == "endpoint-c" else f"resource-{endpoint}"
+                    ),
+                    "status": "404" if endpoint == "endpoint-c" else "200",
+                    "exception": "",
+                    "entry-date": "2026-01-01",
+                }
+                for endpoint in endpoints
+            ],
+        )
+        write_csv(
+            os.path.join(base, collection, "collection", "source.csv"),
+            ["endpoint", "pipelines", "organisation", "documentation-url", "end-date"],
+            [
+                {
+                    "endpoint": endpoint,
+                    "pipelines": "dataset-a",
+                    "organisation": "organisation:1",
+                    "documentation-url": self.PAGE,
+                    "end-date": "",
+                }
+                for endpoint in endpoints
+            ],
+        )
+        write_csv(
+            os.path.join(base, collection, "collection", "endpoint.csv"),
+            ["endpoint", "endpoint-url", "plugin", "end-date"],
+            [
+                {
+                    "endpoint": endpoint,
+                    "endpoint-url": url,
+                    "plugin": plugin,
+                    "end-date": "",
+                }
+                for endpoint, (url, plugin) in endpoints.items()
+            ],
+        )
+        _write_empty_authority_fixtures(base)
+        fetch_page = mocker.patch(
+            "jobs.utils.documentation_url.fetch_page",
+            return_value=(self.PAGE, hrefs, None),
+        )
+
+        tasks = _run_task_pipeline(spark, base).collect()
+        return [r for r in tasks if r["task_source"] == "documentation-url"], fetch_page
+
+    def test_unlinked_endpoint_produces_a_task(self, spark, tmp_path, mocker):
+        tasks, fetch_page = self._run(
+            spark,
+            tmp_path,
+            mocker,
+            ["/a.csv", "/2026/b.csv", "/arcgis/rest/services/C/FeatureServer"],
+        )
+
+        assert fetch_page.call_count == 1, "one page serves every endpoint"
+        assert [(r["endpoint"], r["dataset"], r["organisation"]) for r in tasks] == [
+            ("endpoint-b", "dataset-a", "organisation:1")
+        ], "endpoint-a is linked, and endpoint-c's service is linked"
+        details = json.loads(tasks[0]["details"])
+        assert details["result"] == "not-found"
+        assert details["endpoint_url"] == "https://council.gov.uk/b.csv"
+        assert details["candidate_links"] == [
+            "https://council.gov.uk/2026/b.csv",
+            "https://council.gov.uk/a.csv",
+        ]
+        assert details["likely_replacement"] == "https://council.gov.uk/2026/b.csv"
+
+    def test_linked_endpoints_produce_no_task(self, spark, tmp_path, mocker):
+        tasks, _ = self._run(
+            spark,
+            tmp_path,
+            mocker,
+            ["/a.csv", "/b.csv", "/arcgis/rest/services/C/FeatureServer"],
+        )
+
+        assert tasks == []
