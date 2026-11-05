@@ -11,12 +11,15 @@ from cloudpathlib import AnyPath
 from pyspark.sql import Window
 from pyspark.sql.functions import (
     col,
+    collect_set,
     count,
     explode,
     lit,
     lower,
     row_number,
+    sort_array,
     split,
+    trim,
     when,
 )
 
@@ -34,6 +37,7 @@ from jobs.transform.task_transformer import (
     TASK_SEVERITIES,
     UNREADABLE,
     transform_authority_to_tasks,
+    transform_documentation_url_to_tasks,
     transform_expectations_to_tasks,
     transform_issues_to_tasks,
     transform_log_to_tasks,
@@ -46,6 +50,7 @@ from jobs.utils.collection_paths import (
     resource_log_files_for_resources,
 )
 from jobs.utils.df_utils import normalise_column_names
+from jobs.utils.documentation_url import FOUND, check_endpoints
 from jobs.utils.postgres_writer_utils import write_task_to_postgres
 from jobs.utils.s3_writer_utils import current_dataset_fields, write_single_csv
 
@@ -313,6 +318,91 @@ def _unusable_responses(spark, base, collections, resources):
     return unusable
 
 
+_CHECK_RESULT_SCHEMA = (
+    "endpoint string, endpoint_url string, documentation_urls array<string>, "
+    "result string, fetch_errors array<string>, redirects map<string,string>, "
+    "candidate_links array<string>, likely_replacement string"
+)
+
+
+def _documentation_url_tasks(
+    spark,
+    base,
+    collections,
+    active_source_df,
+    endpoint_dataset_df,
+    endpoint_organisation_df,
+):
+    """Tasks for live endpoints that are not linked from their documentation page.
+
+    The endpoint URL comes from endpoint.csv and the documentation URLs from
+    the endpoint's live source.csv rows. An endpoint with no documentation URL
+    is not checked: there is nothing to check it against.
+    """
+    if active_source_df is None or "documentation_url" not in active_source_df.columns:
+        logger.warning(
+            "TaskPipeline: no documentation-url in source.csv — skipping "
+            "documentation URL tasks"
+        )
+        return None
+
+    endpoint_files = collection_files(base, collections, "endpoint.csv")
+    logger.info(f"TaskPipeline: Found {len(endpoint_files)} endpoint files")
+    if not endpoint_files:
+        return None
+
+    endpoint_df = normalise_column_names(
+        spark.read.option("header", "true").csv(endpoint_files)
+    ).filter(
+        (col("end_date").isNull() | (col("end_date") == ""))
+        & col("endpoint_url").isNotNull()
+        & (col("endpoint_url") != "")
+    )
+    endpoint_df = endpoint_df.select("endpoint", "endpoint_url").dropDuplicates(
+        ["endpoint"]
+    )
+
+    documented_df = (
+        active_source_df.withColumn("documentation_url", trim(col("documentation_url")))
+        .filter(col("documentation_url").isNotNull() & (col("documentation_url") != ""))
+        .groupBy("endpoint")
+        .agg(sort_array(collect_set("documentation_url")).alias("documentation_urls"))
+    )
+
+    to_check = documented_df.join(endpoint_df, on="endpoint", how="inner").collect()
+    results = [
+        result
+        for result in check_endpoints(row.asDict() for row in to_check)
+        if result["result"] != FOUND
+    ]
+    if not results:
+        return None
+
+    results_df = spark.createDataFrame(
+        [
+            (
+                result["endpoint"],
+                result["endpoint_url"],
+                result["documentation_urls"],
+                result["result"],
+                result.get("fetch_errors", []),
+                result.get("redirects", {}),
+                result.get("candidate_links", []),
+                result.get("likely_replacement", ""),
+            )
+            for result in results
+        ],
+        _CHECK_RESULT_SCHEMA,
+    )
+    # One task per dataset the endpoint serves, as with log tasks.
+    results_df = (
+        results_df.join(endpoint_dataset_df, on="endpoint", how="left")
+        .join(endpoint_organisation_df, on="endpoint", how="left")
+        .fillna("", subset=["dataset", "organisation"])
+    )
+    return transform_documentation_url_to_tasks(results_df)
+
+
 class TaskPipeline(BasePipeline):
     """
     Cross-collection pipeline for generating task data from log and issue files.
@@ -557,10 +647,28 @@ class TaskPipeline(BasePipeline):
         )
         authority_tasks = transform_authority_to_tasks(authority_population)
 
+        # -- Documentation URL tasks ------------------------------------------
+        # The one leg that reads the web rather than the bucket: each live
+        # endpoint's documentation page is fetched to see it still links there.
+        documentation_url_tasks = _documentation_url_tasks(
+            spark,
+            base,
+            collections,
+            active_source_df if source_files else None,
+            endpoint_dataset_df,
+            endpoint_organisation_df,
+        )
+
         # -- Union and write --------------------------------------------------
         frames = [
             df
-            for df in [log_tasks, issue_tasks, expectation_tasks, authority_tasks]
+            for df in [
+                log_tasks,
+                issue_tasks,
+                expectation_tasks,
+                authority_tasks,
+                documentation_url_tasks,
+            ]
             if df is not None
         ]
 
