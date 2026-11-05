@@ -36,8 +36,12 @@ logger = logging.getLogger(__name__)
 FOUND = "found"
 
 _TIMEOUT_SECONDS = 10
-_MAX_WORKERS = 16
-_USER_AGENT = "digital-land-pyspark-jobs/1.0"
+# Low because these requests share the collector's IP addresses: a council that
+# blocks them for sending too much traffic would block the collection too.
+_MAX_WORKERS = 4
+# The collector's user agent (digital-land-python collect.py), which LPAs are told
+# to allow when their site blocks us, so this check is let through too.
+_USER_AGENT = "MHCLG Planning Data Collector"
 
 # A page that no longer exists, as against one we could not read.
 _GONE_ERRORS = {"http-404", "http-410"}
