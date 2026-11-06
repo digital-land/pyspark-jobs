@@ -119,7 +119,7 @@ class TestTransformLogToTasks:
         }
         assert set(result.columns) == expected
 
-    def test_quality_dimension_is_current(self, spark):
+    def test_quality_dimension_is_currency(self, spark):
         """A log task means the endpoint did not respond, so the data cannot
         reflect anything the publisher has changed since it broke. The task table
         is rebuilt in full on every run, so reclassifying later is a one-line
@@ -139,7 +139,7 @@ class TestTransformLogToTasks:
             LOG_COLUMNS,
         )
         result = transform_log_to_tasks(df)
-        assert result.collect()[0]["quality_dimension"] == "current"
+        assert result.collect()[0]["quality_dimension"] == "currency"
 
     def test_task_source_is_log(self, spark):
         df = _build_df(

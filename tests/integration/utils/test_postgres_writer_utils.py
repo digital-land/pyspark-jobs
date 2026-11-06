@@ -958,7 +958,7 @@ def test_write_task_to_postgres_includes_quality_dimension(
             "external",
             "log",
             "2026-09-14",
-            "current",
+            "currency",
             "ref-2",
         ),
         # An untagged issue type speaks to no dimension -- it must land as NULL,
@@ -992,7 +992,7 @@ def test_write_task_to_postgres_includes_quality_dimension(
     db_conn.rollback()
 
     assert [r[0] for r in result] == ["ref-1", "ref-2", "ref-3"]
-    assert [r[1] for r in result] == ["validity", "current", None]
+    assert [r[1] for r in result] == ["validity", "currency", None]
     assert result[0][2] == "conservation-area"
     assert result[0][3] == "issue"
     assert result[0][4] == date(2026, 9, 14)
