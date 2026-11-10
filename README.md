@@ -79,12 +79,14 @@ make pre-commit          # Run all pre-commit hooks
 ## Running Locally
 
 ```bash
+export DATABASE_URL="postgresql://<user>:<password>@localhost:5432/<dbname>"
+
 python entry_points/run_main.py \
   --load_type full \
   --dataset transport-access-node \
   --collection transport-access-node-collection \
   --env local \
-  --database-url "postgresql://user:pass@localhost:5432/dbname"
+  --database-url "$DATABASE_URL"
 ```
 
 If `--database-url` is not provided, credentials are resolved from AWS Secrets Manager.
