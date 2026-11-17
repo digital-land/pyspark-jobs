@@ -12,6 +12,7 @@ from pyspark.sql import Window
 from pyspark.sql.functions import (
     col,
     collect_set,
+    concat_ws,
     count,
     explode,
     lit,
@@ -24,6 +25,13 @@ from pyspark.sql.functions import (
 )
 
 from jobs.config.authoritativeness_task import RESTRICT_TO_ACTIVE_ORGS
+from jobs.config.licence_task import (
+    MANDATED,
+    ODP,
+    OGL_FOUND,
+    SINGLE_SOURCE,
+    load_licence_task_rule,
+)
 from jobs.config.quality_dimensions import known_dimensions
 from jobs.pipeline.authority import (
     live_datasets,
@@ -40,6 +48,7 @@ from jobs.transform.task_transformer import (
     transform_documentation_url_to_tasks,
     transform_expectations_to_tasks,
     transform_issues_to_tasks,
+    transform_licence_to_tasks,
     transform_log_to_tasks,
 )
 from jobs.utils.collection_paths import (
@@ -53,6 +62,7 @@ from jobs.utils.df_utils import normalise_column_names
 from jobs.utils.documentation_url import FOUND, check_endpoints
 from jobs.utils.postgres_writer_utils import write_task_to_postgres
 from jobs.utils.s3_writer_utils import current_dataset_fields, write_single_csv
+from jobs.utils.specification import load_provision_rows
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +94,73 @@ def _load_issue_type_df(spark):
     return spark.createDataFrame(
         rows, ["issue_type", "severity", "responsibility", "quality_dimension"]
     )
+
+
+# provision-rule.csv's project value for the Open Digital Planning programme.
+_ODP_PROJECT = "open-digital-planning"
+
+
+def _licence_scope(provisions, provision_rules, groups):
+    """(organisation|dataset keys, datasets) the licence task covers.
+
+    Follows the data quality reports' grouping: ODP is per organisation, as only
+    the organisations in the project are expected to provide its datasets;
+    mandated and single-source are per dataset, from whoever provides it.
+    provision-rule.csv is read whole, end-dated rules included, as the reports do.
+    """
+    odp_datasets = {
+        rule["dataset"]
+        for rule in provision_rules
+        if rule.get("project") == _ODP_PROJECT
+    }
+    mandated = {
+        rule["dataset"]
+        for rule in provision_rules
+        if rule.get("provision-reason") == "statutory"
+        or (
+            rule.get("provision-reason") == "encouraged"
+            and rule.get("role") == "local-planning-authority"
+        )
+    }
+    single_source = (
+        {rule["dataset"] for rule in provision_rules if rule.get("dataset")}
+        - odp_datasets
+        - mandated
+    )
+
+    keys = set()
+    if ODP in groups:
+        keys = {
+            f"{row['organisation']}|{row['dataset']}"
+            for row in provisions
+            if row.get("project") == _ODP_PROJECT and not row.get("end-date")
+        }
+    datasets = set()
+    if MANDATED in groups:
+        datasets |= mandated
+    if SINGLE_SOURCE in groups:
+        datasets |= single_source
+    return keys, datasets
+
+
+def _load_licence_scope(groups):
+    """_licence_scope from the published specification. None if it could not
+    be read: the licence task is skipped for the night rather than failing the
+    whole build."""
+    try:
+        provisions, provision_rules = load_provision_rows()
+    except Exception as error:
+        logger.warning(
+            f"TaskPipeline: could not read the specification's provisions "
+            f"({error}) — skipping licence tasks"
+        )
+        return None
+    keys, datasets = _licence_scope(provisions, provision_rules, groups)
+    logger.info(
+        f"TaskPipeline: licence task covers {len(keys)} ODP provisions and "
+        f"{len(datasets)} datasets"
+    )
+    return keys, datasets
 
 
 def _backfill_dataset_from_source(log_df, endpoint_dataset_df):
@@ -324,6 +401,59 @@ _CHECK_RESULT_SCHEMA = (
     "candidate_links array<string>, likely_replacement string"
 )
 
+_LICENCE_RESULT_SCHEMA = (
+    "endpoint string, endpoint_url string, documentation_urls array<string>, "
+    "result string, fetch_errors array<string>"
+)
+
+
+def _attribute(results_df, endpoint_dataset_df, endpoint_organisation_df):
+    """One row per dataset the endpoint serves, as with log tasks."""
+    return (
+        results_df.join(endpoint_dataset_df, on="endpoint", how="left")
+        .join(endpoint_organisation_df, on="endpoint", how="left")
+        .fillna("", subset=["dataset", "organisation"])
+    )
+
+
+def _licence_tasks(spark, checked, endpoint_dataset_df, endpoint_organisation_df):
+    """Tasks for endpoints in a covered provision whose documentation pages were
+    read and none mentions the Open Government Licence."""
+    results = [
+        result
+        for result in checked
+        if result["licence"] and result["licence"]["result"] != OGL_FOUND
+    ]
+    if not results:
+        return None
+
+    rule = load_licence_task_rule()
+    scope = _load_licence_scope(rule["dataset_groups"])
+    if scope is None:
+        return None
+    keys, datasets = scope
+
+    results_df = spark.createDataFrame(
+        [
+            (
+                result["endpoint"],
+                result["endpoint_url"],
+                result["documentation_urls"],
+                result["licence"]["result"],
+                result["licence"].get("fetch_errors", []),
+            )
+            for result in results
+        ],
+        _LICENCE_RESULT_SCHEMA,
+    )
+    results_df = _attribute(
+        results_df, endpoint_dataset_df, endpoint_organisation_df
+    ).filter(
+        col("dataset").isin(*sorted(datasets))
+        | concat_ws("|", col("organisation"), col("dataset")).isin(*sorted(keys))
+    )
+    return transform_licence_to_tasks(results_df)
+
 
 def _documentation_url_tasks(
     spark,
@@ -333,7 +463,9 @@ def _documentation_url_tasks(
     endpoint_dataset_df,
     endpoint_organisation_df,
 ):
-    """Tasks for live endpoints that are not linked from their documentation page.
+    """Tasks from each live endpoint's documentation pages, as a pair: endpoints
+    the pages do not link to, and endpoints whose pages do not mention the Open
+    Government Licence. Either is None when there are no such tasks.
 
     The endpoint URL comes from endpoint.csv and the documentation URLs from
     the endpoint's live source.csv rows. An endpoint with no documentation URL
@@ -344,12 +476,12 @@ def _documentation_url_tasks(
             "TaskPipeline: no documentation-url in source.csv — skipping "
             "documentation URL tasks"
         )
-        return None
+        return None, None
 
     endpoint_files = collection_files(base, collections, "endpoint.csv")
     logger.info(f"TaskPipeline: Found {len(endpoint_files)} endpoint files")
     if not endpoint_files:
-        return None
+        return None, None
 
     endpoint_df = normalise_column_names(
         spark.read.option("header", "true").csv(endpoint_files)
@@ -370,13 +502,24 @@ def _documentation_url_tasks(
     )
 
     to_check = documented_df.join(endpoint_df, on="endpoint", how="inner").collect()
-    results = [
-        result
-        for result in check_endpoints(row.asDict() for row in to_check)
-        if result["result"] != FOUND
-    ]
+    checked = check_endpoints(row.asDict() for row in to_check)
+    # The licence task is new and raises warnings only, so a failure in it is
+    # logged and the licence tasks skipped for the night, rather than losing the
+    # documentation URL tasks and the rest of the build with it.
+    try:
+        licence_tasks = _licence_tasks(
+            spark, checked, endpoint_dataset_df, endpoint_organisation_df
+        )
+    except Exception:
+        logger.exception(
+            "TaskPipeline: licence tasks failed — skipping them; documentation "
+            "URL tasks are unaffected"
+        )
+        licence_tasks = None
+
+    results = [result for result in checked if result["result"] != FOUND]
     if not results:
-        return None
+        return None, licence_tasks
 
     results_df = spark.createDataFrame(
         [
@@ -394,13 +537,8 @@ def _documentation_url_tasks(
         ],
         _CHECK_RESULT_SCHEMA,
     )
-    # One task per dataset the endpoint serves, as with log tasks.
-    results_df = (
-        results_df.join(endpoint_dataset_df, on="endpoint", how="left")
-        .join(endpoint_organisation_df, on="endpoint", how="left")
-        .fillna("", subset=["dataset", "organisation"])
-    )
-    return transform_documentation_url_to_tasks(results_df)
+    results_df = _attribute(results_df, endpoint_dataset_df, endpoint_organisation_df)
+    return transform_documentation_url_to_tasks(results_df), licence_tasks
 
 
 class TaskPipeline(BasePipeline):
@@ -647,10 +785,11 @@ class TaskPipeline(BasePipeline):
         )
         authority_tasks = transform_authority_to_tasks(authority_population)
 
-        # -- Documentation URL tasks ------------------------------------------
+        # -- Documentation URL and licence tasks ------------------------------
         # The one leg that reads the web rather than the bucket: each live
-        # endpoint's documentation page is fetched to see it still links there.
-        documentation_url_tasks = _documentation_url_tasks(
+        # endpoint's documentation page is fetched to see it still links there,
+        # and that it says the data is under the Open Government Licence.
+        documentation_url_tasks, licence_tasks = _documentation_url_tasks(
             spark,
             base,
             collections,
@@ -668,6 +807,7 @@ class TaskPipeline(BasePipeline):
                 expectation_tasks,
                 authority_tasks,
                 documentation_url_tasks,
+                licence_tasks,
             ]
             if df is not None
         ]

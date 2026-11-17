@@ -13,6 +13,10 @@ linked is not raised as a task here. Where it differs:
   (".../FeatureServer/0/query?where=1%3D1&f=geojson"), so for those a link to the
   same service counts
 
+The same fetch also checks whether the page says the data is published under the
+Open Government Licence (mentions_ogl), so each page is requested once for both
+checks.
+
 Plain Python on the driver, not Spark: the work is a few thousand HTTP requests,
 which a thread pool does well and a Spark job has no advantage at.
 """
@@ -30,6 +34,7 @@ from jobs.config.documentation_url_task import (
     NOT_FOUND,
     UNREACHABLE,
 )
+from jobs.config.licence_task import OGL_FOUND, OGL_NOT_FOUND
 
 logger = logging.getLogger(__name__)
 
@@ -63,17 +68,47 @@ _MAX_CANDIDATE_LINKS = 20
 
 _ARCGIS_SERVICE = re.compile(r"^(.*?/(?:featureserver|mapserver|imageserver))(?:/|$)")
 
+# How a page says its data is under the Open Government Licence: by name ("Open
+# Government Licence v3.0", or the US spelling), by its abbreviation ("OGL v3"),
+# or by linking to the licence on the National Archives site, as the OGL logo
+# does. Read from the whole page, footer included, as many councils state it once
+# in a site-wide footer. Any version counts.
+_OGL_NAME = re.compile(r"open\s+government\s+licen[cs]e", re.IGNORECASE)
+_OGL_ABBREVIATION = re.compile(r"\bOGL\b")
+_OGL_LINK = "/doc/open-government-licence"
 
-class _HrefCollector(HTMLParser):
+# Text in these is code, not something a reader sees.
+_NOT_TEXT = {"script", "style", "template"}
+
+
+class _PageParser(HTMLParser):
+    """Collects a page's anchor hrefs and its visible text."""
+
     def __init__(self):
         super().__init__()
         self.hrefs = []
+        self.text = []
+        self._skipping = 0
 
     def handle_starttag(self, tag, attrs):
-        if tag == "a":
-            for name, value in attrs:
-                if name == "href" and value:
-                    self.hrefs.append(value.strip())
+        if tag in _NOT_TEXT:
+            self._skipping += 1
+        for name, value in attrs:
+            if not value:
+                continue
+            if tag == "a" and name == "href":
+                self.hrefs.append(value.strip())
+            # an OGL logo's alt text names the licence
+            elif tag == "img" and name == "alt":
+                self.text.append(value)
+
+    def handle_endtag(self, tag):
+        if tag in _NOT_TEXT and self._skipping:
+            self._skipping -= 1
+
+    def handle_data(self, data):
+        if not self._skipping:
+            self.text.append(data)
 
 
 def _without_scheme_or_query(url):
@@ -136,12 +171,23 @@ def hrefs_match(href, endpoint_url, page_url):
     return False
 
 
+def mentions_ogl(text, hrefs):
+    """True if a page's text or links say it is under the Open Government Licence."""
+    text = " ".join(text.split())
+    return bool(
+        _OGL_NAME.search(text)
+        or _OGL_ABBREVIATION.search(text)
+        or any(_OGL_LINK in unquote(href).lower() for href in hrefs)
+    )
+
+
 def fetch_page(documentation_url):
-    """(final_url, hrefs, error) for a documentation page.
+    """(final_url, hrefs, error, ogl) for a documentation page.
 
     error is a short fixed category rather than the exception text: it ends up
     in the task details, which feed the reference hash, so it must not carry
-    anything that changes from one night to the next.
+    anything that changes from one night to the next. ogl is whether the page
+    mentions the Open Government Licence, False when it could not be read.
     """
     try:
         response = requests.get(
@@ -152,18 +198,19 @@ def fetch_page(documentation_url):
         )
         response.raise_for_status()
     except requests.exceptions.Timeout:
-        return documentation_url, [], "timeout"
+        return documentation_url, [], "timeout", False
     except requests.exceptions.HTTPError as error:
-        return documentation_url, [], f"http-{error.response.status_code}"
+        return documentation_url, [], f"http-{error.response.status_code}", False
     except requests.exceptions.RequestException:
-        return documentation_url, [], "connection-error"
+        return documentation_url, [], "connection-error", False
 
-    collector = _HrefCollector()
+    parser = _PageParser()
     try:
-        collector.feed(response.text)
+        parser.feed(response.text)
     except Exception:
-        return response.url, [], "parse-error"
-    return response.url, collector.hrefs, None
+        return response.url, [], "parse-error", False
+    ogl = mentions_ogl(" ".join(parser.text), parser.hrefs)
+    return response.url, parser.hrefs, None, ogl
 
 
 def _redirects(documentation_urls, pages):
@@ -185,7 +232,7 @@ def _redirects(documentation_urls, pages):
 
 def _candidate_links(pages):
     links = set()
-    for page_url, hrefs, _ in pages:
+    for page_url, hrefs, _, _ in pages:
         for href in hrefs:
             try:
                 absolute = urljoin(page_url, href)
@@ -220,14 +267,14 @@ def check_endpoint(endpoint_url, documentation_urls, pages):
     behind several sources.
     """
     fetched = [pages[url] for url in documentation_urls]
-    for page_url, hrefs, _ in fetched:
+    for page_url, hrefs, _, _ in fetched:
         for href in hrefs:
             if hrefs_match(href, endpoint_url, page_url):
                 return {"result": FOUND, "matched_href": href}
 
-    errors = sorted({error for _, _, error in fetched if error})
-    if all(error for _, _, error in fetched):
-        gone = all(error in _GONE_ERRORS for _, _, error in fetched)
+    errors = sorted({error for _, _, error, _ in fetched if error})
+    if all(error for _, _, error, _ in fetched):
+        gone = all(error in _GONE_ERRORS for _, _, error, _ in fetched)
         return {
             "result": DOCUMENTATION_URL_GONE if gone else UNREACHABLE,
             "fetch_errors": errors,
@@ -242,6 +289,24 @@ def check_endpoint(endpoint_url, documentation_urls, pages):
     }
 
 
+def check_licence(documentation_urls, pages):
+    """Whether an endpoint's documentation pages say the data is under the OGL.
+
+    pages maps each documentation URL to fetch_page's result. One page saying so
+    is enough. Returns None when no page could be read, as nothing is known about
+    the licence then.
+    """
+    fetched = [pages[url] for url in documentation_urls]
+    if any(ogl for _, _, _, ogl in fetched):
+        return {"result": OGL_FOUND}
+    if all(error for _, _, error, _ in fetched):
+        return None
+    return {
+        "result": OGL_NOT_FOUND,
+        "fetch_errors": sorted({error for _, _, error, _ in fetched if error}),
+    }
+
+
 def check_endpoints(endpoints, max_workers=_MAX_WORKERS):
     """Check each endpoint against its documentation pages.
 
@@ -249,7 +314,8 @@ def check_endpoints(endpoints, max_workers=_MAX_WORKERS):
     documentation_urls (a list). Each documentation page is fetched once,
     however many endpoints it serves.
 
-    Returns one dict per endpoint: the input keys plus check_endpoint's.
+    Returns one dict per endpoint: the input keys plus check_endpoint's, and
+    "licence" holding check_licence's result.
     """
     endpoints = list(endpoints)
     documentation_urls = sorted(
@@ -268,6 +334,7 @@ def check_endpoints(endpoints, max_workers=_MAX_WORKERS):
             **check_endpoint(
                 endpoint["endpoint_url"], endpoint["documentation_urls"], pages
             ),
+            "licence": check_licence(endpoint["documentation_urls"], pages),
         }
         for endpoint in endpoints
     ]
@@ -275,4 +342,9 @@ def check_endpoints(endpoints, max_workers=_MAX_WORKERS):
     for result in results:
         counts[result["result"]] = counts.get(result["result"], 0) + 1
     logger.info(f"check_endpoints: {counts}")
+    licence_counts = {}
+    for result in results:
+        key = result["licence"]["result"] if result["licence"] else "unread"
+        licence_counts[key] = licence_counts.get(key, 0) + 1
+    logger.info(f"check_endpoints: licence {licence_counts}")
     return results

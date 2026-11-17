@@ -11,13 +11,16 @@ from jobs.config.documentation_url_task import (
     NOT_FOUND,
     UNREACHABLE,
 )
+from jobs.config.licence_task import OGL_FOUND, OGL_NOT_FOUND
 from jobs.utils import documentation_url
 from jobs.utils.documentation_url import (
     FOUND,
     check_endpoint,
     check_endpoints,
+    check_licence,
     fetch_page,
     hrefs_match,
+    mentions_ogl,
     service_root,
 )
 
@@ -143,7 +146,7 @@ def test_hrefs_match_rejects_a_different_file():
 def test_fetch_page_collects_anchor_hrefs(mocker):
     _serve(mocker, {PAGE: '<a href="/a.csv">A</a><link href="/style.css"><a>none</a>'})
 
-    assert fetch_page(PAGE) == (PAGE, ["/a.csv"], None)
+    assert fetch_page(PAGE) == (PAGE, ["/a.csv"], None, False)
 
 
 def test_fetch_page_returns_the_url_after_redirects(mocker):
@@ -164,7 +167,116 @@ def test_fetch_page_errors_are_fixed_categories(mocker, page, error):
     """The error feeds the task reference, so must not carry varying text."""
     _serve(mocker, {PAGE: page})
 
-    assert fetch_page(PAGE) == (PAGE, [], error)
+    assert fetch_page(PAGE) == (PAGE, [], error, False)
+
+
+def test_fetch_page_finds_an_ogl_statement_in_the_footer(mocker):
+    _serve(
+        mocker,
+        {
+            PAGE: "<main><a href='/a.csv'>Data</a></main>"
+            "<footer>All content is available under the "
+            "<a href='https://www.nationalarchives.gov.uk/doc/open-government-licence/"
+            "version/3/'>Open Government Licence v3.0</a></footer>"
+        },
+    )
+
+    assert fetch_page(PAGE)[3] is True
+
+
+def test_fetch_page_without_an_ogl_statement(mocker):
+    _serve(mocker, {PAGE: "<p>Download our conservation areas.</p>"})
+
+    assert fetch_page(PAGE)[3] is False
+
+
+# -- mentions_ogl -------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "The data is provided under the Open Government Licence v3",
+        "Licensed under the open government licence",
+        "Available under the Open\n   Government\xa0Licence version 3.0",
+        "Released under the Open Government License",
+        "Published under OGL v3.0",
+        "© Crown copyright. OGL",
+    ],
+)
+def test_mentions_ogl_by_name_or_abbreviation(text):
+    assert mentions_ogl(text, [])
+
+
+@pytest.mark.parametrize(
+    "href",
+    [
+        "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+        "http://www.nationalarchives.gov.uk/doc/open-government-licence/",
+        "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3",
+    ],
+)
+def test_mentions_ogl_by_link(href):
+    assert mentions_ogl("", [href])
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Download our conservation areas as a CSV.",
+        "Contact the government team about your licence application.",
+        "Google maps",
+        "boglands",
+    ],
+)
+def test_does_not_mention_ogl(text):
+    assert not mentions_ogl(text, ["/about", "https://council.gov.uk/licensing"])
+
+
+def test_scripts_and_styles_are_not_page_text(mocker):
+    _serve(
+        mocker,
+        {PAGE: "<script>var l = 'Open Government Licence';</script><p>Data</p>"},
+    )
+
+    assert fetch_page(PAGE)[3] is False
+
+
+def test_an_ogl_logo_alt_text_counts(mocker):
+    _serve(mocker, {PAGE: '<img src="/ogl.svg" alt="Open Government Licence">'})
+
+    assert fetch_page(PAGE)[3] is True
+
+
+# -- check_licence ------------------------------------------------------------
+
+
+def test_licence_found_on_any_documentation_page():
+    pages = {
+        "https://a": ("https://a", [], None, False),
+        "https://b": ("https://b", [], None, True),
+    }
+
+    assert check_licence(["https://a", "https://b"], pages) == {"result": OGL_FOUND}
+
+
+def test_licence_not_found_when_a_page_was_read():
+    pages = {
+        "https://a": ("https://a", [], "http-403", False),
+        "https://b": ("https://b", [], None, False),
+    }
+
+    assert check_licence(["https://a", "https://b"], pages) == {
+        "result": OGL_NOT_FOUND,
+        "fetch_errors": ["http-403"],
+    }
+
+
+def test_licence_unknown_when_no_page_could_be_read():
+    """The documentation URL task already reports an unreadable page."""
+    pages = {PAGE: (PAGE, [], "timeout", False)}
+
+    assert check_licence([PAGE], pages) is None
 
 
 # -- check_endpoint -----------------------------------------------------------
@@ -172,8 +284,8 @@ def test_fetch_page_errors_are_fixed_categories(mocker, page, error):
 
 def test_found_on_any_documentation_page():
     pages = {
-        "https://a": ("https://a", ["/other.csv"], None),
-        "https://b": ("https://b", [ENDPOINT], None),
+        "https://a": ("https://a", ["/other.csv"], None, False),
+        "https://b": ("https://b", [ENDPOINT], None, False),
     }
 
     result = check_endpoint(ENDPOINT, ["https://a", "https://b"], pages)
@@ -187,6 +299,7 @@ def test_not_found_offers_the_data_file_links_on_the_page():
             PAGE,
             ["/downloads/file/9999/timetable.csv", "/about", "/data.XLSX"],
             None,
+            False,
         )
     }
 
@@ -206,7 +319,7 @@ def test_not_found_offers_the_data_file_links_on_the_page():
 
 
 def test_no_likely_replacement_without_the_same_file_name():
-    pages = {PAGE: (PAGE, ["/downloads/file/9999/local-plan.csv"], None)}
+    pages = {PAGE: (PAGE, ["/downloads/file/9999/local-plan.csv"], None, False)}
 
     assert check_endpoint(ENDPOINT, [PAGE], pages)["likely_replacement"] == ""
 
@@ -214,7 +327,7 @@ def test_no_likely_replacement_without_the_same_file_name():
 def test_not_found_records_a_page_that_moved():
     """Dover's Article 4 page now goes to its conservation areas page."""
     moved = "https://council.gov.uk/heritage/conservation-areas"
-    pages = {PAGE: (moved, [], None)}
+    pages = {PAGE: (moved, [], None, False)}
 
     result = check_endpoint(ENDPOINT, [PAGE], pages)
 
@@ -230,15 +343,15 @@ def test_not_found_records_a_page_that_moved():
     ],
 )
 def test_a_change_of_scheme_www_or_slash_is_not_a_move(final):
-    pages = {PAGE: (final, [], None)}
+    pages = {PAGE: (final, [], None, False)}
 
     assert check_endpoint(ENDPOINT, [PAGE], pages)["redirects"] == {}
 
 
 def test_not_found_when_only_some_pages_could_be_read():
     pages = {
-        "https://a": ("https://a", [], "http-404"),
-        "https://b": ("https://b", ["/other"], None),
+        "https://a": ("https://a", [], "http-404", False),
+        "https://b": ("https://b", ["/other"], None, False),
     }
 
     result = check_endpoint(ENDPOINT, ["https://a", "https://b"], pages)
@@ -249,7 +362,7 @@ def test_not_found_when_only_some_pages_could_be_read():
 
 @pytest.mark.parametrize("error", ["http-404", "http-410"])
 def test_gone_when_every_page_no_longer_exists(error):
-    pages = {PAGE: (PAGE, [], error)}
+    pages = {PAGE: (PAGE, [], error, False)}
 
     assert check_endpoint(ENDPOINT, [PAGE], pages) == {
         "result": DOCUMENTATION_URL_GONE,
@@ -260,8 +373,8 @@ def test_gone_when_every_page_no_longer_exists(error):
 def test_unreachable_when_a_page_is_blocked_and_another_gone():
     """A blocked page might still link to the endpoint, so it isn't known to be gone."""
     pages = {
-        "https://a": ("https://a", [], "http-404"),
-        "https://b": ("https://b", [], "http-403"),
+        "https://a": ("https://a", [], "http-404", False),
+        "https://b": ("https://b", [], "http-403", False),
     }
 
     result = check_endpoint(ENDPOINT, ["https://a", "https://b"], pages)
@@ -270,7 +383,7 @@ def test_unreachable_when_a_page_is_blocked_and_another_gone():
 
 
 def test_unreachable_when_no_page_could_be_read():
-    pages = {PAGE: (PAGE, [], "timeout")}
+    pages = {PAGE: (PAGE, [], "timeout", False)}
 
     assert check_endpoint(ENDPOINT, [PAGE], pages) == {
         "result": UNREACHABLE,
@@ -299,3 +412,19 @@ def test_each_documentation_page_is_fetched_once(mocker):
     assert results[0]["result"] == FOUND
     # path-only matching ignores the query string, as Manage's does
     assert results[1]["result"] == FOUND
+
+
+def test_check_endpoints_checks_the_licence_from_the_same_fetch(mocker):
+    get = _serve(
+        mocker,
+        {PAGE: f'<a href="{ENDPOINT}">timetable</a><footer>OGL v3.0</footer>'},
+    )
+    endpoints = [
+        {"endpoint": "e1", "endpoint_url": ENDPOINT, "documentation_urls": [PAGE]}
+    ]
+
+    [result] = check_endpoints(endpoints, max_workers=1)
+
+    assert get.call_count == 1
+    assert result["result"] == FOUND
+    assert result["licence"] == {"result": OGL_FOUND}
