@@ -23,7 +23,7 @@ INTEGRITY = "integrity"
 PROVENANCE = "provenance"
 AUTHORITATIVENESS = "authoritativeness"
 TIMELINESS = "timeliness"
-CURRENT = "current"
+CURRENCY = "currency"
 
 # The agreed vocabulary, shaped like the reference dataset it would become:
 # (quality-dimension, name, description). Five of these are already the values
@@ -43,7 +43,7 @@ QUALITY_DIMENSIONS = [
     (ACCURACY, "Accuracy", "A true reflection of reality"),
     (CONSISTENCY, "Consistency", "Recorded in the same way across the dataset"),
     (TIMELINESS, "Timeliness", "Available soon after the event"),
-    (CURRENT, "Current", "Reflects the most recent changes"),
+    (CURRENCY, "Currency", "Reflects the most recent changes"),
 ]
 
 # The dimension is a property of the operation, not of the expect.csv row it is
@@ -57,6 +57,7 @@ QUALITY_DIMENSIONS = [
 # text, so a code or a placeholder in it is well-formed but untrue — accuracy.
 EXPECTATION_DIMENSIONS = {
     "check_fields_required_after_plan_event": COMPLETENESS,  # cf. `missing value`
+    "check_overdue_plan_events": CURRENCY,
     "duplicate_name_check": UNIQUENESS,  # cf. `reference values are not unique`
     "name_is_a_code_check": ACCURACY,
     "name_is_a_placeholder_check": ACCURACY,
@@ -64,7 +65,7 @@ EXPECTATION_DIMENSIONS = {
 
 # A collection log task means the endpoint did not respond, so the data cannot
 # reflect anything the publisher has changed since it broke.
-LOG_DIMENSION = CURRENT
+LOG_DIMENSION = CURRENCY
 
 
 def load_quality_dimensions():
