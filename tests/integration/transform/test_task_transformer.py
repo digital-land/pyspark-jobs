@@ -22,6 +22,7 @@ from jobs.transform.task_transformer import (
     transform_documentation_url_to_tasks,
     transform_expectations_to_tasks,
     transform_issues_to_tasks,
+    transform_licence_to_tasks,
     transform_log_to_tasks,
 )
 
@@ -1657,6 +1658,61 @@ class TestTransformDocumentationUrlToTasks:
         rows = [
             _documentation_url_row(dataset="plan-timetable"),
             _documentation_url_row(dataset="local-plan"),
+        ]
+        refs = [r["reference"] for r in self._transform(spark, rows).collect()]
+        assert len(refs) == len(set(refs)) == 2
+
+
+LICENCE_SCHEMA = (
+    "dataset string, organisation string, endpoint string, endpoint_url string, "
+    "documentation_urls array<string>, result string, fetch_errors array<string>"
+)
+
+
+def _licence_row(result="ogl-not-found", dataset="conservation-area"):
+    return (
+        dataset,
+        "local-authority:BRO",
+        "endpoint-a",
+        "https://council.gov.uk/conservation-areas.csv",
+        ["https://council.gov.uk/conservation-areas"],
+        result,
+        [],
+    )
+
+
+class TestTransformLicenceToTasks:
+
+    def _transform(self, spark, rows):
+        df = spark.createDataFrame(rows, schema=LICENCE_SCHEMA)
+        return transform_licence_to_tasks(df)
+
+    def test_pages_that_mention_ogl_are_not_tasks(self, spark):
+        assert self._transform(spark, [_licence_row(result="ogl-found")]) is None
+
+    def test_missing_ogl_is_a_warning(self, spark):
+        row = self._transform(spark, [_licence_row()]).collect()[0]
+        assert row["severity"] == "warning"
+        assert row["responsibility"] == "external"
+        assert row["task_source"] == "documentation-url-licence"
+        assert row["quality_dimension"] == "provenance"
+        assert row["endpoint"] == "endpoint-a"
+        assert row["resource"] == ""
+
+    def test_details_say_what_was_checked(self, spark):
+        row = self._transform(spark, [_licence_row()]).collect()[0]
+        assert json.loads(row["details"]) == {
+            "task_type": "ogl_in_documentation_url",
+            "result": "ogl-not-found",
+            "endpoint_url": "https://council.gov.uk/conservation-areas.csv",
+            "documentation_urls": ["https://council.gov.uk/conservation-areas"],
+            "fetch_errors": [],
+        }
+
+    def test_references_are_unique_per_dataset(self, spark):
+        rows = [
+            _licence_row(dataset="conservation-area"),
+            _licence_row(dataset="conservation-area-document"),
         ]
         refs = [r["reference"] for r in self._transform(spark, rows).collect()]
         assert len(refs) == len(set(refs)) == 2

@@ -17,7 +17,9 @@ from jobs.pipeline.task import (
     _backfill_dataset_from_source,
     _backfill_organisation_from_source,
     _latest_log_entry_per_endpoint,
+    _licence_scope,
     _load_issue_type_df,
+    _load_licence_scope,
 )
 from jobs.transform.task_transformer import (
     CONVERSION_FAILED_EXCEPTION,
@@ -1386,7 +1388,7 @@ class TestDocumentationUrlTasks:
 
     PAGE = "https://council.gov.uk/local-plan"
 
-    def _run(self, spark, tmp_path, mocker, hrefs):
+    def _run(self, spark, tmp_path, mocker, hrefs, ogl=True, scope=None):
         base = str(tmp_path)
         collection = "dataset-a-collection"
         endpoints = {
@@ -1446,10 +1448,20 @@ class TestDocumentationUrlTasks:
         _write_empty_authority_fixtures(base)
         fetch_page = mocker.patch(
             "jobs.utils.documentation_url.fetch_page",
-            return_value=(self.PAGE, hrefs, None),
+            return_value=(self.PAGE, hrefs, None, ogl),
+        )
+        # the specification's provisions, which scope the licence task, are
+        # read from GitHub: (organisation|dataset keys, datasets)
+        licence_scope = mocker.patch(
+            "jobs.pipeline.task._load_licence_scope",
+            return_value=scope or (set(), set()),
         )
 
         tasks = _run_task_pipeline(spark, base).collect()
+        self.licence_tasks = [
+            r for r in tasks if r["task_source"] == "documentation-url-licence"
+        ]
+        self.licence_scope = licence_scope
         return [r for r in tasks if r["task_source"] == "documentation-url"], fetch_page
 
     def test_unlinked_endpoint_produces_a_task(self, spark, tmp_path, mocker):
@@ -1482,3 +1494,167 @@ class TestDocumentationUrlTasks:
         )
 
         assert tasks == []
+
+
+class TestLicenceTasks:
+    """An endpoint in an ODP or mandated provision whose documentation page does
+    not mention the Open Government Licence becomes a task. Reuses the
+    documentation URL fixtures: one page serving three endpoints of dataset-a."""
+
+    PAGE = TestDocumentationUrlTasks.PAGE
+    _run = TestDocumentationUrlTasks._run
+    LINKED = ["/a.csv", "/b.csv", "/arcgis/rest/services/C/FeatureServer"]
+
+    def test_page_without_ogl_produces_a_task_per_endpoint(
+        self, spark, tmp_path, mocker
+    ):
+        self._run(
+            spark,
+            tmp_path,
+            mocker,
+            self.LINKED,
+            ogl=False,
+            scope=({"organisation:1|dataset-a"}, set()),
+        )
+
+        assert sorted(r["endpoint"] for r in self.licence_tasks) == [
+            "endpoint-a",
+            "endpoint-b",
+            "endpoint-c",
+        ]
+        task = self.licence_tasks[0]
+        assert (task["dataset"], task["organisation"], task["severity"]) == (
+            "dataset-a",
+            "organisation:1",
+            "warning",
+        )
+        details = json.loads(task["details"])
+        assert details["result"] == "ogl-not-found"
+        assert details["documentation_urls"] == [self.PAGE]
+
+    def test_page_with_ogl_produces_no_task(self, spark, tmp_path, mocker):
+        self._run(
+            spark,
+            tmp_path,
+            mocker,
+            self.LINKED,
+            ogl=True,
+            scope=({"organisation:1|dataset-a"}, set()),
+        )
+
+        assert self.licence_tasks == []
+        self.licence_scope.assert_not_called()
+
+    def test_a_dataset_in_scope_covers_every_organisation(
+        self, spark, tmp_path, mocker
+    ):
+        """Mandated and single-source datasets are checked whoever provides them."""
+        self._run(
+            spark,
+            tmp_path,
+            mocker,
+            self.LINKED,
+            ogl=False,
+            scope=(set(), {"dataset-a"}),
+        )
+
+        assert len(self.licence_tasks) == 3
+
+    def test_provision_not_covered_produces_no_task(self, spark, tmp_path, mocker):
+        """An ODP dataset from an organisation outside the project is not checked."""
+        self._run(
+            spark,
+            tmp_path,
+            mocker,
+            self.LINKED,
+            ogl=False,
+            scope=({"organisation:2|dataset-a"}, {"dataset-b"}),
+        )
+
+        assert self.licence_tasks == []
+
+    def test_a_licence_failure_leaves_documentation_url_tasks(
+        self, spark, tmp_path, mocker
+    ):
+        mocker.patch(
+            "jobs.pipeline.task._licence_tasks", side_effect=RuntimeError("boom")
+        )
+
+        tasks, _ = self._run(
+            spark,
+            tmp_path,
+            mocker,
+            ["/a.csv", "/arcgis/rest/services/C/FeatureServer"],
+            ogl=False,
+        )
+
+        assert sorted(r["endpoint"] for r in tasks) == ["endpoint-b"]
+        assert self.licence_tasks == []
+
+
+def test_specification_read_failure_skips_licence_tasks(mocker):
+    mocker.patch(
+        "jobs.pipeline.task.load_provision_rows", side_effect=OSError("offline")
+    )
+
+    assert _load_licence_scope(["odp"]) is None
+
+
+_PROVISION_RULES = [
+    {"dataset": "conservation-area", "project": "open-digital-planning"},
+    {"dataset": "conservation-area", "project": "", "provision-reason": "prospective"},
+    {"dataset": "brownfield-land", "provision-reason": "statutory"},
+    {
+        "dataset": "developer-agreement",
+        "provision-reason": "encouraged",
+        "role": "local-planning-authority",
+    },
+    {"dataset": "listed-building", "provision-reason": "authoritative"},
+    {"dataset": "ancient-woodland", "provision-reason": "authoritative"},
+]
+_PROVISIONS = [
+    {
+        "organisation": "local-authority:A",
+        "dataset": "conservation-area",
+        "project": "open-digital-planning",
+        "end-date": "",
+    },
+    {
+        "organisation": "local-authority:B",
+        "dataset": "conservation-area",
+        "project": "",
+        "end-date": "",
+    },
+    {
+        "organisation": "local-authority:C",
+        "dataset": "tree",
+        "project": "open-digital-planning",
+        "end-date": "2025-01-01",
+    },
+]
+
+
+def test_licence_scope_groups_follow_the_quality_reports():
+    keys, datasets = _licence_scope(
+        _PROVISIONS, _PROVISION_RULES, ["odp", "mandated", "single-source"]
+    )
+
+    assert keys == {"local-authority:A|conservation-area"}
+    assert datasets == {
+        "brownfield-land",
+        "developer-agreement",
+        "listed-building",
+        "ancient-woodland",
+    }
+
+
+@pytest.mark.parametrize(
+    "groups, keys, datasets",
+    [
+        (["odp"], {"local-authority:A|conservation-area"}, set()),
+        (["mandated"], set(), {"brownfield-land", "developer-agreement"}),
+        (["single-source"], set(), {"listed-building", "ancient-woodland"}),
+    ],
+)
+def test_licence_scope_by_group(groups, keys, datasets):
+    assert _licence_scope(_PROVISIONS, _PROVISION_RULES, groups) == (keys, datasets)

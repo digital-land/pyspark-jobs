@@ -19,6 +19,7 @@ _RAW = "https://raw.githubusercontent.com/digital-land/specification/main"
 QUALITY_URL = f"{_RAW}/content/quality.csv"
 SEVERITY_URL = f"{_RAW}/content/severity.csv"
 PROVISION_URL = f"{_RAW}/specification/provision.csv"
+PROVISION_RULE_URL = f"{_RAW}/specification/provision-rule.csv"
 
 
 def _fetch_rows(url):
@@ -86,3 +87,8 @@ def load_declared_provisions(spark):
     )
     logger.info(f"specification: {len(pairs)} active declared provisions")
     return spark.createDataFrame(pairs, ["dataset", "organisation"])
+
+
+def load_provision_rows():
+    """provision.csv and provision-rule.csv, as lists of row dicts, in that order."""
+    return _fetch_rows(PROVISION_URL), _fetch_rows(PROVISION_RULE_URL)
