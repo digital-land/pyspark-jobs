@@ -98,7 +98,7 @@ if __name__ == "__main__":
     print(f"\n{'=' * 60}")
     print(f"Output: {parquet_dir}")
     print(f"Files: {len(parquet_files)}")
-    print(f"Size: {total_size:,} bytes ({total_size / 1024 / 1024:.2f} MB)")
+    print(f"Size: {total_size:,} bytes ({total_size/1024/1024:.2f} MB)")
     print(f"Time: {elapsed:.2f}s")
     print("\nPolars queries:")
     print(f"  df = pl.scan_parquet('{parquet_dir}/*.parquet')")
