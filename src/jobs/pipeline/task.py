@@ -405,7 +405,8 @@ def _unusable_responses(spark, base, collections, resources):
 _CHECK_RESULT_SCHEMA = (
     "endpoint string, endpoint_url string, documentation_urls array<string>, "
     "result string, fetch_errors array<string>, redirects map<string,string>, "
-    "candidate_links array<string>, likely_replacement string"
+    "candidate_links array<string>, likely_replacement string, "
+    "data_links array<string>"
 )
 
 _LICENCE_RESULT_SCHEMA = (
@@ -465,7 +466,11 @@ def _licence_tasks(spark, checked, endpoint_dataset_df, endpoint_organisation_df
 def _likely_replacement_by_dataset(results_df, endpoint_dataset_df):
     """Fill in a likely replacement named for each task's dataset where no link
     has the endpoint's file name. Done here, not in check_endpoints, as the check
-    runs once per endpoint and an endpoint can serve several datasets."""
+    runs once per endpoint and an endpoint can serve several datasets.
+
+    Chosen from every data link on the page (data_links), not the capped
+    candidate_links stored in the task, which can leave out a page's latest
+    file. data_links is dropped afterwards, as it is not part of the task."""
     other_names = load_documentation_url_task_rule()["other_dataset_names"]
     datasets = sorted(
         {
@@ -478,8 +483,8 @@ def _likely_replacement_by_dataset(results_df, endpoint_dataset_df):
         dataset: [dataset] + other_names.get(dataset, []) for dataset in datasets
     }
     for_dataset = udf(
-        lambda dataset, endpoint_url, candidate_links: likely_replacement_for_dataset(
-            dataset, endpoint_url, candidate_links or [], dataset_names
+        lambda dataset, endpoint_url, data_links: likely_replacement_for_dataset(
+            dataset, endpoint_url, data_links or [], dataset_names
         ),
         StringType(),
     )
@@ -487,9 +492,9 @@ def _likely_replacement_by_dataset(results_df, endpoint_dataset_df):
         "likely_replacement",
         when(
             col("likely_replacement") == "",
-            for_dataset(col("dataset"), col("endpoint_url"), col("candidate_links")),
+            for_dataset(col("dataset"), col("endpoint_url"), col("data_links")),
         ).otherwise(col("likely_replacement")),
-    )
+    ).drop("data_links")
 
 
 def _documentation_url_tasks(
@@ -569,6 +574,7 @@ def _documentation_url_tasks(
                 result.get("redirects", {}),
                 result.get("candidate_links", []),
                 result.get("likely_replacement", ""),
+                result.get("data_links", []),
             )
             for result in results
         ],

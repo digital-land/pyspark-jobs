@@ -51,9 +51,10 @@ _USER_AGENT = "MHCLG Planning Data Collector"
 # A page that no longer exists, as against one we could not read.
 _GONE_ERRORS = {"http-404", "http-410"}
 
-# Links on the page that look like a data file, offered as the likely
-# replacement when the endpoint is not found. Capped so a page listing every
-# file the council has ever published does not make an enormous task.
+# Links on the page that look like a data file, from which the likely
+# replacement is chosen when the endpoint is not found. The candidate_links
+# stored in the task are capped so a page listing every file the council has
+# ever published does not make an enormous task; the choice uses them all.
 _DATA_FILE_SUFFIXES = (
     ".csv",
     ".xlsx",
@@ -247,7 +248,12 @@ def _redirects(documentation_urls, pages):
     }
 
 
-def _candidate_links(pages):
+def _data_links(pages):
+    """Every link on the pages that looks like a data file, sorted. The likely
+    replacement is chosen from all of them; only the first _MAX_CANDIDATE_LINKS
+    go into the task as candidate_links. Sorted order keeps the oldest of a
+    page's yearly files first, so choosing from the capped list would miss the
+    latest."""
     links = set()
     for page_url, hrefs, _, _ in pages:
         for href in hrefs:
@@ -257,7 +263,7 @@ def _candidate_links(pages):
                 continue
             if urlparse(absolute).path.lower().endswith(_DATA_FILE_SUFFIXES):
                 links.add(absolute)
-    return sorted(links)[:_MAX_CANDIDATE_LINKS]
+    return sorted(links)
 
 
 def _file_name(url):
@@ -462,13 +468,16 @@ def check_endpoint(endpoint_url, documentation_urls, pages):
             "result": DOCUMENTATION_URL_GONE if gone else UNREACHABLE,
             "fetch_errors": errors,
         }
-    candidate_links = _candidate_links(fetched)
+    data_links = _data_links(fetched)
     return {
         "result": NOT_FOUND,
         "fetch_errors": errors,
         "redirects": _redirects(documentation_urls, pages),
-        "candidate_links": candidate_links,
-        "likely_replacement": _likely_replacement(endpoint_url, candidate_links),
+        "candidate_links": data_links[:_MAX_CANDIDATE_LINKS],
+        "likely_replacement": _likely_replacement(endpoint_url, data_links),
+        # every data link, for the pipeline to choose a likely replacement named
+        # for each dataset from; not stored in the task
+        "data_links": data_links,
     }
 
 

@@ -346,7 +346,39 @@ def test_not_found_offers_the_data_file_links_on_the_page():
         ],
         # same file name at a new URL, as a CMS gives each upload
         "likely_replacement": "https://council.gov.uk/downloads/file/9999/timetable.csv",
+        "data_links": [
+            "https://council.gov.uk/data.XLSX",
+            "https://council.gov.uk/downloads/file/9999/timetable.csv",
+        ],
     }
+
+
+YEARLY = [f"/files/brownfield-land-register-{year}.csv" for year in range(2001, 2026)]
+
+
+def test_candidate_links_are_capped_but_the_likely_replacement_uses_every_link():
+    """A page with a register for each year: sorted, the cap keeps the oldest,
+    so the latest file is only among the data links."""
+    pages = {PAGE: (PAGE, YEARLY, None, False)}
+
+    result = check_endpoint(
+        "https://council.gov.uk/old/brownfield-land-register-2025.csv", [PAGE], pages
+    )
+
+    assert len(result["candidate_links"]) == 20
+    assert result["candidate_links"][-1].endswith("register-2020.csv")
+    assert len(result["data_links"]) == 25
+    assert result["likely_replacement"] == (
+        "https://council.gov.uk/files/brownfield-land-register-2025.csv"
+    )
+
+
+def test_likely_replacement_for_dataset_chooses_the_latest_of_many_files():
+    data_links = [f"https://council.gov.uk{link}" for link in YEARLY]
+
+    assert likely_replacement_for_dataset(
+        "brownfield-land", ENDPOINT, data_links, DATASET_NAMES
+    ) == ("https://council.gov.uk/files/brownfield-land-register-2025.csv")
 
 
 def test_no_likely_replacement_without_the_same_file_name():

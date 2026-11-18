@@ -1510,6 +1510,26 @@ class TestDocumentationUrlTasks:
             == "https://council.gov.uk/brownfield-land-register-2026.csv"
         ), "no link is named b.csv, but one is named for the dataset"
 
+    def test_likely_replacement_chosen_from_beyond_the_candidate_links_cap(
+        self, spark, tmp_path, mocker
+    ):
+        yearly = [f"/brownfield-land-register-{year}.csv" for year in range(2001, 2026)]
+        tasks, _ = self._run(
+            spark,
+            tmp_path,
+            mocker,
+            ["/a.csv", "/arcgis/rest/services/C/FeatureServer"] + yearly,
+            dataset="brownfield-land",
+        )
+
+        details = json.loads(tasks[0]["details"])
+        assert len(details["candidate_links"]) == 20
+        assert (
+            details["likely_replacement"]
+            == "https://council.gov.uk/brownfield-land-register-2025.csv"
+        ), "the latest file sorts beyond the 20 candidate links kept in the task"
+        assert "data_links" not in details
+
     def test_linked_endpoints_produce_no_task(self, spark, tmp_path, mocker):
         tasks, _ = self._run(
             spark,
