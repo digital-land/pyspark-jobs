@@ -144,7 +144,7 @@ if __name__ == "__main__":
         )
 
     print("\nReports saved to:")
-    print(f"  Text: {output_file}")
-    print(f"  CSV: {output_csv}")
-    print(f"  Parquet: {output_parquet}")
+    print(f"Text: {output_file}")
+    print(f"CSV: {output_csv}")
+    print(f"Parquet: {output_parquet}")
     print(f"Downloads saved to: {download_dir}")
