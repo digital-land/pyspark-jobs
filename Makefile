@@ -77,7 +77,7 @@ test-acceptance: check-env ## Run acceptance tests
 	pytest tests/acceptance/ -v
 
 test-coverage: check-env ## Run tests with HTML coverage report
-	pytest tests/ --cov=src --cov-report=html
+	pytest tests/ --cov=src --cov-report=html --durations=25
 
 test-quick: check-env ## Run quick tests (unit tests only, no coverage)
 	pytest tests/unit/ -v --tb=short

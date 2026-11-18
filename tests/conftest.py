@@ -18,6 +18,9 @@ def spark():
         SedonaContext.builder()
         .master("local[1]")
         .appName("TestSession")
+        .config("spark.sql.shuffle.partitions", "1")
+        .config("spark.default.parallelism", "1")
+        .config("spark.ui.enabled", "false")
         .config(
             "spark.jars.packages",
             "org.apache.sedona:sedona-spark-shaded-3.5_2.12:1.8.1,"
