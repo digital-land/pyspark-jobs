@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       ENVIRONMENT: test
+      path: ~/.ivy2
+          key: spark-jars-${{ hashFiles('tests/conftest.py') }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -20,8 +22,6 @@ jobs:
         with:
           python-version: '3.9' # emr-7.9.0 uses 3.9/3.11
             - uses: actions/cache@v4
-          path: ~/.ivy2
-          key: spark-jars-${{ hashFiles('tests/conftest.py') }}
       - run: make init
       - run: make lint
 
