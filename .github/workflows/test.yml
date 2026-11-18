@@ -74,7 +74,7 @@ jobs:
           retention-days: 30
 
 
-test_pipeline:
+  test_pipeline:
     runs-on: ubuntu-22.04
     services:
       postgres:
@@ -128,7 +128,7 @@ test_pipeline:
 
 
 
-test_integration:
+  test_integration:
     runs-on: ubuntu-22.04
     services:
       postgres:
