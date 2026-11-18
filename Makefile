@@ -65,7 +65,7 @@ init: check-env ## Install dependencies
 
 # -- Testing -----------------------------------------------------------------
 test: check-env ## Run all tests with coverage
-	pytest tests/ --cov=src --cov-report=html --cov-report=term-missing
+	pytest tests/ --cov=src --cov-report=html --cov-report=term-missing --durations=25
 
 test-unit: check-env ## Run unit tests only
 	pytest tests/unit/ -v

@@ -26,7 +26,7 @@ def spark():
             "org.datasyslab:geotools-wrapper:1.8.1-33.1",
             "spark.sql.shuffle.partitions:1",
             "spark.default.parallelism:1",
-            "spark.ui.enabled:false"
+            "spark.ui.enabled:false",
         )
         .config(
             "spark.sql.extensions",
