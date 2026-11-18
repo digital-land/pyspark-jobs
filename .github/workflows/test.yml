@@ -68,7 +68,7 @@ jobs:
         with:
           name: coverage-report-unit
           path: htmlcov/
-          retention-days: 30  
+          retention-days: 30
 
       - name: Run All Tests with pipeline
         run: pytest tests/integration/pipeline --cov=src --cov-report=html --durations=25
@@ -88,4 +88,4 @@ jobs:
         with:
           name: coverage-report-integration
           path: htmlcov/
-          retention-days: 30  
+          retention-days: 30
