@@ -23,7 +23,7 @@ jobs:
       - run: make init
       - run: make lint
 
-  test-unit:
+  test:
     runs-on: ubuntu-22.04
     services:
       postgres:
@@ -74,7 +74,7 @@ jobs:
           retention-days: 30
 
 
-test-pipeline:
+test:
     runs-on: ubuntu-22.04
     services:
       postgres:
@@ -128,7 +128,7 @@ test-pipeline:
 
 
 
-test-integration:
+test:
     runs-on: ubuntu-22.04
     services:
       postgres:
