@@ -95,7 +95,7 @@ if __name__ == "__main__":
     parquet_files = list(parquet_dir.glob("*.parquet"))
     total_size = sum(f.stat().st_size for f in parquet_files)
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Output: {parquet_dir}")
     print(f"Files: {len(parquet_files)}")
     print(f"Size: {total_size:,} bytes ({total_size/1024/1024:.2f} MB)")
@@ -105,4 +105,4 @@ if __name__ == "__main__":
     print(
         "  df.select(['council_name', pl.count()]).group_by('council_name').agg(pl.count())"
     )
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")

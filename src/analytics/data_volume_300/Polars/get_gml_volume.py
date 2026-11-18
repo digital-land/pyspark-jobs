@@ -102,13 +102,13 @@ if __name__ == "__main__":
     # Create Polars DataFrame
     df = pl.DataFrame(data)
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Total .zip files: {len(data)}")
     print(f"Total .gml files: {total_gml_count}")
     print(
         f"Total .gml data volume: {total_gml_size:,} bytes ({format_size(total_gml_size)})"
     )
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # Save report as CSV using Polars
     output_csv = Path(__file__).parent / "gml_volume_report.csv"
@@ -123,7 +123,7 @@ if __name__ == "__main__":
     with open(output_file, "w") as f:
         f.write("GML Files Data Volume Report\n")
         f.write(f"Source: {url}\n")
-        f.write(f"{'='*60}\n\n")
+        f.write(f"{'=' * 60}\n\n")
 
         for row in df.iter_rows(named=True):
             f.write(f"\n{row['zip_name']}:\n")
@@ -136,7 +136,7 @@ if __name__ == "__main__":
 
         f.write(f"\n{'='*60}\n")
         f.write("SUMMARY\n")
-        f.write(f"{'='*60}\n")
+        f.write(f"{'=' * 60}\n")
         f.write(f"Total .zip files: {len(data)}\n")
         f.write(f"Total .gml files: {total_gml_count}\n")
         f.write(
