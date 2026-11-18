@@ -18,15 +18,18 @@ def spark():
         SedonaContext.builder()
         .master("local[1]")
         .appName("TestSession")
+        .config("spark.sql.shuffle.partitions", "1")
+        .config("spark.default.parallelism", "1")
+        .config("spark.ui.enabled", "false")
         .config(
             "spark.jars.packages",
             "org.apache.sedona:sedona-spark-shaded-3.5_2.12:1.8.1,"
             "org.postgresql:postgresql:42.7.4,"
             "io.delta:delta-spark_2.12:3.2.0,"
             "org.datasyslab:geotools-wrapper:1.8.1-33.1",
-            "spark.sql.shuffle.partitions:1",
-            "spark.default.parallelism:1",
-            "spark.ui.enabled:false",
+        #    "spark.sql.shuffle.partitions:1",
+        #    "spark.default.parallelism:1",
+        #    "spark.ui.enabled:false",
         )
         .config(
             "spark.sql.extensions",
