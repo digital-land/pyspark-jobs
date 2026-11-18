@@ -65,7 +65,7 @@ init: check-env ## Install dependencies
 
 # -- Testing -----------------------------------------------------------------
 test: check-env ## Run all tests with coverage
-	pytest tests/ --cov=src --cov-report=html --cov-report=term-missing -
+	pytest tests/ --cov=src --cov-report=html --cov-report=term-missing
 
 test-unit: check-env ## Run unit tests only
 	pytest tests/unit/ -v
@@ -77,7 +77,7 @@ test-acceptance: check-env ## Run acceptance tests
 	pytest tests/acceptance/ -v
 
 test-coverage: check-env ## Run tests with HTML coverage report
-	pytest tests/ --cov=src --cov-report=html -durations=25
+	pytest tests/ --cov=src --cov-report=html --durations=25
 
 test-quick: check-env ## Run quick tests (unit tests only, no coverage)
 	pytest tests/unit/ -v --tb=short
