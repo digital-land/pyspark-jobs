@@ -21,10 +21,13 @@ from pyspark.sql.functions import (
     sort_array,
     split,
     trim,
+    udf,
     when,
 )
+from pyspark.sql.types import StringType
 
 from jobs.config.authoritativeness_task import RESTRICT_TO_ACTIVE_ORGS
+from jobs.config.documentation_url_task import load_documentation_url_task_rule
 from jobs.config.licence_task import (
     MANDATED,
     ODP,
@@ -59,7 +62,11 @@ from jobs.utils.collection_paths import (
     resource_log_files_for_resources,
 )
 from jobs.utils.df_utils import normalise_column_names
-from jobs.utils.documentation_url import FOUND, check_endpoints
+from jobs.utils.documentation_url import (
+    FOUND,
+    check_endpoints,
+    likely_replacement_for_dataset,
+)
 from jobs.utils.postgres_writer_utils import write_task_to_postgres
 from jobs.utils.s3_writer_utils import current_dataset_fields, write_single_csv
 from jobs.utils.specification import load_provision_rows
@@ -455,6 +462,36 @@ def _licence_tasks(spark, checked, endpoint_dataset_df, endpoint_organisation_df
     return transform_licence_to_tasks(results_df)
 
 
+def _likely_replacement_by_dataset(results_df, endpoint_dataset_df):
+    """Fill in a likely replacement named for each task's dataset where no link
+    has the endpoint's file name. Done here, not in check_endpoints, as the check
+    runs once per endpoint and an endpoint can serve several datasets."""
+    other_names = load_documentation_url_task_rule()["other_dataset_names"]
+    datasets = sorted(
+        {
+            row["dataset"]
+            for row in endpoint_dataset_df.select("dataset").distinct().collect()
+            if row["dataset"]
+        }
+    )
+    dataset_names = {
+        dataset: [dataset] + other_names.get(dataset, []) for dataset in datasets
+    }
+    for_dataset = udf(
+        lambda dataset, endpoint_url, candidate_links: likely_replacement_for_dataset(
+            dataset, endpoint_url, candidate_links or [], dataset_names
+        ),
+        StringType(),
+    )
+    return results_df.withColumn(
+        "likely_replacement",
+        when(
+            col("likely_replacement") == "",
+            for_dataset(col("dataset"), col("endpoint_url"), col("candidate_links")),
+        ).otherwise(col("likely_replacement")),
+    )
+
+
 def _documentation_url_tasks(
     spark,
     base,
@@ -538,6 +575,7 @@ def _documentation_url_tasks(
         _CHECK_RESULT_SCHEMA,
     )
     results_df = _attribute(results_df, endpoint_dataset_df, endpoint_organisation_df)
+    results_df = _likely_replacement_by_dataset(results_df, endpoint_dataset_df)
     return transform_documentation_url_to_tasks(results_df), licence_tasks
 
 

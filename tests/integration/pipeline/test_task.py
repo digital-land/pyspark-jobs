@@ -1388,7 +1388,9 @@ class TestDocumentationUrlTasks:
 
     PAGE = "https://council.gov.uk/local-plan"
 
-    def _run(self, spark, tmp_path, mocker, hrefs, ogl=True, scope=None):
+    def _run(
+        self, spark, tmp_path, mocker, hrefs, ogl=True, scope=None, dataset="dataset-a"
+    ):
         base = str(tmp_path)
         collection = "dataset-a-collection"
         endpoints = {
@@ -1424,7 +1426,7 @@ class TestDocumentationUrlTasks:
             [
                 {
                     "endpoint": endpoint,
-                    "pipelines": "dataset-a",
+                    "pipelines": dataset,
                     "organisation": "organisation:1",
                     "documentation-url": self.PAGE,
                     "end-date": "",
@@ -1446,6 +1448,7 @@ class TestDocumentationUrlTasks:
             ],
         )
         _write_empty_authority_fixtures(base)
+        _write_dataset_specification(base, sorted({"dataset-a", dataset}))
         fetch_page = mocker.patch(
             "jobs.utils.documentation_url.fetch_page",
             return_value=(self.PAGE, hrefs, None, ogl),
@@ -1484,6 +1487,28 @@ class TestDocumentationUrlTasks:
             "https://council.gov.uk/a.csv",
         ]
         assert details["likely_replacement"] == "https://council.gov.uk/2026/b.csv"
+
+    def test_likely_replacement_named_for_the_dataset(self, spark, tmp_path, mocker):
+        tasks, _ = self._run(
+            spark,
+            tmp_path,
+            mocker,
+            [
+                "/a.csv",
+                "/arcgis/rest/services/C/FeatureServer",
+                "/brownfield-land-register-2026.csv",
+            ],
+            dataset="brownfield-land",
+        )
+
+        assert [(r["endpoint"], r["dataset"]) for r in tasks] == [
+            ("endpoint-b", "brownfield-land")
+        ]
+        details = json.loads(tasks[0]["details"])
+        assert (
+            details["likely_replacement"]
+            == "https://council.gov.uk/brownfield-land-register-2026.csv"
+        ), "no link is named b.csv, but one is named for the dataset"
 
     def test_linked_endpoints_produce_no_task(self, spark, tmp_path, mocker):
         tasks, _ = self._run(

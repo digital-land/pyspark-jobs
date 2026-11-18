@@ -15,11 +15,13 @@ from jobs.config.licence_task import OGL_FOUND, OGL_NOT_FOUND
 from jobs.utils import documentation_url
 from jobs.utils.documentation_url import (
     FOUND,
+    _date_in_name,
     check_endpoint,
     check_endpoints,
     check_licence,
     fetch_page,
     hrefs_match,
+    likely_replacement_for_dataset,
     mentions_ogl,
     service_root,
 )
@@ -147,6 +149,35 @@ def test_fetch_page_collects_anchor_hrefs(mocker):
     _serve(mocker, {PAGE: '<a href="/a.csv">A</a><link href="/style.css"><a>none</a>'})
 
     assert fetch_page(PAGE) == (PAGE, ["/a.csv"], None, False)
+
+
+def test_fetch_page_unwraps_an_outlook_safe_link(mocker):
+    """North Norfolk's timetable link was copied from an email."""
+    href = (
+        "https://eur03.safelinks.protection.outlook.com/?url=https%3A%2F%2F"
+        "www.north-norfolk.gov.uk%2Fmedia%2Flocalplan%2Ftimetable.csv"
+        "&amp;data=05%7C02%7C&amp;reserved=0"
+    )
+    _serve(mocker, {PAGE: f'<a href="{href}">timetable</a>'})
+
+    assert fetch_page(PAGE)[1] == [
+        "https://www.north-norfolk.gov.uk/media/localplan/timetable.csv"
+    ]
+
+
+@pytest.mark.parametrize(
+    "href",
+    [
+        # a url parameter on any other site is left alone
+        "https://council.gov.uk/redirect?url=https%3A%2F%2Felsewhere.com%2Fa.csv",
+        # a Safe Link with no URL in it
+        "https://eur03.safelinks.protection.outlook.com/?data=05",
+    ],
+)
+def test_fetch_page_leaves_other_links_as_they_are(mocker, href):
+    _serve(mocker, {PAGE: f'<a href="{href}">link</a>'})
+
+    assert fetch_page(PAGE)[1] == [href]
 
 
 def test_fetch_page_returns_the_url_after_redirects(mocker):
@@ -322,6 +353,258 @@ def test_no_likely_replacement_without_the_same_file_name():
     pages = {PAGE: (PAGE, ["/downloads/file/9999/local-plan.csv"], None, False)}
 
     assert check_endpoint(ENDPOINT, [PAGE], pages)["likely_replacement"] == ""
+
+
+@pytest.mark.parametrize(
+    "endpoint, link",
+    [
+        # Cheshire West and Chester: we collect the _0 copy, the page links the new one
+        (
+            "files/2026-10/local-plan-timetable_0.csv",
+            "/files/2026-11/local-plan-timetable.csv",
+        ),
+        (
+            "files/2026-10/local-plan-timetable.csv",
+            "/files/2026-11/local-plan-timetable_0.csv",
+        ),
+        (
+            "files/2026-10/local-plan-timetable.csv",
+            "/files/2026-11/local-plan-timetable_12.csv",
+        ),
+    ],
+)
+def test_likely_replacement_allows_for_drupal_renaming_an_upload(endpoint, link):
+    pages = {PAGE: (PAGE, [link], None, False)}
+
+    result = check_endpoint(f"https://council.gov.uk/{endpoint}", [PAGE], pages)
+
+    assert result["likely_replacement"] == f"https://council.gov.uk{link}"
+
+
+def test_likely_replacement_prefers_the_exact_file_name():
+    pages = {PAGE: (PAGE, ["/a/timetable_0.csv", "/b/timetable.csv"], None, False)}
+
+    assert (
+        check_endpoint("https://council.gov.uk/old/timetable.csv", [PAGE], pages)[
+            "likely_replacement"
+        ]
+        == "https://council.gov.uk/b/timetable.csv"
+    )
+
+
+@pytest.mark.parametrize(
+    "endpoint, link",
+    [
+        # the two parts of a brownfield land register are different files
+        ("register_part_1.csv", "/register_part_2.csv"),
+        ("timetable_0.csv", "/timetable_1.csv"),
+        ("register_2022.xlsx", "/register_2025.xlsx"),
+        ("register_2025.csv", "/register.csv"),
+    ],
+)
+def test_two_numbered_names_are_not_a_likely_replacement(endpoint, link):
+    pages = {PAGE: (PAGE, [link], None, False)}
+
+    result = check_endpoint(f"https://council.gov.uk/old/{endpoint}", [PAGE], pages)
+
+    assert result["likely_replacement"] == ""
+
+
+# -- likely_replacement_for_dataset -------------------------------------------
+
+DATASET_NAMES = {
+    "local-plan": ["local-plan"],
+    "plan-timetable": ["plan-timetable", "local-plan-timetable"],
+    "minerals-plan": ["minerals-plan"],
+    "brownfield-land": [
+        "brownfield-land",
+        "brownfield-register",
+        "blr",
+        "brownfieldregister",
+    ],
+}
+FILES = "https://council.gov.uk/sites/default/files"
+CHESHIRE_WEST = [
+    f"{FILES}/2026-11/cheshire-west-and-chester-local-plan-timetable.csv",
+    f"{FILES}/2026-11/cheshire-west-and-chester-local-plan.csv",
+]
+NORTH_DEVON = [
+    f"{FILES}/2026-06/Local-Plan-CSV-North-Devon.csv",
+    f"{FILES}/2026-06/Local-Plan-CSV-Torridge.csv",
+    f"{FILES}/2026-11/Local-Plan-Timetable-3-Nov-26.csv",
+]
+
+
+@pytest.mark.parametrize(
+    "dataset, candidate_links, expected",
+    [
+        # a local plan timetable file is plan-timetable's, not local-plan's
+        ("local-plan", CHESHIRE_WEST, CHESHIRE_WEST[1]),
+        ("plan-timetable", CHESHIRE_WEST, CHESHIRE_WEST[0]),
+        ("plan-timetable", NORTH_DEVON, NORTH_DEVON[2]),
+        # Chesterfield: a version run on to the word, timetablev3
+        (
+            "plan-timetable",
+            [f"{FILES}/local-plan-timetablev3.csv", f"{FILES}/local-plan.csv"],
+            f"{FILES}/local-plan-timetablev3.csv",
+        ),
+        ("local-plan", [f"{FILES}/local-plan-timetablev3.csv"], ""),
+        # two local plan files: choosing between them needs a person
+        ("local-plan", NORTH_DEVON, ""),
+        # the page has nothing for this dataset
+        ("minerals-plan", CHESHIRE_WEST, ""),
+        # a task whose dataset could not be attributed
+        ("", CHESHIRE_WEST, ""),
+    ],
+)
+def test_likely_replacement_for_dataset(dataset, candidate_links, expected):
+    assert (
+        likely_replacement_for_dataset(
+            dataset, f"{FILES}/2026-10/data.csv", candidate_links, DATASET_NAMES
+        )
+        == expected
+    )
+
+
+@pytest.mark.parametrize(
+    "link",
+    [
+        "/BrownfieldLandRegister2024.csv",
+        "/Brownfield_register_2025.csv",
+        "/BLR2026.csv",
+        "/brownfield%20land%20registers%202025.csv",
+    ],
+)
+def test_likely_replacement_for_dataset_finds_the_name_however_written(link):
+    candidate_links = [f"https://council.gov.uk{link}"]
+
+    assert (
+        likely_replacement_for_dataset(
+            "brownfield-land", ENDPOINT, candidate_links, DATASET_NAMES
+        )
+        == candidate_links[0]
+    )
+
+
+def test_likely_replacement_for_dataset_prefers_the_endpoints_file_type():
+    candidate_links = [
+        f"{FILES}/brownfield-land-register-2025.xlsx",
+        f"{FILES}/brownfield-land-register-2025.csv",
+    ]
+
+    assert (
+        likely_replacement_for_dataset(
+            "brownfield-land",
+            f"{FILES}/brownfield-land-register-2021.csv",
+            candidate_links,
+            DATASET_NAMES,
+        )
+        == candidate_links[1]
+    )
+
+
+@pytest.mark.parametrize(
+    "endpoint, candidate_links, expected",
+    [
+        # Cherwell: each year's register, in CSV and XLSX
+        (
+            f"{FILES}/brownfield-land-register-december-2017.csv",
+            [
+                f"{FILES}/brownfield-land-register-january-2023-csv.csv",
+                f"{FILES}/brownfield-land-register-january-2023-xls.xlsx",
+                f"{FILES}/brownfield-land-register-january-2024-updated-final.xlsx",
+                f"{FILES}/brownfield-land-register-january-2024-updated-final.csv",
+                f"{FILES}/brownfield-land-register-2025-csv.csv",
+            ],
+            f"{FILES}/brownfield-land-register-2025-csv.csv",
+        ),
+        # Wirral: the latest is only published as XLSX
+        (
+            f"{FILES}/Wirral Brownfield Part1 Sites Dec2018.csv",
+            [
+                f"{FILES}/Wirral Brownfield Land Register 2023 csv_0.xlsx",
+                f"{FILES}/Wirral Brownfield Land Register 2024 csv_0.xlsx",
+                f"{FILES}/Wirral Brownfield Land Register 2025 csv.xlsx",
+            ],
+            f"{FILES}/Wirral Brownfield Land Register 2025 csv.xlsx",
+        ),
+        # Lake District: the same day, the endpoint's file type
+        (
+            f"{FILES}/ldnpa_brownfieldregister_2025-12-12-rev8.csv",
+            [
+                f"{FILES}/ldnpa_brownfieldregister_2025-12-15-rev8.csv",
+                f"{FILES}/ldnpa_brownfieldregister_2025-12-15-rev8_friendly.xlsx",
+            ],
+            f"{FILES}/ldnpa_brownfieldregister_2025-12-15-rev8.csv",
+        ),
+        # East Hampshire: an endpoint with no file type, one file in two formats
+        (
+            "https://council.gov.uk/media/6377/download",
+            [
+                f"{FILES}/Brownfield land register 2025.xlsx",
+                f"{FILES}/Brownfield land register 2025.csv",
+            ],
+            f"{FILES}/Brownfield land register 2025.csv",
+        ),
+        # Uttlesford: a day-first date, and an ArcGIS endpoint
+        (
+            "https://services.arcgis.com/x/arcgis/rest/services/BLR/FeatureServer/0",
+            [
+                f"{FILES}/Uttlesford_Brownfield_Land_Register-28.05.26.xlsx",
+                f"{FILES}/Uttlesford_Brownfield_Land_Register-28.05.26.csv",
+            ],
+            f"{FILES}/Uttlesford_Brownfield_Land_Register-28.05.26.csv",
+        ),
+        # two different files of the same date: choosing needs a person
+        (
+            "https://council.gov.uk/media/6377/download",
+            [
+                f"{FILES}/brownfield-land-register-2025-part-1.csv",
+                f"{FILES}/brownfield-land-register-2025-part-2.xlsx",
+            ],
+            "",
+        ),
+        # one file has no date, so which is latest is not known
+        (
+            f"{FILES}/brownfield-land-register-2021.csv",
+            [
+                f"{FILES}/brownfield-land-register-2025.csv",
+                f"{FILES}/brownfield-land-register-current.csv",
+            ],
+            "",
+        ),
+    ],
+)
+def test_likely_replacement_for_dataset_chooses_the_latest_then_the_csv(
+    endpoint, candidate_links, expected
+):
+    assert (
+        likely_replacement_for_dataset(
+            "brownfield-land", endpoint, candidate_links, DATASET_NAMES
+        )
+        == expected
+    )
+
+
+@pytest.mark.parametrize(
+    "name, expected",
+    [
+        ("register-2025.csv", (2025, 0, 0)),
+        ("register-202211.xls", (2022, 11, 0)),
+        ("register_2025-12-15-rev8.csv", (2025, 12, 15)),
+        ("register-20200921.csv", (2020, 9, 21)),
+        ("register-28.05.26.csv", (2026, 5, 28)),
+        ("register-january-2024-final.csv", (2024, 1, 0)),
+        ("Sites Dec2018.csv", (2018, 12, 0)),
+        ("BrownfieldRegister2025-26.csv", (2025, 0, 0)),
+        # the later of two dates
+        ("register-2021-updated-2023.csv", (2023, 0, 0)),
+        ("register-current.csv", None),
+        ("c2f881_85f15d830dad4ed48229c181ec3917e3.xlsx", None),
+    ],
+)
+def test_date_in_name(name, expected):
+    assert _date_in_name(f"{FILES}/{name}") == expected
 
 
 def test_not_found_records_a_page_that_moved():
