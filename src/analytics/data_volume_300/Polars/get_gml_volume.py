@@ -134,7 +134,7 @@ if __name__ == "__main__":
             if row["gml_files"]:
                 f.write(f"  Files: {row['gml_files']}\n")
 
-        f.write(f"\n{'='*60}\n")
+        f.write(f"\n{'=' * 60}\n")
         f.write("SUMMARY\n")
         f.write(f"{'=' * 60}\n")
         f.write(f"Total .zip files: {len(data)}\n")
