@@ -51,9 +51,10 @@ _USER_AGENT = "MHCLG Planning Data Collector"
 # A page that no longer exists, as against one we could not read.
 _GONE_ERRORS = {"http-404", "http-410"}
 
-# Links on the page that look like a data file, offered as the likely
-# replacement when the endpoint is not found. Capped so a page listing every
-# file the council has ever published does not make an enormous task.
+# Links on the page that look like a data file, from which the likely
+# replacement is chosen when the endpoint is not found. The candidate_links
+# stored in the task are capped so a page listing every file the council has
+# ever published does not make an enormous task; the choice uses them all.
 _DATA_FILE_SUFFIXES = (
     ".csv",
     ".xlsx",
@@ -81,6 +82,23 @@ _OGL_LINK = "/doc/open-government-licence"
 _NOT_TEXT = {"script", "style", "template"}
 
 
+# Outlook rewrites the links in an email to go through its scanner, so a link
+# copied from an email onto a website goes to Microsoft with the real URL inside.
+_SAFE_LINKS_HOST = re.compile(r"(^|\.)safelinks\.protection\.outlook\.com$")
+
+
+def _unwrapped(href):
+    """The real URL inside an Outlook Safe Links href, or href itself."""
+    try:
+        parsed = urlparse(href)
+    except ValueError:
+        return href
+    if not _SAFE_LINKS_HOST.search((parsed.hostname or "").lower()):
+        return href
+    url = parse_qs(parsed.query).get("url")
+    return url[0] if url else href
+
+
 class _PageParser(HTMLParser):
     """Collects a page's anchor hrefs and its visible text."""
 
@@ -97,7 +115,7 @@ class _PageParser(HTMLParser):
             if not value:
                 continue
             if tag == "a" and name == "href":
-                self.hrefs.append(value.strip())
+                self.hrefs.append(_unwrapped(value.strip()))
             # an OGL logo's alt text names the licence
             elif tag == "img" and name == "alt":
                 self.text.append(value)
@@ -230,7 +248,12 @@ def _redirects(documentation_urls, pages):
     }
 
 
-def _candidate_links(pages):
+def _data_links(pages):
+    """Every link on the pages that looks like a data file, sorted. The likely
+    replacement is chosen from all of them; only the first _MAX_CANDIDATE_LINKS
+    go into the task as candidate_links. Sorted order keeps the oldest of a
+    page's yearly files first, so choosing from the capped list would miss the
+    latest."""
     links = set()
     for page_url, hrefs, _, _ in pages:
         for href in hrefs:
@@ -240,23 +263,189 @@ def _candidate_links(pages):
                 continue
             if urlparse(absolute).path.lower().endswith(_DATA_FILE_SUFFIXES):
                 links.add(absolute)
-    return sorted(links)[:_MAX_CANDIDATE_LINKS]
+    return sorted(links)
 
 
 def _file_name(url):
     return unquote(urlparse(url).path).rstrip("/").rsplit("/", 1)[-1].lower()
 
 
+# Drupal, which many council sites run on, saves a file uploaded under a name it
+# already has as name_0.csv, then name_1.csv, rather than replacing it.
+_DRUPAL_RENAME = re.compile(r"^(.+)_\d{1,2}(\.[^.]+)$")
+
+
+def _drupal_renamed(name, other):
+    """True if one name is the other with Drupal's _0, _1, ... added. Not two
+    numbered names (part_1.csv and part_2.csv), which are usually different
+    files, nor a year or date (register_2025.csv)."""
+    for renamed, original in ((name, other), (other, name)):
+        match = _DRUPAL_RENAME.match(renamed)
+        if match and match.group(1) + match.group(2) == original:
+            return True
+    return False
+
+
 def _likely_replacement(endpoint_url, candidate_links):
     """The first candidate with the endpoint's file name: the same file
-    republished at a new URL, as a CMS does on every upload. "" if none."""
+    republished at a new URL, as a CMS does on every upload. Failing that, the
+    first with the name as Drupal renames it on a new upload. "" if none."""
     name = _file_name(endpoint_url)
     if not name:
         return ""
     for link in candidate_links:
         if _file_name(link) == name:
             return link
+    for link in candidate_links:
+        if _drupal_renamed(_file_name(link), name):
+            return link
     return ""
+
+
+def _singular(word):
+    return word[:-1] if len(word) > 3 and word.endswith("s") else word
+
+
+def _words(url):
+    """The words in a link's file name, singular, so that
+    BrownfieldLandRegister2024.csv, brownfield_land_registers_2024.csv and
+    Brownfield Land Register 2024.csv all give brownfield, land, register, 2024,
+    and local-plan-timetablev3.csv gives local, plan, timetable, v, 3."""
+    name = unquote(urlparse(url).path).rstrip("/").rsplit("/", 1)[-1]
+    name = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", name)
+    # a version run on to a word: timetablev3
+    name = re.sub(r"(?<=[A-Za-z]{2})(?=[vV]\d)", " ", name)
+    name = re.sub(r"(?<=[A-Za-z])(?=\d)|(?<=\d)(?=[A-Za-z])", " ", name)
+    return {_singular(word) for word in re.findall(r"[a-z0-9]+", name.lower())}
+
+
+def _named_datasets(link, dataset_names):
+    """The datasets whose name, or another name for it, is in the link's file
+    name, keeping only the longest name found: a local plan timetable file is
+    plan-timetable's, not local-plan's."""
+    words = _words(link)
+    named, longest = set(), 0
+    for dataset, names in dataset_names.items():
+        for name in names:
+            parts = {_singular(word) for word in name.split("-")}
+            if parts <= words:
+                if len(parts) > longest:
+                    named, longest = {dataset}, len(parts)
+                elif len(parts) == longest:
+                    named.add(dataset)
+    return named
+
+
+def _file_type(url):
+    name = _file_name(url)
+    return name.rsplit(".", 1)[-1] if "." in name else ""
+
+
+_MONTHS = {
+    month: number
+    for number, names in enumerate(
+        (
+            ("jan", "january"),
+            ("feb", "february"),
+            ("mar", "march"),
+            ("apr", "april"),
+            ("may",),
+            ("jun", "june"),
+            ("jul", "july"),
+            ("aug", "august"),
+            ("sep", "sept", "september"),
+            ("oct", "october"),
+            ("nov", "november"),
+            ("dec", "december"),
+        ),
+        start=1,
+    )
+    for month in names
+}
+# 2025, 202511, 2025-11, 2025-11-03, 20251103
+_YEAR_FIRST = re.compile(
+    r"(?<!\d)(20[0-4]\d)"
+    r"(?:[-_ .]?(0[1-9]|1[0-2])(?:[-_ .]?(0[1-9]|[12]\d|3[01]))?)?(?!\d)"
+)
+# 03-11-25, 3.11.25
+_DAY_FIRST = re.compile(
+    r"(?<!\d)(0?[1-9]|[12]\d|3[01])[-_.](0?[1-9]|1[0-2])[-_.](\d{2})(?!\d)"
+)
+
+
+def _date_in_name(url):
+    """The latest date in a link's file name as (year, month, day), with 0 for a
+    part not given, or None if the name has no year. Dates written as numbers
+    (2025-11-03, 202511, 03.11.25) and as words (November 2025, Dec2025)."""
+    name = _file_name(url)
+    dates = [
+        (int(year), int(month or 0), int(day or 0))
+        for year, month, day in _YEAR_FIRST.findall(name)
+    ]
+    dates += [
+        (2000 + int(year), int(month), int(day))
+        for day, month, year in _DAY_FIRST.findall(name)
+    ]
+    words = re.findall(r"[a-z]+|\d+", name)
+    for i, word in enumerate(words):
+        if word in _MONTHS:
+            for year in words[i + 1 : i + 3]:
+                if re.fullmatch(r"20[0-4]\d", year):
+                    dates.append((int(year), _MONTHS[word], 0))
+    return max(dates) if dates else None
+
+
+def _latest(links):
+    """The links whose file name has the latest date, when every one has a date:
+    a page often keeps each year's register. All of them otherwise."""
+    dates = [_date_in_name(link) for link in links]
+    if not all(dates):
+        return links
+    latest = max(dates)
+    return [link for link, date in zip(links, dates) if date == latest]
+
+
+def _without_type(url):
+    return re.sub(r"\.[^.]+$", "", _file_name(url))
+
+
+def likely_replacement_for_dataset(
+    dataset, endpoint_url, candidate_links, dataset_names
+):
+    """The candidate named for the dataset, for when none has the endpoint's
+    file name, as when a council dates each upload. Where several are named for
+    it, narrowed down in turn to:
+
+    - those with the latest date in their name, as a page often keeps each
+      year's file
+    - those of the endpoint's file type, as a council often publishes the same
+      data as CSV and XLSX
+    - the CSV, where what is left is one file in several formats
+
+    "" unless that leaves exactly one, as choosing between them needs a person.
+
+    dataset_names maps each dataset we collect to the names its files are
+    published under, its own first. Every dataset is needed, not just this one,
+    to tell whose a file is when one name contains another.
+    """
+    if not dataset:
+        return ""
+    named = [
+        link
+        for link in candidate_links
+        if dataset in _named_datasets(link, dataset_names)
+    ]
+    if len(named) > 1:
+        named = _latest(named)
+    if len(named) > 1:
+        same_type = [
+            link for link in named if _file_type(link) == _file_type(endpoint_url)
+        ]
+        named = same_type or named
+    if len(named) > 1 and len({_without_type(link) for link in named}) == 1:
+        csvs = [link for link in named if _file_type(link) == "csv"]
+        named = csvs or named
+    return named[0] if len(named) == 1 else ""
 
 
 def check_endpoint(endpoint_url, documentation_urls, pages):
@@ -279,13 +468,16 @@ def check_endpoint(endpoint_url, documentation_urls, pages):
             "result": DOCUMENTATION_URL_GONE if gone else UNREACHABLE,
             "fetch_errors": errors,
         }
-    candidate_links = _candidate_links(fetched)
+    data_links = _data_links(fetched)
     return {
         "result": NOT_FOUND,
         "fetch_errors": errors,
         "redirects": _redirects(documentation_urls, pages),
-        "candidate_links": candidate_links,
-        "likely_replacement": _likely_replacement(endpoint_url, candidate_links),
+        "candidate_links": data_links[:_MAX_CANDIDATE_LINKS],
+        "likely_replacement": _likely_replacement(endpoint_url, data_links),
+        # every data link, for the pipeline to choose a likely replacement named
+        # for each dataset from; not stored in the task
+        "data_links": data_links,
     }
 
 

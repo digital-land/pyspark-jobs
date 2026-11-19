@@ -35,6 +35,20 @@ DOCUMENTATION_URL_TASK_RULE = {
     "responsibility": "external",
     # "Coherent and logical, with no broken links"
     "quality_dimension": INTEGRITY,
+    # Names other than the dataset's own that its files are published under,
+    # for picking a likely replacement named for the dataset. The longest name
+    # found wins, so a "local plan timetable" file is plan-timetable's, not
+    # local-plan's.
+    "other_dataset_names": {
+        "plan-timetable": ["local-plan-timetable", "local-development-scheme"],
+        "brownfield-land": [
+            "brownfield-register",
+            "brownfield-site-register",
+            "blr",
+            # written as one word: ldnpa_brownfieldregister_2025-12-15.csv
+            "brownfieldregister",
+        ],
+    },
 }
 
 
@@ -43,4 +57,7 @@ def load_documentation_url_task_rule():
     Body is a literal now; a future version reads a config-repo row instead."""
     rule = dict(DOCUMENTATION_URL_TASK_RULE)
     rule["severity"] = dict(rule["severity"])
+    rule["other_dataset_names"] = {
+        dataset: list(names) for dataset, names in rule["other_dataset_names"].items()
+    }
     return rule
