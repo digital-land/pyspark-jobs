@@ -21,10 +21,8 @@ from pyspark.sql.functions import (
     sort_array,
     split,
     trim,
-    udf,
     when,
 )
-from pyspark.sql.types import StringType
 
 from jobs.config.authoritativeness_task import RESTRICT_TO_ACTIVE_ORGS
 from jobs.config.documentation_url_task import load_documentation_url_task_rule
@@ -482,19 +480,31 @@ def _likely_replacement_by_dataset(results_df, endpoint_dataset_df):
     dataset_names = {
         dataset: [dataset] + other_names.get(dataset, []) for dataset in datasets
     }
-    for_dataset = udf(
-        lambda dataset, endpoint_url, data_links: likely_replacement_for_dataset(
-            dataset, endpoint_url, data_links or [], dataset_names
-        ),
-        StringType(),
+    replacements = {
+        (row["endpoint"], row["dataset"]): likely_replacement_for_dataset(
+            row["dataset"], row["endpoint_url"], row["data_links"] or [], dataset_names
+        )
+        for row in results_df.filter(col("likely_replacement") == "")
+        .select("endpoint", "dataset", "endpoint_url", "data_links")
+        .collect()
+    }
+    replacements_df = results_df.sparkSession.createDataFrame(
+        [
+            (endpoint, dataset, replacement)
+            for (endpoint, dataset), replacement in replacements.items()
+        ],
+        "endpoint string, dataset string, by_dataset string",
     )
-    return results_df.withColumn(
-        "likely_replacement",
-        when(
-            col("likely_replacement") == "",
-            for_dataset(col("dataset"), col("endpoint_url"), col("data_links")),
-        ).otherwise(col("likely_replacement")),
-    ).drop("data_links")
+    return (
+        results_df.join(replacements_df, on=["endpoint", "dataset"], how="left")
+        .withColumn(
+            "likely_replacement",
+            when(col("likely_replacement") == "", col("by_dataset")).otherwise(
+                col("likely_replacement")
+            ),
+        )
+        .drop("by_dataset", "data_links")
+    )
 
 
 def _documentation_url_tasks(
