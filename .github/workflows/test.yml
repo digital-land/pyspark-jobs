@@ -19,14 +19,11 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.9' # emr-7.9.0 uses 3.9/3.11
-      - uses: actions/cache@v4
-        with:
-          path: ~/.ivy2
-          key: spark-jars-${{ hashFiles('tests/conftest.py') }}
+
       - run: make init
       - run: make lint
 
-  test:
+  test-unit:
     runs-on: ubuntu-22.04
     services:
       postgres:
@@ -53,6 +50,11 @@ jobs:
         with:
           python-version: '3.9' # emr-7.9.0 uses 3.9/3.11
 
+      - uses: actions/cache@v4
+        with:
+          path: ~/.ivy2
+          key: spark-jars-${{ hashFiles('tests/conftest.py') }}
+
       - run: make init
 
       - name: Setup database
@@ -61,12 +63,118 @@ jobs:
           psql -h localhost -c "CREATE DATABASE digital_land_test WITH TEMPLATE postgres" -U postgres || echo "Database already exists, continuing..."
           echo "✅ Database 'digital_land_test' ready"
 
-      - name: Run All Tests with Coverage
-        run: make test-coverage
+      - name: Run All Tests with unit
+        run: pytest tests/unit tests/acceptance --cov=src --cov-report=html --durations=25
       
-      - name: Upload Coverage Report
+      - name: Upload Unit Report
         uses: actions/upload-artifact@v7
         with:
-          name: coverage-report
+          name: coverage-report-unit
           path: htmlcov/
-          retention-days: 30  
+          retention-days: 30
+
+
+  test-pipeline:
+    runs-on: ubuntu-22.04
+    services:
+      postgres:
+        image: postgis/postgis:14-master
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost/digital_land_test
+      ENVIRONMENT: test
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.9' # emr-7.9.0 uses 3.9/3.11
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.ivy2
+          key: spark-jars-${{ hashFiles('tests/conftest.py') }}
+
+      - run: make init
+
+      - name: Setup database
+        run: |
+          echo "Setting up test database..."
+          psql -h localhost -c "CREATE DATABASE digital_land_test WITH TEMPLATE postgres" -U postgres || echo "Database already exists, continuing..."
+          echo "✅ Database 'digital_land_test' ready"
+
+
+
+      - name: Run All Tests with pipeline
+        run: pytest tests/integration/pipeline --cov=src --cov-report=html --durations=25
+      
+      - name: Upload Pipeline Report
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report-pipeline
+          path: htmlcov/
+          retention-days: 30
+
+
+
+  test-integration:
+    runs-on: ubuntu-22.04
+    services:
+      postgres:
+        image: postgis/postgis:14-master
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost/digital_land_test
+      ENVIRONMENT: test
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.9' # emr-7.9.0 uses 3.9/3.11
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.ivy2
+          key: spark-jars-${{ hashFiles('tests/conftest.py') }}
+
+      - run: make init
+
+      - name: Setup database
+        run: |
+          echo "Setting up test database..."
+          psql -h localhost -c "CREATE DATABASE digital_land_test WITH TEMPLATE postgres" -U postgres || echo "Database already exists, continuing..."
+          echo "✅ Database 'digital_land_test' ready"
+
+
+      - name: Run All Tests with integration
+        run: pytest tests/integration --ignore=tests/integration/pipeline --cov=src --cov-report=html --durations=25
+      
+      - name: Upload Integration Report
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report-integration
+          path: htmlcov/
+          retention-days: 30

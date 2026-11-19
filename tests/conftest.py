@@ -21,6 +21,8 @@ def spark():
         .config("spark.sql.shuffle.partitions", "1")
         .config("spark.default.parallelism", "1")
         .config("spark.ui.enabled", "false")
+        .config("spark.ui.showConsoleProgress", "false")
+        .config("spark.sql.ui.retainedExecutions", "0")
         .config(
             "spark.jars.packages",
             "org.apache.sedona:sedona-spark-shaded-3.5_2.12:1.8.1,"
