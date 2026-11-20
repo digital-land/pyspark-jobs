@@ -39,6 +39,7 @@ from pyspark.sql.types import (
 
 from jobs.config.authoritativeness_task import load_authoritativeness_task_rule
 from jobs.config.documentation_url_task import load_documentation_url_task_rule
+from jobs.config.endpoint_entities_task import load_endpoint_entities_task_rule
 from jobs.config.licence_task import load_licence_task_rule
 from jobs.config.quality_dimensions import (
     LOG_DIMENSION,
@@ -440,6 +441,63 @@ def transform_authority_to_tasks(population_df, entry_date: str = None) -> DataF
         )
         .withColumn("endpoint", lit(""))
         .withColumn("resource", lit(""))
+        .withColumn("severity", lit(rule["severity"]))
+        .withColumn("responsibility", lit(rule["responsibility"]))
+        .withColumn("task_source", lit(rule["task_source"]))
+        .withColumn("quality_dimension", lit(rule["quality_dimension"]))
+        .withColumn("entry_date", lit(entry_date))
+    )
+
+    df = _add_reference(df)
+
+    return df.select(
+        col("dataset"),
+        col("organisation"),
+        col("endpoint"),
+        col("resource"),
+        col("details"),
+        col("severity"),
+        col("responsibility"),
+        col("task_source"),
+        col("entry_date"),
+        col("quality_dimension"),
+        col("reference"),
+    )
+
+
+def transform_endpoint_entities_to_tasks(
+    population_df: DataFrame, entry_date: str = None
+) -> DataFrame:
+    """
+    Transform endpoints that give their organisation no entities into task rows.
+
+    population_df: endpoint, dataset, organisation, resource (null if nothing has
+    been collected), reason, entity_count, credited_to — from
+    jobs.pipeline.endpoint_entities.endpoints_without_entities.
+    """
+    entry_date = entry_date or str(date.today())
+
+    if population_df.rdd.isEmpty():
+        logger.info(
+            "transform_endpoint_entities_to_tasks: No endpoints without entities"
+        )
+        return None
+
+    rule = load_endpoint_entities_task_rule()
+
+    df = (
+        population_df.withColumn(
+            "details",
+            to_json(
+                struct(
+                    lit(rule["task_type"]).alias("task_type"),
+                    col("reason"),
+                    col("entity_count").cast("int").alias("entity_count"),
+                    col("credited_to"),
+                )
+            ),
+        )
+        .withColumn("resource", coalesce(col("resource"), lit("")))
         .withColumn("severity", lit(rule["severity"]))
         .withColumn("responsibility", lit(rule["responsibility"]))
         .withColumn("task_source", lit(rule["task_source"]))

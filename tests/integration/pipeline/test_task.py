@@ -16,6 +16,7 @@ from jobs.pipeline.task import (
     _active_resources_from_log,
     _backfill_dataset_from_source,
     _backfill_organisation_from_source,
+    _endpoint_entities_tasks,
     _latest_log_entry_per_endpoint,
     _licence_scope,
     _load_issue_type_df,
@@ -1724,3 +1725,106 @@ def test_licence_scope_groups_follow_the_quality_reports():
 )
 def test_licence_scope_by_group(groups, keys, datasets):
     assert _licence_scope(_PROVISIONS, _PROVISION_RULES, groups) == (keys, datasets)
+
+
+class TestEndpointEntitiesTasks:
+    """The endpoint entities leg (config#3002) end to end through TaskPipeline."""
+
+    def _write_fixtures(self, base):
+        _write_source(
+            base,
+            "dataset-a-collection",
+            [
+                {
+                    "endpoint": "e1",
+                    "pipelines": "dataset-a",
+                    "organisation": "organisation:1",
+                    "end-date": "",
+                },
+                {
+                    "endpoint": "e2",
+                    "pipelines": "dataset-a",
+                    "organisation": "organisation:2",
+                    "end-date": "",
+                },
+            ],
+        )
+        # Both endpoints collect the same shared file
+        _write_log(
+            base,
+            "dataset-a-collection",
+            [
+                {
+                    "endpoint": endpoint,
+                    "resource": "resource-a",
+                    "status": "200",
+                    "exception": "",
+                    "entry-date": "2026-01-01",
+                }
+                for endpoint in ("e1", "e2")
+            ],
+        )
+        write_csv(
+            os.path.join(
+                base, "organisation-collection", "dataset", "organisation.csv"
+            ),
+            ["organisation", "entity", "name", "end-date"],
+            [
+                {
+                    "organisation": f"organisation:{n}",
+                    "entity": f"60000{n}",
+                    "name": "",
+                    "end-date": "",
+                }
+                for n in (1, 2)
+            ],
+        )
+        write_csv(
+            os.path.join(
+                base, "config", "pipeline", "dataset-a", "entity-organisation.csv"
+            ),
+            ["dataset", "organisation"],
+            [],
+        )
+        # The shared file's one entity belongs to organisation:1
+        write_csv(
+            os.path.join(base, "entity", "dataset-a.csv"),
+            ["entity", "organisation-entity", "quality"],
+            [{"entity": "100", "organisation-entity": "600001", "quality": "some"}],
+        )
+        _write_dataset_specification(base, ["dataset-a"])
+
+    def _endpoint_tasks(self, spark, base):
+        tasks = _run_task_pipeline(spark, base).collect()
+        return [r for r in tasks if r["task_source"] == "endpoint"]
+
+    def test_endpoint_whose_entities_belong_to_another_organisation_gets_a_task(
+        self, spark, tmp_path
+    ):
+        base = str(tmp_path)
+        self._write_fixtures(base)
+        spark.createDataFrame(
+            [("dataset-a", "resource-a", 100, "fact-1")],
+            "dataset string, resource string, entity bigint, fact string",
+        ).write.format("delta").save(
+            os.path.join(base, "parquet-output", "fact_resource")
+        )
+
+        rows = self._endpoint_tasks(spark, base)
+
+        assert len(rows) == 1
+        assert rows[0]["endpoint"] == "e2"
+        assert rows[0]["organisation"] == "organisation:2"
+        assert rows[0]["resource"] == "resource-a"
+        assert rows[0]["quality_dimension"] == "completeness"
+        assert json.loads(rows[0]["details"])["credited_to"] == ["organisation:1"]
+
+    def test_no_fact_resource_table_skips_the_leg(self, spark, tmp_path):
+        """Without fact_resource nothing says what a resource produced, so every
+        endpoint would look empty: the leg is skipped, not run."""
+        assert (
+            _endpoint_entities_tasks(
+                spark, os.path.join(str(tmp_path), "parquet-output"), *[None] * 5
+            )
+            is None
+        )
