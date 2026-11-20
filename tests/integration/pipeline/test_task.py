@@ -1389,7 +1389,15 @@ class TestDocumentationUrlTasks:
     PAGE = "https://council.gov.uk/local-plan"
 
     def _run(
-        self, spark, tmp_path, mocker, hrefs, ogl=True, scope=None, dataset="dataset-a"
+        self,
+        spark,
+        tmp_path,
+        mocker,
+        hrefs,
+        ogl=True,
+        scope=None,
+        dataset="dataset-a",
+        organisations=None,
     ):
         base = str(tmp_path)
         collection = "dataset-a-collection"
@@ -1427,7 +1435,9 @@ class TestDocumentationUrlTasks:
                 {
                     "endpoint": endpoint,
                     "pipelines": dataset,
-                    "organisation": "organisation:1",
+                    "organisation": (organisations or {}).get(
+                        endpoint, "organisation:1"
+                    ),
                     "documentation-url": self.PAGE,
                     "end-date": "",
                 }
@@ -1529,6 +1539,17 @@ class TestDocumentationUrlTasks:
             == "https://council.gov.uk/brownfield-land-register-2025.csv"
         ), "the latest file sorts beyond the 20 candidate links kept in the task"
         assert "data_links" not in details
+
+    def test_exempt_organisation_is_not_checked(self, spark, tmp_path, mocker):
+        tasks, _ = self._run(
+            spark,
+            tmp_path,
+            mocker,
+            ["/a.csv", "/arcgis/rest/services/C/FeatureServer"],
+            organisations={"endpoint-b": "government-organisation:D1342"},
+        )
+
+        assert tasks == [], "endpoint-b is unlinked, but MHCLG is exempt"
 
     def test_linked_endpoints_produce_no_task(self, spark, tmp_path, mocker):
         tasks, _ = self._run(

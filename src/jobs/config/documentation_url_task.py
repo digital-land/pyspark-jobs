@@ -49,6 +49,12 @@ DOCUMENTATION_URL_TASK_RULE = {
             "brownfieldregister",
         ],
     },
+    # Organisations whose endpoints are not checked. MHCLG's are files on GitHub,
+    # whose folder pages only link the first 100 files (the rest are added by
+    # JavaScript), so most would be raised wrongly; and a file moved off GitHub
+    # 404s at its old URL, which the collector already raises as a log task.
+    # Also not checked for the licence, as MHCLG data is OGL by default.
+    "exempt_organisations": ["government-organisation:D1342"],
 }
 
 
@@ -60,4 +66,5 @@ def load_documentation_url_task_rule():
     rule["other_dataset_names"] = {
         dataset: list(names) for dataset, names in rule["other_dataset_names"].items()
     }
+    rule["exempt_organisations"] = list(rule["exempt_organisations"])
     return rule

@@ -521,7 +521,8 @@ def _documentation_url_tasks(
 
     The endpoint URL comes from endpoint.csv and the documentation URLs from
     the endpoint's live source.csv rows. An endpoint with no documentation URL
-    is not checked: there is nothing to check it against.
+    is not checked: there is nothing to check it against, and nor is one
+    documented only by an exempt organisation's sources.
     """
     if active_source_df is None or "documentation_url" not in active_source_df.columns:
         logger.warning(
@@ -546,9 +547,12 @@ def _documentation_url_tasks(
         ["endpoint"]
     )
 
+    exempt = load_documentation_url_task_rule()["exempt_organisations"]
     documented_df = (
         active_source_df.withColumn("documentation_url", trim(col("documentation_url")))
         .filter(col("documentation_url").isNotNull() & (col("documentation_url") != ""))
+        # isin is null for a blank organisation, which filter would drop
+        .filter(col("organisation").isNull() | ~col("organisation").isin(exempt))
         .groupBy("endpoint")
         .agg(sort_array(collect_set("documentation_url")).alias("documentation_urls"))
     )
