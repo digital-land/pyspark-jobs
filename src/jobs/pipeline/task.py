@@ -26,6 +26,10 @@ from pyspark.sql.functions import (
 
 from jobs.config.authoritativeness_task import RESTRICT_TO_ACTIVE_ORGS
 from jobs.config.documentation_url_task import load_documentation_url_task_rule
+from jobs.config.endpoint_entities_task import (
+    RESTRICT_TO_ACTIVE_ORGS as ENDPOINT_ENTITIES_ACTIVE_ORGS_ONLY,
+)
+from jobs.config.endpoint_entities_task import load_endpoint_entities_task_rule
 from jobs.config.licence_task import (
     MANDATED,
     ODP,
@@ -40,6 +44,11 @@ from jobs.pipeline.authority import (
     non_authoritative_providers,
 )
 from jobs.pipeline.base import BasePipeline
+from jobs.pipeline.endpoint_entities import (
+    endpoint_datasets,
+    endpoints_without_entities,
+    load_fact_resource,
+)
 from jobs.read import read_csvs_by_name, read_issue_csvs
 from jobs.transform.task_transformer import (
     EMPTY,
@@ -47,6 +56,7 @@ from jobs.transform.task_transformer import (
     UNREADABLE,
     transform_authority_to_tasks,
     transform_documentation_url_to_tasks,
+    transform_endpoint_entities_to_tasks,
     transform_expectations_to_tasks,
     transform_issues_to_tasks,
     transform_licence_to_tasks,
@@ -599,6 +609,44 @@ def _documentation_url_tasks(
     return transform_documentation_url_to_tasks(results_df), licence_tasks
 
 
+def _endpoint_entities_tasks(
+    spark,
+    parquet_datasets_path,
+    active_source_df,
+    active_df,
+    entity_quality_df,
+    org_df,
+    live_datasets_df,
+):
+    """Tasks for active endpoints whose current resource gives their
+    organisation no entities. None when there are none, or when there is no
+    fact_resource table to tell what a resource produced."""
+    fact_resource_df = load_fact_resource(spark, parquet_datasets_path)
+    if fact_resource_df is None:
+        logger.warning(
+            "TaskPipeline: no fact_resource table — skipping endpoint entities tasks"
+        )
+        return None
+
+    population = endpoints_without_entities(
+        endpoint_datasets(active_source_df),
+        active_df.select("endpoint", "resource").distinct(),
+        fact_resource_df,
+        entity_quality_df,
+        org_df,
+        live_datasets_df,
+        load_endpoint_entities_task_rule(),
+        ENDPOINT_ENTITIES_ACTIVE_ORGS_ONLY,
+    ).cache()
+
+    reasons = {
+        row["reason"]: row["count"]
+        for row in population.groupBy("reason").count().collect()
+    }
+    logger.info(f"TaskPipeline: endpoints without entities by reason: {reasons}")
+    return transform_endpoint_entities_to_tasks(population)
+
+
 class TaskPipeline(BasePipeline):
     """
     Cross-collection pipeline for generating task data from log and issue files.
@@ -843,6 +891,28 @@ class TaskPipeline(BasePipeline):
         )
         authority_tasks = transform_authority_to_tasks(authority_population)
 
+        # -- Endpoint entities tasks -----------------------------------------
+        # Per active endpoint: does its current resource give its organisation
+        # any entities? New and warning-only, so a failure in it is logged and
+        # the leg skipped for the night, as with the licence task.
+        endpoint_entities_tasks = None
+        if source_files:
+            try:
+                endpoint_entities_tasks = _endpoint_entities_tasks(
+                    spark,
+                    self.config.parquet_datasets_path,
+                    active_source_df,
+                    active_df,
+                    entity_quality_df,
+                    org_df,
+                    live_datasets_df,
+                )
+            except Exception:
+                logger.exception(
+                    "TaskPipeline: endpoint entities tasks failed — skipping them; "
+                    "other tasks are unaffected"
+                )
+
         # -- Documentation URL and licence tasks ------------------------------
         # The one leg that reads the web rather than the bucket: each live
         # endpoint's documentation page is fetched to see it still links there,
@@ -864,6 +934,7 @@ class TaskPipeline(BasePipeline):
                 issue_tasks,
                 expectation_tasks,
                 authority_tasks,
+                endpoint_entities_tasks,
                 documentation_url_tasks,
                 licence_tasks,
             ]

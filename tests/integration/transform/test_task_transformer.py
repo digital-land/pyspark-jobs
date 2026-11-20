@@ -20,6 +20,7 @@ from jobs.transform.task_transformer import (
     UNREADABLE,
     transform_authority_to_tasks,
     transform_documentation_url_to_tasks,
+    transform_endpoint_entities_to_tasks,
     transform_expectations_to_tasks,
     transform_issues_to_tasks,
     transform_licence_to_tasks,
@@ -1716,3 +1717,86 @@ class TestTransformLicenceToTasks:
         ]
         refs = [r["reference"] for r in self._transform(spark, rows).collect()]
         assert len(refs) == len(set(refs)) == 2
+
+
+ENDPOINT_ENTITIES_SCHEMA = (
+    "endpoint string, dataset string, organisation string, resource string, "
+    "reason string, entity_count long, credited_to array<string>"
+)
+
+
+def _endpoint_entities_row(
+    endpoint="e1",
+    organisation="local-authority:MAV",
+    resource="r1",
+    reason="other-organisation",
+    entity_count=3,
+    credited_to=("local-authority:WYC",),
+):
+    return (
+        endpoint,
+        "plan-timetable",
+        organisation,
+        resource,
+        reason,
+        entity_count,
+        list(credited_to),
+    )
+
+
+class TestTransformEndpointEntitiesToTasks:
+    def _transform(self, spark, rows):
+        return transform_endpoint_entities_to_tasks(
+            spark.createDataFrame(rows, ENDPOINT_ENTITIES_SCHEMA)
+        )
+
+    def test_returns_none_for_empty_population(self, spark):
+        assert self._transform(spark, []) is None
+
+    def test_uses_fixed_rule_values(self, spark):
+        row = self._transform(spark, [_endpoint_entities_row()]).collect()[0]
+        assert row["severity"] == "warning"
+        assert row["responsibility"] == "external"
+        assert row["task_source"] == "endpoint"
+        assert row["quality_dimension"] == "completeness"
+
+    def test_attributed_to_the_endpoint_and_its_current_resource(self, spark):
+        row = self._transform(spark, [_endpoint_entities_row()]).collect()[0]
+        assert row["endpoint"] == "e1"
+        assert row["resource"] == "r1"
+        assert row["organisation"] == "local-authority:MAV"
+        assert row["dataset"] == "plan-timetable"
+
+    def test_no_resource_is_blank_not_null(self, spark):
+        row = self._transform(
+            spark,
+            [
+                _endpoint_entities_row(
+                    resource=None, reason="no-resource", entity_count=0, credited_to=()
+                )
+            ],
+        ).collect()[0]
+        assert row["resource"] == ""
+
+    def test_details(self, spark):
+        row = self._transform(spark, [_endpoint_entities_row()]).collect()[0]
+        assert json.loads(row["details"]) == {
+            "task_type": "endpoint_has_no_entities",
+            "reason": "other-organisation",
+            "entity_count": 3,
+            "credited_to": ["local-authority:WYC"],
+        }
+
+    def test_references_are_unique_per_endpoint(self, spark):
+        refs = [
+            r["reference"]
+            for r in self._transform(
+                spark,
+                [
+                    _endpoint_entities_row(endpoint="e1"),
+                    _endpoint_entities_row(endpoint="e2"),
+                ],
+            ).collect()
+        ]
+        assert len(refs) == 2 and len(set(refs)) == 2
+        assert all(len(ref) == 16 for ref in refs)
