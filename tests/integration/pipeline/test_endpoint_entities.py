@@ -10,6 +10,7 @@ from jobs.config.endpoint_entities_task import (
     load_endpoint_entities_task_rule,
 )
 from jobs.pipeline.endpoint_entities import (
+    UNCONFIRMED,
     endpoint_datasets,
     endpoints_without_entities,
 )
@@ -33,12 +34,14 @@ def _run(
     sources,
     current_resources=(),
     facts=(),
+    logged_zero=(),
     owners=(),
     live=("dataset-a", "dataset-b"),
     restrict_to_active_orgs=True,
 ):
     """sources: (endpoint, pipelines, organisation); current_resources:
-    (endpoint, resource); facts: (dataset, resource, entity); owners:
+    (endpoint, resource); facts: (dataset, resource, entity); logged_zero:
+    (dataset, resource) whose dataset-resource log says 0 entities; owners:
     (dataset, entity, organisation_entity)."""
     result = endpoints_without_entities(
         endpoint_datasets(_source_df(spark, list(sources))),
@@ -48,6 +51,7 @@ def _run(
         spark.createDataFrame(
             list(facts), "dataset string, resource string, entity string"
         ),
+        spark.createDataFrame(list(logged_zero), "dataset string, resource string"),
         spark.createDataFrame(
             [(d, e, o, "some") for d, e, o in owners],
             "dataset string, entity string, organisation_entity string, "
@@ -120,11 +124,12 @@ class TestEndpointsWithoutEntities:
         assert row["entity_count"] == 2
         assert row["credited_to"] == ["local-authority:BBB"]
 
-    def test_resource_with_no_entities_is_raised(self, spark):
+    def test_resource_logged_with_no_entities_is_raised(self, spark):
         result = _run(
             spark,
             sources=[("e1", "dataset-a", "local-authority:AAA")],
             current_resources=[("e1", "r1")],
+            logged_zero=[("dataset-a", "r1")],
         )
         row = result[("e1", "dataset-a", "local-authority:AAA")]
         assert row["reason"] == NO_ENTITIES
@@ -144,6 +149,7 @@ class TestEndpointsWithoutEntities:
             sources=[("e1", "dataset-a", "local-authority:AAA")],
             current_resources=[("e1", "r2")],
             facts=[("dataset-a", "r1", "100")],
+            logged_zero=[("dataset-a", "r2")],
             owners=[("dataset-a", "100", "1")],
         )
         assert result[("e1", "dataset-a", "local-authority:AAA")]["reason"] == (
@@ -156,6 +162,7 @@ class TestEndpointsWithoutEntities:
             sources=[("e1", "dataset-a;dataset-b", "local-authority:AAA")],
             current_resources=[("e1", "r1")],
             facts=[("dataset-a", "r1", "100")],
+            logged_zero=[("dataset-b", "r1")],
             owners=[("dataset-a", "100", "1")],
         )
         assert list(result) == [("e1", "dataset-b", "local-authority:AAA")]
@@ -189,6 +196,7 @@ class TestEndpointsWithoutEntities:
             ],
             current_resources=[("e1", "r1"), ("e2", "r2")],
             facts=[("dataset-a", "r1", "100")],
+            logged_zero=[("dataset-a", "r2")],
             owners=[("dataset-a", "100", "1")],
         )
         assert list(result) == [("e2", "dataset-a", "local-authority:AAA")]
@@ -218,3 +226,39 @@ class TestEndpointsWithoutEntities:
             restrict_to_active_orgs=False,
         )
         assert list(result) == [("e1", "dataset-a", "local-authority:OLD")]
+
+    def test_resource_not_yet_processed_is_unconfirmed(self, spark):
+        """No facts and no log saying 0: the resource may just not have been
+        processed yet, so it is not called empty (the dev false positives)."""
+        result = _run(
+            spark,
+            sources=[("e1", "dataset-a", "local-authority:AAA")],
+            current_resources=[("e1", "r1")],
+        )
+        assert result[("e1", "dataset-a", "local-authority:AAA")]["reason"] == (
+            UNCONFIRMED
+        )
+
+    def test_zero_logged_for_another_dataset_does_not_count(self, spark):
+        result = _run(
+            spark,
+            sources=[("e1", "dataset-a", "local-authority:AAA")],
+            current_resources=[("e1", "r1")],
+            logged_zero=[("dataset-b", "r1")],
+        )
+        assert result[("e1", "dataset-a", "local-authority:AAA")]["reason"] == (
+            UNCONFIRMED
+        )
+
+    def test_entities_with_no_known_owner_are_unconfirmed(self, spark):
+        """Facts whose entities have no owner in the entity files cannot be
+        said to belong to another organisation."""
+        result = _run(
+            spark,
+            sources=[("e1", "dataset-a", "local-authority:AAA")],
+            current_resources=[("e1", "r1")],
+            facts=[("dataset-a", "r1", "100")],
+        )
+        row = result[("e1", "dataset-a", "local-authority:AAA")]
+        assert row["reason"] == UNCONFIRMED
+        assert row["credited_to"] == []

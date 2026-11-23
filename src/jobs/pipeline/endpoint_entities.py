@@ -5,6 +5,13 @@ that resource produced (fact_resource) tell us its entities, and the flattened
 entity CSVs tell us who owns each one. An organisation can own entities through
 one endpoint while another of its endpoints gives it nothing, so this is not the
 same as provision_quality's owns_entities, which is per (dataset, organisation).
+
+A reason is only given when there is evidence for it. A resource missing from
+fact_resource has not necessarily produced nothing: its dataset may not have been
+rebuilt since it was collected. So "no entities" needs the pipeline's own
+dataset-resource log to say so, and "another organisation" needs at least one
+owner to name. Anything else is UNCONFIRMED, counted in the job log and not
+raised.
 """
 
 import logging
@@ -16,6 +23,7 @@ from pyspark.sql.functions import (
     countDistinct,
     explode,
     lit,
+    size,
     sort_array,
     split,
     trim,
@@ -30,6 +38,10 @@ from jobs.config.endpoint_entities_task import (
 from jobs.pipeline.authority import join_entity_quality_to_org
 
 logger = logging.getLogger(__name__)
+
+# Not a task reason: an endpoint gave its organisation no entities, but nothing
+# says why, so no task is raised for it.
+UNCONFIRMED = "unconfirmed"
 
 
 def endpoint_datasets(active_source_df):
@@ -71,6 +83,7 @@ def endpoints_without_entities(
     endpoint_datasets_df,
     current_resources_df,
     fact_resource_df,
+    zero_entity_resources_df,
     entity_quality_df,
     org_df,
     live_datasets_df,
@@ -79,11 +92,15 @@ def endpoints_without_entities(
 ):
     """Active (endpoint, dataset, organisation) whose current resource gives the
     organisation no entities, with the reason and who the entities went to.
+    Rows whose reason cannot be confirmed have reason UNCONFIRMED; the caller
+    counts and drops them.
 
     current_resources_df: endpoint, resource — one row per endpoint that has
     collected anything (the task pipeline's active resources). An endpoint not in
     it has never been collected from.
     fact_resource_df: dataset, resource, entity.
+    zero_entity_resources_df: dataset, resource — the resources whose
+    dataset-resource log records an entity-count of 0 for that dataset.
     org_df: organisation, organisation_entity, org_active.
     """
     population = endpoint_datasets_df.join(
@@ -128,15 +145,33 @@ def endpoints_without_entities(
         )
     )
 
-    return counted.filter(col("owned_entity_count") == 0).select(
-        "endpoint",
-        "dataset",
-        "organisation",
-        "resource",
-        when(col("resource").isNull(), lit(NO_RESOURCE))
-        .when(col("entity_count") == 0, lit(NO_ENTITIES))
-        .otherwise(lit(OTHER_ORGANISATION))
-        .alias("reason"),
-        "entity_count",
-        "credited_to",
+    logged_zero = zero_entity_resources_df.select("dataset", "resource").distinct()
+    logged_zero = logged_zero.withColumn("logged_zero", lit(True))
+
+    return (
+        counted.filter(col("owned_entity_count") == 0)
+        .join(logged_zero, on=["dataset", "resource"], how="left")
+        .select(
+            "endpoint",
+            "dataset",
+            "organisation",
+            "resource",
+            when(col("resource").isNull(), lit(NO_RESOURCE))
+            # No facts is only "no entities" when the pipeline logged a count of
+            # 0; otherwise the resource may simply not have been processed yet
+            .when(
+                (col("entity_count") == 0) & col("logged_zero").isNotNull(),
+                lit(NO_ENTITIES),
+            )
+            # Entities, none of them this organisation's: only when at least one
+            # owner is known, so the task can say who they went to
+            .when(
+                (col("entity_count") > 0) & (size(col("credited_to")) > 0),
+                lit(OTHER_ORGANISATION),
+            )
+            .otherwise(lit(UNCONFIRMED))
+            .alias("reason"),
+            "entity_count",
+            "credited_to",
+        )
     )

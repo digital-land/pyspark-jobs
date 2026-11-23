@@ -45,6 +45,7 @@ from jobs.pipeline.authority import (
 )
 from jobs.pipeline.base import BasePipeline
 from jobs.pipeline.endpoint_entities import (
+    UNCONFIRMED,
     endpoint_datasets,
     endpoints_without_entities,
     load_fact_resource,
@@ -316,6 +317,26 @@ def _empty_resources(spark, files):
             datasets, all_empty = seen.get(resource, (set(), True))
             seen[resource] = (datasets | {record["dataset"]}, all_empty and empty)
     return {resource: datasets for resource, (datasets, empty) in seen.items() if empty}
+
+
+def _zero_entity_resources(spark, files):
+    """[(dataset, resource)] whose dataset-resource log records an entity-count
+    of 0: the pipeline processed the resource for that dataset and got no
+    entities from it, however many lines it had.
+
+    Read whole and parsed against each file's own header, as in _empty_resources.
+    A log without entity-count cannot say, and is left out.
+    """
+    zero = set()
+    for row in spark.read.text(files, wholetext=True).collect():
+        for record in csv.DictReader(io.StringIO(row["value"])):
+            if (
+                record.get("resource")
+                and record.get("dataset")
+                and record.get("entity-count") == "0"
+            ):
+                zero.add((record["dataset"], record["resource"]))
+    return sorted(zero)
 
 
 def _normalise_column(name):
@@ -612,6 +633,9 @@ def _documentation_url_tasks(
 def _endpoint_entities_tasks(
     spark,
     parquet_datasets_path,
+    base,
+    collections,
+    active_resources,
     active_source_df,
     active_df,
     entity_quality_df,
@@ -628,10 +652,23 @@ def _endpoint_entities_tasks(
         )
         return None
 
+    dataset_resource_files = resource_log_files_for_resources(
+        base, collections, "dataset-resource", active_resources
+    )
+    zero_entity_resources = (
+        _zero_entity_resources(spark, dataset_resource_files)
+        if dataset_resource_files
+        else []
+    )
+    zero_entity_resources_df = spark.createDataFrame(
+        zero_entity_resources, "dataset string, resource string"
+    )
+
     population = endpoints_without_entities(
         endpoint_datasets(active_source_df),
         active_df.select("endpoint", "resource").distinct(),
         fact_resource_df,
+        zero_entity_resources_df,
         entity_quality_df,
         org_df,
         live_datasets_df,
@@ -639,12 +676,16 @@ def _endpoint_entities_tasks(
         ENDPOINT_ENTITIES_ACTIVE_ORGS_ONLY,
     ).cache()
 
+    # UNCONFIRMED is logged so gaps in fact_resource or entity owners are
+    # visible, but no task is raised for it
     reasons = {
         row["reason"]: row["count"]
         for row in population.groupBy("reason").count().collect()
     }
     logger.info(f"TaskPipeline: endpoints without entities by reason: {reasons}")
-    return transform_endpoint_entities_to_tasks(population)
+    return transform_endpoint_entities_to_tasks(
+        population.filter(col("reason") != UNCONFIRMED)
+    )
 
 
 class TaskPipeline(BasePipeline):
@@ -901,6 +942,9 @@ class TaskPipeline(BasePipeline):
                 endpoint_entities_tasks = _endpoint_entities_tasks(
                     spark,
                     self.config.parquet_datasets_path,
+                    base,
+                    collections,
+                    active_resources,
                     active_source_df,
                     active_df,
                     entity_quality_df,

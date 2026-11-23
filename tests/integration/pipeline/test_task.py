@@ -1824,7 +1824,79 @@ class TestEndpointEntitiesTasks:
         endpoint would look empty: the leg is skipped, not run."""
         assert (
             _endpoint_entities_tasks(
-                spark, os.path.join(str(tmp_path), "parquet-output"), *[None] * 5
+                spark, os.path.join(str(tmp_path), "parquet-output"), *[None] * 8
             )
             is None
         )
+
+    def _write_empty_fact_resource(self, spark, base):
+        spark.createDataFrame(
+            [], "dataset string, resource string, entity bigint, fact string"
+        ).write.format("delta").save(
+            os.path.join(base, "parquet-output", "fact_resource")
+        )
+
+    def test_resource_not_in_fact_resource_and_not_logged_gets_no_task(
+        self, spark, tmp_path
+    ):
+        """A resource missing from fact_resource may simply not have been
+        processed yet, so it is not reported as producing nothing. e3's resource
+        is logged with 0 entities and is the only one raised."""
+        base = str(tmp_path)
+        self._write_fixtures(base)
+        self._write_empty_fact_resource(spark, base)
+        _write_source(
+            base,
+            "dataset-a-collection",
+            [
+                {
+                    "endpoint": endpoint,
+                    "pipelines": "dataset-a",
+                    "organisation": organisation,
+                    "end-date": "",
+                }
+                for endpoint, organisation in (
+                    ("e1", "organisation:1"),
+                    ("e2", "organisation:2"),
+                    ("e3", "organisation:1"),
+                )
+            ],
+        )
+        _write_log(
+            base,
+            "dataset-a-collection",
+            [
+                {
+                    "endpoint": endpoint,
+                    "resource": resource,
+                    "status": "200",
+                    "exception": "",
+                    "entry-date": "2026-01-01",
+                }
+                for endpoint, resource in (
+                    ("e1", "resource-a"),
+                    ("e2", "resource-a"),
+                    ("e3", "resource-b"),
+                )
+            ],
+        )
+        _write_dataset_resource(
+            base, "dataset-a-collection", "dataset-a", "resource-b", "0", "5"
+        )
+
+        rows = self._endpoint_tasks(spark, base)
+
+        assert [r["endpoint"] for r in rows] == ["e3"]
+
+    def test_resource_logged_with_no_entities_gets_a_task(self, spark, tmp_path):
+        base = str(tmp_path)
+        self._write_fixtures(base)
+        self._write_empty_fact_resource(spark, base)
+        _write_dataset_resource(
+            base, "dataset-a-collection", "dataset-a", "resource-a", "0", "5"
+        )
+
+        rows = self._endpoint_tasks(spark, base)
+
+        assert sorted(r["endpoint"] for r in rows) == ["e1", "e2"]
+        assert {json.loads(r["details"])["reason"] for r in rows} == {"no-entities"}
