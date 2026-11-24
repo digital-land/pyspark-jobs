@@ -18,7 +18,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.9' # emr-7.9.0 uses 3.9/3.11
+          python-version: '3.11' # emr-7.9.0 offers 3.9 and 3.11; jobs run on 3.11
 
       - run: make init
       - run: make lint
@@ -48,7 +48,7 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.9' # emr-7.9.0 uses 3.9/3.11
+          python-version: '3.11' # emr-7.9.0 offers 3.9 and 3.11; jobs run on 3.11
 
       - uses: actions/cache@v4
         with:
@@ -99,7 +99,7 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.9' # emr-7.9.0 uses 3.9/3.11
+          python-version: '3.11' # emr-7.9.0 offers 3.9 and 3.11; jobs run on 3.11
 
       - uses: actions/cache@v4
         with:
@@ -153,7 +153,7 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.9' # emr-7.9.0 uses 3.9/3.11
+          python-version: '3.11' # emr-7.9.0 offers 3.9 and 3.11; jobs run on 3.11
 
       - uses: actions/cache@v4
         with:

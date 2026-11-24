@@ -17,6 +17,11 @@ RUN python3 -m pip install --no-cache-dir apache-sedona==1.8.0 pandas==2.2.3 \
     && python3 -m pip install --no-cache-dir --ignore-installed setuptools -r /tmp/requirements.txt \
     && python3 -m pip install --no-cache-dir --no-deps "delta-spark>=3.2.0,<4.0.0"
 
+# Same dependencies for Python 3.11 (emr-7.9.0 ships /usr/bin/python3.11 with pip)
+RUN python3.11 -m pip install --no-cache-dir apache-sedona==1.8.0 pandas==2.2.3 \
+    && python3.11 -m pip install --no-cache-dir --ignore-installed setuptools -r /tmp/requirements.txt \
+    && python3.11 -m pip install --no-cache-dir --no-deps "delta-spark>=3.2.0,<4.0.0"
+
 # Set ownership and permissions for hadoop user
 RUN chown -R hadoop:hadoop /usr/lib/spark/jars && chmod -R a+r /usr/lib/spark/jars
 
