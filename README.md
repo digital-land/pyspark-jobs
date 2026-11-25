@@ -30,7 +30,7 @@ pyspark-jobs/
 
 ### Prerequisites
 
-- Python 3.9+
+- Python 3.11
 - Java 11+ (for PySpark)
 - Docker (for database integration tests)
 
