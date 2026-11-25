@@ -17,8 +17,9 @@ RUN python3 -m pip install --no-cache-dir apache-sedona==1.8.0 pandas==2.2.3 \
     && python3 -m pip install --no-cache-dir --ignore-installed setuptools -r /tmp/requirements.txt \
     && python3 -m pip install --no-cache-dir --no-deps "delta-spark>=3.2.0,<4.0.0"
 
-# Same dependencies for Python 3.11 (emr-7.9.0 ships /usr/bin/python3.11 with pip)
-RUN python3.11 -m pip install --no-cache-dir apache-sedona==1.8.0 pandas==2.2.3 \
+# Same dependencies for Python 3.11 (emr-7.9.0 ships /usr/bin/python3.11 with pip).
+# boto3/botocore come pre-installed for python3 (3.9) only, so 3.11 needs them explicitly.
+RUN python3.11 -m pip install --no-cache-dir apache-sedona==1.8.0 pandas==2.2.3 boto3 botocore \
     && python3.11 -m pip install --no-cache-dir --ignore-installed setuptools -r /tmp/requirements.txt \
     && python3.11 -m pip install --no-cache-dir --no-deps "delta-spark>=3.2.0,<4.0.0"
 
