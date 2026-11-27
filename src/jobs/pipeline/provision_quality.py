@@ -502,7 +502,9 @@ class ProvisionQualityPipeline(BasePipeline):
         dataset_df = normalise_column_names(
             spark.read.option("header", "true").csv(dataset_path)
         )
-        live_datasets_df = live_datasets(dataset_df, self.config.env)
+        live_datasets_df = live_datasets(
+            dataset_df, self.config.env, self.config.collection_data_path
+        )
 
         # -- Entity + quality (SWAPPABLE SEAM) ----------------------------------
         entity_quality_df = load_entity_quality(spark, entity_data_path)
