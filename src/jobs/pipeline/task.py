@@ -831,7 +831,9 @@ class TaskPipeline(BasePipeline):
         dataset_df = normalise_column_names(
             spark.read.option("header", "true").csv(dataset_path)
         )
-        live_datasets_df = live_datasets(dataset_df, self.config.env)
+        live_datasets_df = live_datasets(
+            dataset_df, self.config.env, self.config.collection_data_path
+        )
 
         entity_quality_df = load_entity_quality(spark, entity_data_path)
         authority_population = non_authoritative_providers(

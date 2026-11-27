@@ -65,7 +65,7 @@ def load_entity_quality(spark, entity_data_path):
     return reduce(lambda a, b: a.unionByName(b), frames)
 
 
-def live_datasets(dataset_df, env):
+def live_datasets(dataset_df, env, collection_data_path=None):
     """The datasets the platform builds in `env` and has not retired.
 
     Mirrors is_dataset_available in airflow-dags (dags/utils.py): a
@@ -75,6 +75,22 @@ def live_datasets(dataset_df, env):
     whatever its environment (e.g. development-plan-document, which is
     production but was end-dated in February).
     """
+
+    if collection_data_path:
+        config_path = str(
+            AnyPath(collection_data_path) / "config" / "pipeline" / "dataset.csv"
+        )
+        config_df = (
+            dataset_df.sparkSession.read.option("header", "true")
+            .csv(config_path)
+            .select("dataset", "environment")
+        )
+        dataset_df = (
+            dataset_df.drop("environment")
+            .join(config_df, on="dataset", how="left")
+            .withColumn("environment", coalesce(col("environment"), lit("")))
+        )
+
     available = col("environment") == "production"
     if env in ("staging", "development"):
         available = available | (col("environment") == "staging")

@@ -42,6 +42,14 @@ def _write_dataset_specification(base, datasets):
         ],
     )
 
+    config_dir = os.path.join(base, "config", "pipeline")
+    os.makedirs(config_dir, exist_ok=True)
+    with open(os.path.join(config_dir, "dataset.csv"), "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["dataset", "environment"])
+        for dataset in datasets:
+            writer.writerow([dataset, "production"])
+
 
 def _write_empty_authority_fixtures(base):
     """Organisation + designation fixtures TaskPipeline.execute() now reads
